@@ -1560,3 +1560,7 @@ When implementation choices conflict, use this priority:
 11. Delivery speed
 
 The goal is not merely to make the feature work once. The goal is to create a codebase that can safely organize real games, handle real users, and evolve without losing control of its data or contracts.
+
+# 23. Must do after finishing changes
+
+Validate you have added test coverage for any code modified. Code changes without tests wont be approved for commits.

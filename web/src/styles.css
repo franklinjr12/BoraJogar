@@ -104,3 +104,12 @@ progress { width: 100%; accent-color: #0b6b68; }
     margin-bottom: 3rem;
   }
 }
+.location-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(18rem, .9fr); gap: 1rem; align-items: start; }
+.map-panel, .map-fallback { min-height: 20rem; height: 20rem; border-radius: 1rem; overflow: hidden; background: #dce9e5; }
+.map-fallback { display: grid; place-content: center; gap: .4rem; padding: 1rem; text-align: center; color: #38534d; }
+.area-form { margin-top: 1rem; }
+.venue-list { display: grid; gap: .5rem; }
+.venue, .area-row { display: flex; justify-content: space-between; gap: 1rem; align-items: center; border-top: 1px solid #dbe4df; padding: .8rem 0; }
+.venue h3 { margin: 0; }
+.venue p, .venue span { margin: .2rem 0 0; color: #5c706b; font-size: .9rem; }
+@media (max-width: 760px) { .location-grid { grid-template-columns: 1fr; } }

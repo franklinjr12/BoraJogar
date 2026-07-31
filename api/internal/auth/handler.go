@@ -54,6 +54,11 @@ func UserFromContext(ctx context.Context) (User, bool) {
 	return u, ok
 }
 
+// WithUserContext is used by trusted internal callers and handler tests.
+func WithUserContext(ctx context.Context, user User) context.Context {
+	return context.WithValue(ctx, userKey{}, user)
+}
+
 func (h Handler) now() time.Time {
 	if h.Now != nil {
 		return h.Now()

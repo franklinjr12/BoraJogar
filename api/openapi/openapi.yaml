@@ -58,6 +58,61 @@ paths:
       summary: Disable invitation
       parameters: [{ in: path, name: invitationId, required: true, schema: { type: string, format: uuid } }]
       responses: { '204': { description: Disabled }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /api/v1/venues:
+    get:
+      summary: List approved venues
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { in: query, name: city, schema: { type: string } }
+        - { in: query, name: latitude, schema: { type: number, format: double, minimum: -90, maximum: 90 } }
+        - { in: query, name: longitude, schema: { type: number, format: double, minimum: -180, maximum: 180 } }
+      responses: { '200': { description: Approved venues, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Venue' } } } } }, '422': { $ref: '#/components/responses/ValidationError' } }
+  /api/v1/venues/{venueId}:
+    get:
+      summary: Get approved venue
+      security: [{ cookieAuth: [] }]
+      parameters: [{ in: path, name: venueId, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Venue, content: { application/json: { schema: { $ref: '#/components/schemas/Venue' } } } }, '404': { description: Venue unavailable } }
+  /api/v1/venues/suggestions:
+    post:
+      summary: Suggest a venue for approval
+      security: [{ cookieAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VenueSuggestionInput' } } } }
+      responses: { '201': { description: Pending venue suggestion }, '422': { $ref: '#/components/responses/ValidationError' } }
+  /api/v1/me/preferred-areas:
+    get: { summary: List current user's preferred areas, security: [{ cookieAuth: [] }], responses: { '200': { description: Preferred areas } } }
+    post:
+      summary: Create preferred area
+      security: [{ cookieAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PreferredAreaInput' } } } }
+      responses: { '201': { description: Preferred area created }, '409': { description: Area limit reached }, '422': { $ref: '#/components/responses/ValidationError' } }
+  /api/v1/me/preferred-areas/{areaId}:
+    put:
+      summary: Update preferred area
+      security: [{ cookieAuth: [] }]
+      parameters: [{ in: path, name: areaId, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PreferredAreaInput' } } } }
+      responses: { '200': { description: Preferred area }, '404': { description: Area unavailable }, '422': { $ref: '#/components/responses/ValidationError' } }
+    delete:
+      summary: Deactivate preferred area
+      security: [{ cookieAuth: [] }]
+      parameters: [{ in: path, name: areaId, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Area removed }, '404': { description: Area unavailable } }
+  /api/v1/me/favorite-venues:
+    get: { summary: List favorite venues, security: [{ cookieAuth: [] }], responses: { '200': { description: Favorite venues } } }
+  /api/v1/me/favorite-venues/{venueId}:
+    post: { summary: Favorite venue, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: venueId, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Favorited }, '404': { description: Venue unavailable } } }
+    delete: { summary: Unfavorite venue, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: venueId, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Unfavorited }, '404': { description: Favorite unavailable } } }
+  /api/v1/admin/venues/suggestions:
+    get: { summary: List pending venue suggestions, security: [{ cookieAuth: [] }], responses: { '200': { description: Pending suggestions }, '403': { $ref: '#/components/responses/Forbidden' } } }
+  /api/v1/admin/venues/suggestions/{suggestionId}/{action}:
+    post:
+      summary: Approve or reject venue suggestion
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { in: path, name: suggestionId, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: action, required: true, schema: { type: string, enum: [approve, reject] } }
+      responses: { '204': { description: Suggestion reviewed }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { description: Suggestion unavailable } }
 components:
   securitySchemes:
     cookieAuth: { type: apiKey, in: cookie, name: borajogar_session }
@@ -80,6 +135,41 @@ components:
       properties:
         currentStep: { type: integer, minimum: 0, maximum: 8 }
         completedSteps: { type: array, items: { type: integer, minimum: 0, maximum: 8 } }
+    Venue:
+      type: object
+      required: [id, name, city, latitude, longitude, lightingStatus, surfaceType, accessType, active]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        addressLabel: { type: string, nullable: true }
+        city: { type: string }
+        latitude: { type: number, format: double }
+        longitude: { type: number, format: double }
+        lightingStatus: { type: string, enum: [unknown, no_lighting, has_lighting] }
+        surfaceType: { type: string, enum: [unknown, sand, grass, hard_court, other] }
+        accessType: { type: string, enum: [public, private, paid_entry, unknown] }
+        active: { type: boolean }
+        distanceMeters: { type: number, format: double, nullable: true }
+    PreferredAreaInput:
+      type: object
+      required: [label, latitude, longitude, radiusMeters]
+      properties:
+        label: { type: string, minLength: 1, maxLength: 120 }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+        radiusMeters: { type: integer, minimum: 500, maximum: 25000 }
+        priority: { type: integer, minimum: 0 }
+    VenueSuggestionInput:
+      type: object
+      required: [name, city, latitude, longitude]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 160 }
+        description: { type: string, nullable: true }
+        addressLabel: { type: string, nullable: true }
+        city: { type: string, minLength: 1, maxLength: 120 }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
   responses:
     Unauthorized: { description: Authentication required }
     Forbidden: { description: Administrator access required }

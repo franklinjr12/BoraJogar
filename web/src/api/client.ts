@@ -14,6 +14,15 @@ export interface Profile {
   activeForMatchmaking: boolean;
 }
 
+export type LightingStatus = 'unknown' | 'no_lighting' | 'has_lighting';
+export type AccessType = 'public' | 'private' | 'paid_entry' | 'unknown';
+export interface Venue {
+  id: string; name: string; description?: string; addressLabel?: string; city: string;
+  latitude: number; longitude: number; lightingStatus: LightingStatus; surfaceType: string;
+  accessType: AccessType; active: boolean; distanceMeters?: number;
+}
+export interface PreferredArea { id: string; label: string; latitude: number; longitude: number; radiusMeters: number; priority: number; active: boolean; }
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...init });
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
@@ -25,4 +34,18 @@ export const profileApi = {
   update: (profile: Omit<Profile, 'userId' | 'avatarUrl'>) => request<Profile>('/api/v1/me/profile', { method: 'PUT', body: JSON.stringify(profile) }),
   saveProgress: (currentStep: number, completedSteps: number[]) => request('/api/v1/me/onboarding', { method: 'PUT', body: JSON.stringify({ currentStep, completedSteps }) }),
   complete: () => request<void>('/api/v1/me/onboarding/complete', { method: 'POST' }),
+};
+
+export const locationApi = {
+  venues: (position?: { latitude: number; longitude: number }) => {
+    const params = new URLSearchParams({ city: 'São Paulo' });
+    if (position) { params.set('latitude', String(position.latitude)); params.set('longitude', String(position.longitude)); }
+    return request<Venue[]>(`/api/v1/venues?${params.toString()}`);
+  },
+  preferredAreas: () => request<PreferredArea[]>('/api/v1/me/preferred-areas'),
+  createPreferredArea: (input: Omit<PreferredArea, 'id' | 'active'>) => request<PreferredArea>('/api/v1/me/preferred-areas', { method: 'POST', body: JSON.stringify(input) }),
+  deletePreferredArea: (id: string) => request<void>(`/api/v1/me/preferred-areas/${id}`, { method: 'DELETE' }),
+  favoriteVenues: () => request<Venue[]>('/api/v1/me/favorite-venues'),
+  favoriteVenue: (id: string) => request<void>(`/api/v1/me/favorite-venues/${id}`, { method: 'POST' }),
+  unfavoriteVenue: (id: string) => request<void>(`/api/v1/me/favorite-venues/${id}`, { method: 'DELETE' }),
 };

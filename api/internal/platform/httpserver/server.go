@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/borajogar/borajogar/api/internal/auth"
+	"github.com/borajogar/borajogar/api/internal/location"
 	"github.com/borajogar/borajogar/api/internal/profile"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,6 +25,7 @@ func New(logger *slog.Logger, db *pgxpool.Pool, authHandlers ...auth.Handler) ht
 	for _, authHandler := range authHandlers {
 		authHandler.Register(mux)
 		profile.Handler{DB: db}.Register(mux, authHandler.RequireAuth)
+		location.Handler{DB: db}.Register(mux, authHandler.RequireAuth, authHandler.RequireAdmin)
 	}
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
