@@ -4,7 +4,7 @@ Bora Jogar is a mobile-first Progressive Web App for organizing beach volleyball
 
 ## Stack
 
-- `web/`: React + TypeScript + Vite, React Router, TanStack Query, Vitest
+- `web/`: React + TypeScript + Vite, React Router, TanStack Query, Vitest, Playwright
 - `api/`: Go HTTP server and worker, `pgx`, Goose migrations, sqlc
 - PostgreSQL + PostGIS and Mailpit via Docker Compose
 
@@ -36,9 +36,17 @@ go -C api run ./cmd/tools/send-test-email
 
 ## Commands
 
-`make dev`, `make dev-web`, `make dev-api`, `make dev-worker`, `make test`, `make test-integration`, `make lint`, `make typecheck`, `make generate`, `make migrate`, `make migrate-down`, `make seed`, `make db-reset`, and `make build` cover common development operations.
+`make dev`, `make dev-web`, `make dev-api`, `make dev-worker`, `make test`, `make test-e2e`, `make e2e-db-reset`, `make test-integration`, `make lint`, `make typecheck`, `make generate`, `make migrate`, `make migrate-down`, `make seed`, `make db-reset`, and `make build` cover common development operations.
+
+Install Playwright browsers once after dependency installation:
+
+```powershell
+npm --prefix web exec playwright install chromium
+```
 
 After migrations, run `make seed` to load repeatable local users, profiles, venues, availability, games, invitations, and waitlists. Seed accounts use `@borajogar.local` addresses; the seed does not create real Google sessions.
+
+`make test-e2e` resets `borajogar_e2e`, applies migrations, runs the shared local seed, then starts the real Go API and Vite web app. Seeded browser sessions use `borajogar_session=seed-session-ana` and `borajogar_session=seed-session-carla`.
 
 Use `make generate` after changing SQL. Generated sqlc output lives in `api/generated/` and must not be edited manually.
 
@@ -52,7 +60,7 @@ Copy `.env.example` to `.env`. Server startup requires `APP_PORT`, `DATABASE_URL
 
 ## Local push gate
 
-This is a personal project. GitHub CI is intentionally not configured. Install the repository pre-push hook once with `make install-hooks`; every push then runs `make ci-local` and is blocked when lint, typecheck, tests, or build fails.
+This is a personal project. GitHub CI is intentionally not configured. Install the repository pre-push hook once with `make install-hooks`; every push then runs `make ci-local` and is blocked when lint, typecheck, unit tests, Playwright tests, or build fails.
 
 ## Project docs
 

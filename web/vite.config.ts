@@ -1,4 +1,21 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig({ plugins: [react()] });
+const runtime = globalThis as typeof globalThis & {
+  process?: { env?: Record<string, string | undefined> };
+};
+const apiProxyTarget = runtime.process?.env?.VITE_API_PROXY_TARGET;
+
+export default defineConfig({
+  plugins: [react()],
+  server: apiProxyTarget
+    ? {
+        proxy: {
+          '/api': {
+            target: apiProxyTarget,
+            changeOrigin: true,
+          },
+        },
+      }
+    : undefined,
+});
