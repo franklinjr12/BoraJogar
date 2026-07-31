@@ -29,6 +29,8 @@ export type GameSkillLevel = SkillLevel;
 export type GameVisibility = 'public' | 'link-only' | 'private';
 export interface Game { id: string; title?: string; description?: string; startsAt: string; endsAt: string; venueId: string; venueName: string; addressLabel?: string; latitude: number; longitude: number; capacity: number; confirmedPlayers: number; openSlots: number; minimumSkillLevel: GameSkillLevel; maximumSkillLevel: GameSkillLevel; visibility: GameVisibility; status: 'scheduled' | 'cancelled' | 'completed'; organizer?: { id: string; displayName: string }; players?: Array<{ id: string; displayName: string; role?: string }>; waitlist?: Array<{ id: string; displayName: string }>; isMember?: boolean; currentUserStatus?: string; currentUserRole?: string; shareUrl?: string; }
 export interface GameInput { startsAt: string; durationMinutes: 60 | 90 | 120; venueId: string; capacity: number; minimumSkillLevel: GameSkillLevel; maximumSkillLevel: GameSkillLevel; visibility: GameVisibility; title?: string; description?: string; }
+export interface Notification { id: string; userId: string; type: string; title: string; body: string; actionUrl?: string; payload: Record<string, unknown>; readAt?: string; createdAt: string; }
+export interface NotificationPage { items: Notification[]; unreadCount: number; hasMore: boolean; }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...init });
@@ -74,4 +76,10 @@ export const gameApi = {
   join: (id: string) => request<{ result: 'confirmed' | 'waitlisted' }>(`/api/v1/games/${id}/join`, { method: 'POST' }),
   leave: (id: string) => request<{ result: string }>(`/api/v1/games/${id}/leave`, { method: 'POST' }),
   calendarURL: (id: string, access?: string) => `/api/v1/games/${id}/calendar.ics${access ? `?access=${encodeURIComponent(access)}` : ''}`,
+};
+
+export const notificationApi = {
+  list: (limit = 30) => request<NotificationPage>(`/api/v1/notifications?limit=${limit}`),
+  markRead: (id: string) => request<void>(`/api/v1/notifications/${id}/read`, { method: 'POST' }),
+  markAllRead: () => request<void>('/api/v1/notifications/read-all', { method: 'POST' }),
 };

@@ -163,6 +163,23 @@ paths:
   /api/v1/games/{gameId}/waitlist:
     post: { summary: Add to waitlist, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Waitlisted } } }
     delete: { summary: Remove from waitlist, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Removed } } }
+  /api/v1/notifications:
+    get:
+      summary: List current user's notifications
+      security: [{ cookieAuth: [] }]
+      parameters: [{ in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }]
+      responses: { '200': { $ref: '#/components/responses/Notifications' }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /api/v1/notifications/{id}/read:
+    post:
+      summary: Mark notification as read
+      security: [{ cookieAuth: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { '204': { description: Marked as read }, '404': { description: Notification unavailable } }
+  /api/v1/notifications/read-all:
+    post:
+      summary: Mark all notifications as read
+      security: [{ cookieAuth: [] }]
+      responses: { '204': { description: Marked as read } }
 components:
   securitySchemes:
     cookieAuth: { type: apiKey, in: cookie, name: borajogar_session }
@@ -262,6 +279,19 @@ components:
     GameCancellation:
       type: object
       properties: { reason: { type: string, maxLength: 500, nullable: true } }
+    Notification:
+      type: object
+      required: [id, userId, type, title, body, payload, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        type: { type: string }
+        title: { type: string }
+        body: { type: string }
+        actionUrl: { type: string, nullable: true }
+        payload: { type: object, additionalProperties: true }
+        readAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
   responses:
     Unauthorized: { description: Authentication required }
     Forbidden: { description: Administrator access required }
@@ -269,4 +299,15 @@ components:
     Profile: { description: Player profile }
     PublicProfile: { description: Limited player profile }
     OnboardingProgress: { description: Onboarding progress }
+    Notifications:
+      description: Notification page
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [items, unreadCount, hasMore]
+            properties:
+              items: { type: array, items: { $ref: '#/components/schemas/Notification' } }
+              unreadCount: { type: integer, minimum: 0 }
+              hasMore: { type: boolean }
     ValidationError: { description: Validation failed }

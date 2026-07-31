@@ -1,6 +1,8 @@
 BEGIN;
 
 -- Fixture IDs are intentionally stable. Remove only rows owned by this seed.
+DELETE FROM notification_events WHERE id IN ('91000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000002');
+DELETE FROM notification_preferences WHERE user_id IN ('10000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000004');
 DELETE FROM proposal_participants WHERE proposal_id IN ('90000000-0000-0000-0000-000000000001');
 DELETE FROM match_proposals WHERE id IN ('90000000-0000-0000-0000-000000000001');
 DELETE FROM matchmaking_runs WHERE id IN ('80000000-0000-0000-0000-000000000001');
@@ -32,6 +34,20 @@ VALUES
  ('10000000-0000-0000-0000-000000000002', 'seed-google-bruno', 'bruno@borajogar.local', 'Bruno Costa', 'https://i.pravatar.cc/160?img=12', 'America/Sao_Paulo', true, false, 'active', '2026-07-02 12:00:00+00'),
  ('10000000-0000-0000-0000-000000000003', 'seed-google-carla', 'carla@borajogar.local', 'Carla Lima', 'https://i.pravatar.cc/160?img=32', 'America/Sao_Paulo', true, false, 'active', '2026-07-03 12:00:00+00'),
  ('10000000-0000-0000-0000-000000000004', 'seed-google-diego', 'diego@borajogar.local', 'Diego Souza', NULL, 'America/Sao_Paulo', false, false, 'active', NULL);
+
+INSERT INTO notification_preferences (user_id) VALUES
+ ('10000000-0000-0000-0000-000000000001'),
+ ('10000000-0000-0000-0000-000000000002'),
+ ('10000000-0000-0000-0000-000000000003'),
+ ('10000000-0000-0000-0000-000000000004');
+
+INSERT INTO notification_events (id, user_id, type, title, body, action_url, payload, created_at) VALUES
+ ('91000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'match_proposal', 'New match proposal', 'You have a new game proposal to review.', '/proposals/90000000-0000-0000-0000-000000000001', '{"proposalId":"90000000-0000-0000-0000-000000000001"}'::jsonb, '2026-07-30 13:00:00+00'),
+ ('91000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', 'game_reminder', 'Game reminder', 'Your game starts tomorrow at Praia do Sol.', '/games/60000000-0000-0000-0000-000000000001', '{"gameId":"60000000-0000-0000-0000-000000000001"}'::jsonb, '2026-07-30 14:00:00+00');
+
+INSERT INTO notification_deliveries (id, notification_event_id, channel, status, attempt_count, delivered_at) VALUES
+ ('92000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000001', 'in_app', 'delivered', 1, '2026-07-30 13:00:01+00'),
+ ('92000000-0000-0000-0000-000000000002', '91000000-0000-0000-0000-000000000002', 'in_app', 'delivered', 1, '2026-07-30 14:00:01+00');
 
 INSERT INTO invitations (id, code_hash, created_by_user_id, email, max_uses, current_uses, expires_at)
 VALUES ('20000000-0000-0000-0000-000000000201', 'seed-invitation-code-hash', '10000000-0000-0000-0000-000000000001', 'diego@borajogar.local', 3, 1, '2026-12-31 02:59:59+00');
