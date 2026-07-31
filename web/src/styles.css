@@ -112,4 +112,9 @@ progress { width: 100%; accent-color: #0b6b68; }
 .venue, .area-row { display: flex; justify-content: space-between; gap: 1rem; align-items: center; border-top: 1px solid #dbe4df; padding: .8rem 0; }
 .venue h3 { margin: 0; }
 .venue p, .venue span { margin: .2rem 0 0; color: #5c706b; font-size: .9rem; }
+.time-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.weekly-summary { margin-top: 1rem; }
+.availability-day { border-top: 1px solid #dbe4df; padding: .7rem 0; }
+.availability-day h3 { margin: 0 0 .35rem; }
+.availability-row { display: flex; justify-content: space-between; align-items: center; padding: .25rem 0; }
 @media (max-width: 760px) { .location-grid { grid-template-columns: 1fr; } }

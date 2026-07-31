@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implement From Backlog"
+  short_description: "Load one backlog milestone without context bloat"
+  default_prompt: "Use $implement-from-backlog to implement Milestone # from docs/backlog.md."

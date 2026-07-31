@@ -1564,3 +1564,15 @@ The goal is not merely to make the feature work once. The goal is to create a co
 # 23. Must do after finishing changes
 
 Validate you have added test coverage for any code modified. Code changes without tests wont be approved for commits.
+
+## 23.1 Mandatory agent completion gate
+
+Every coding task MUST end with this sequence before the agent reports completion:
+
+1. Inspect `git diff --stat` and list every production file changed.
+2. For each changed production package/module, add or update a test covering the changed behavior, including failure, authorization, and edge cases where applicable.
+3. Run `make test-coverage` for backend changes. Run `npm --prefix web run test -- --run` for frontend changes.
+4. Run `make agent-check` when practical. If any command cannot run, report the exact command and blocker.
+5. Do not claim completion when changed backend code has no corresponding test file or when coverage was not checked.
+
+Test coverage is a required deliverable, not a final optional cleanup step. Re-open changed code after tests pass and verify new branches are covered.

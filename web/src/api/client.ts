@@ -22,6 +22,9 @@ export interface Venue {
   accessType: AccessType; active: boolean; distanceMeters?: number;
 }
 export interface PreferredArea { id: string; label: string; latitude: number; longitude: number; radiusMeters: number; priority: number; active: boolean; }
+export interface AvailabilityRule { id: string; weekday: number; start: string; end: string; timezone: string; validFrom: string; validUntil?: string; active: boolean; venueIds: string[]; preferredAreaIds: string[]; }
+export interface AvailabilityException { id: string; date: string; type: 'unavailable_all_day' | 'unavailable_interval' | 'available_interval'; start?: string; end?: string; timezone: string; }
+export interface AvailabilityOccurrence { startsAt: string; endsAt: string; sourceType: string; sourceId: string; }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...init });
@@ -48,4 +51,14 @@ export const locationApi = {
   favoriteVenues: () => request<Venue[]>('/api/v1/me/favorite-venues'),
   favoriteVenue: (id: string) => request<void>(`/api/v1/me/favorite-venues/${id}`, { method: 'POST' }),
   unfavoriteVenue: (id: string) => request<void>(`/api/v1/me/favorite-venues/${id}`, { method: 'DELETE' }),
+};
+
+export const availabilityApi = {
+  rules: () => request<AvailabilityRule[]>('/api/v1/me/availability/rules'),
+  createRule: (input: Omit<AvailabilityRule, 'id'>) => request<AvailabilityRule>('/api/v1/me/availability/rules', { method: 'POST', body: JSON.stringify(input) }),
+  deleteRule: (id: string) => request<void>(`/api/v1/me/availability/rules/${id}`, { method: 'DELETE' }),
+  exceptions: () => request<AvailabilityException[]>('/api/v1/me/availability/exceptions'),
+  createException: (input: Omit<AvailabilityException, 'id'>) => request<AvailabilityException>('/api/v1/me/availability/exceptions', { method: 'POST', body: JSON.stringify(input) }),
+  deleteException: (id: string) => request<void>(`/api/v1/me/availability/exceptions/${id}`, { method: 'DELETE' }),
+  calendar: (from: string, to: string) => request<AvailabilityOccurrence[]>(`/api/v1/me/availability/calendar?from=${from}&to=${to}`),
 };

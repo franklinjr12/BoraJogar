@@ -9,7 +9,7 @@ install-hooks:
 	git config core.hooksPath .githooks
 
 ci-local:
-	make lint && make typecheck && make test && make build
+	make lint && make typecheck && make test && make test-coverage && make build
 
 dev-web:
 	npm --prefix web run dev
@@ -25,6 +25,12 @@ send-test-email:
 
 test:
 	npm --prefix web run test && go -C api test ./...
+
+test-coverage:
+	go -C api test ./... -coverprofile=coverage && go -C api tool cover -func=coverage
+
+agent-check:
+	make lint && make typecheck && make test && make test-coverage && make build
 
 test-integration:
 	docker compose up -d database && make migrate && go -C api test ./... -tags=integration

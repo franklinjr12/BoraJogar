@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/borajogar/borajogar/api/internal/auth"
+	"github.com/borajogar/borajogar/api/internal/availability"
 	"github.com/borajogar/borajogar/api/internal/platform/config"
 	"github.com/borajogar/borajogar/api/internal/platform/database"
 )
@@ -38,6 +39,9 @@ func main() {
 		logger.Info("expired sessions cleaned", "deleted", deleted)
 	}
 	cleanup()
+	if err := availability.ExpandFuture(ctx, db, time.Now().UTC()); err != nil {
+		logger.Error("availability expansion failed", "error", err)
+	}
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 	for {
@@ -46,6 +50,9 @@ func main() {
 			return
 		case <-ticker.C:
 			cleanup()
+			if err := availability.ExpandFuture(ctx, db, time.Now().UTC()); err != nil {
+				logger.Error("availability expansion failed", "error", err)
+			}
 		}
 	}
 }

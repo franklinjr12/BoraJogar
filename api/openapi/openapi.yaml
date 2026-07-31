@@ -113,6 +113,19 @@ paths:
         - { in: path, name: suggestionId, required: true, schema: { type: string, format: uuid } }
         - { in: path, name: action, required: true, schema: { type: string, enum: [approve, reject] } }
       responses: { '204': { description: Suggestion reviewed }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { description: Suggestion unavailable } }
+  /api/v1/me/availability/rules:
+    get: { summary: List recurring availability rules, security: [{ cookieAuth: [] }], responses: { '200': { description: Availability rules } } }
+    post: { summary: Create recurring availability rule, security: [{ cookieAuth: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AvailabilityRuleInput' } } } }, responses: { '201': { description: Created }, '409': { description: Overlapping rule }, '422': { $ref: '#/components/responses/ValidationError' } } }
+  /api/v1/me/availability/rules/{ruleId}:
+    put: { summary: Update recurring availability rule, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: ruleId, required: true, schema: { type: string, format: uuid } }], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AvailabilityRuleInput' } } } }, responses: { '200': { description: Updated }, '409': { description: Overlapping rule }, '422': { $ref: '#/components/responses/ValidationError' } } }
+    delete: { summary: Delete recurring availability rule, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: ruleId, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Deleted } } }
+  /api/v1/me/availability/exceptions:
+    get: { summary: List availability exceptions, security: [{ cookieAuth: [] }], responses: { '200': { description: Exceptions } } }
+    post: { summary: Create availability exception, security: [{ cookieAuth: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AvailabilityExceptionInput' } } } }, responses: { '201': { description: Created }, '422': { $ref: '#/components/responses/ValidationError' } } }
+  /api/v1/me/availability/exceptions/{exceptionId}:
+    delete: { summary: Delete availability exception, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: exceptionId, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Deleted } } }
+  /api/v1/me/availability/calendar:
+    get: { summary: Get computed availability calendar, security: [{ cookieAuth: [] }], parameters: [{ in: query, name: from, required: true, schema: { type: string, format: date } }, { in: query, name: to, required: true, schema: { type: string, format: date } }], responses: { '200': { description: Computed availability }, '422': { $ref: '#/components/responses/ValidationError' } } }
 components:
   securitySchemes:
     cookieAuth: { type: apiKey, in: cookie, name: borajogar_session }
@@ -170,6 +183,28 @@ components:
         city: { type: string, minLength: 1, maxLength: 120 }
         latitude: { type: number, format: double, minimum: -90, maximum: 90 }
         longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+    AvailabilityRuleInput:
+      type: object
+      required: [weekday, start, end, timezone, validFrom]
+      properties:
+        weekday: { type: integer, minimum: 0, maximum: 6 }
+        start: { type: string }
+        end: { type: string }
+        timezone: { type: string }
+        validFrom: { type: string, format: date }
+        validUntil: { type: string, format: date, nullable: true }
+        active: { type: boolean }
+        venueIds: { type: array, items: { type: string, format: uuid } }
+        preferredAreaIds: { type: array, items: { type: string, format: uuid } }
+    AvailabilityExceptionInput:
+      type: object
+      required: [date, type, timezone]
+      properties:
+        date: { type: string, format: date }
+        type: { type: string, enum: [unavailable_all_day, unavailable_interval, available_interval] }
+        start: { type: string, nullable: true }
+        end: { type: string, nullable: true }
+        timezone: { type: string }
   responses:
     Unauthorized: { description: Authentication required }
     Forbidden: { description: Administrator access required }

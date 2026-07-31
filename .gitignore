@@ -16,6 +16,8 @@ postgres-data/
 # Go
 api/bin/
 *.test
+api/coverage.out
+api/coverage
 
 # IDE / OS
 .idea/
