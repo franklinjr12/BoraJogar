@@ -1,11 +1,30 @@
 package httpserver
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+func TestErrorIncludesRequestID(t *testing.T) {
+	res := httptest.NewRecorder()
+	w := &requestIDWriter{ResponseWriter: res, requestID: "req-test"}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusConflict)
+	_, _ = w.Write([]byte(`{"error":{"code":"conflict","message":"Conflict.","fields":{}}}`))
+	if res.Code != http.StatusConflict {
+		t.Fatalf("status = %d", res.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["requestId"] == nil || body["requestId"] == "" {
+		t.Fatalf("missing requestId: %s", res.Body.String())
+	}
+}
 
 func TestRequestIDIsReturned(t *testing.T) {
 	server := New(slog.Default(), nil)

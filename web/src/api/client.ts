@@ -119,16 +119,71 @@ export interface NotificationPage {
   items: Notification[];
   unreadCount: number;
   hasMore: boolean;
+  page: number;
+  pageSize: number;
+}
+
+export interface Page<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+export interface ApiErrorPayload {
+  code: string;
+  message: string;
+  fields: Record<string, string>;
+}
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly fields: Record<string, string>;
+  readonly requestId?: string;
+
+  constructor(status: number, payload: ApiErrorPayload, requestId?: string) {
+    super(payload.message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = payload.code;
+    this.fields = payload.fields;
+    this.requestId = requestId;
+  }
+}
+
+interface ErrorResponse {
+  error?: Partial<ApiErrorPayload>;
+  requestId?: string;
+}
+
+function isErrorResponse(value: unknown): value is ErrorResponse {
+  return typeof value === 'object' && value !== null && ('error' in value || 'requestId' in value);
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   const response = await fetch(path, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers,
   });
-  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
-  return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
+  if (response.status === 204) return undefined as T;
+  const body: unknown = await response.json().catch(() => undefined);
+  if (!response.ok) {
+    const error = isErrorResponse(body) ? body.error : undefined;
+    throw new ApiError(
+      response.status,
+      {
+        code: error?.code ?? `http_${response.status}`,
+        message: error?.message ?? `Request failed with status ${response.status}.`,
+        fields: error?.fields ?? {},
+      },
+      isErrorResponse(body) ? body.requestId : (response.headers.get('X-Request-ID') ?? undefined),
+    );
+  }
+  return body as T;
 }
 
 export const profileApi = {
@@ -189,8 +244,11 @@ export const availabilityApi = {
 };
 
 export const gameApi = {
-  list: (includeCancelled = false) =>
-    request<Game[]>(`/api/v1/games${includeCancelled ? '?includeCancelled=true' : ''}`),
+  list: (includeCancelled = false, page = 1, pageSize = 30) => {
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (includeCancelled) params.set('includeCancelled', 'true');
+    return request<Page<Game>>(`/api/v1/games?${params.toString()}`);
+  },
   get: (id: string, access?: string) =>
     request<Game>(`/api/v1/games/${id}${access ? `?access=${encodeURIComponent(access)}` : ''}`),
   create: (input: GameInput) =>
@@ -204,7 +262,8 @@ export const gameApi = {
 };
 
 export const notificationApi = {
-  list: (limit = 30) => request<NotificationPage>(`/api/v1/notifications?limit=${limit}`),
+  list: (page = 1, pageSize = 30) =>
+    request<NotificationPage>(`/api/v1/notifications?page=${page}&pageSize=${pageSize}`),
   markRead: (id: string) => request<void>(`/api/v1/notifications/${id}/read`, { method: 'POST' }),
   markAllRead: () => request<void>('/api/v1/notifications/read-all', { method: 'POST' }),
 };

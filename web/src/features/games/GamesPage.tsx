@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   gameApi,
+  locationApi,
+  ApiError,
   type Game,
   type GameInput,
   type GameSkillLevel,
@@ -26,7 +28,7 @@ export function GamesPage() {
   useEffect(() => {
     gameApi
       .list()
-      .then(setGames)
+      .then((page) => setGames(page.items))
       .catch(() => setError('Could not load games. Sign in and try again.'));
   }, []);
   return (
@@ -72,9 +74,9 @@ export function CreateGamePage() {
   const [error, setError] = useState('');
   const [venues, setVenues] = useState<Array<{ id: string; name: string }>>([]);
   useEffect(() => {
-    fetch('/api/v1/venues?city=S%C3%A3o%20Paulo', { credentials: 'include' })
-      .then((response) => response.json() as Promise<Array<{ id: string; name: string }>>)
-      .then(setVenues)
+    locationApi
+      .venues()
+      .then((items) => setVenues(items.map(({ id, name }) => ({ id, name }))))
       .catch(() => setVenues([]));
   }, []);
   const save = async (event: FormEvent<HTMLFormElement>) => {
@@ -96,8 +98,12 @@ export function CreateGamePage() {
     try {
       const game = await gameApi.create(input);
       navigate(`/games/${game.id}`);
-    } catch {
-      setError('Could not create game. Check the date, venue, and skill range.');
+    } catch (cause: unknown) {
+      if (cause instanceof ApiError && cause.status === 409) {
+        setError(cause.message);
+      } else {
+        setError('Could not create game. Check the date, venue, and skill range.');
+      }
     }
   };
   return (

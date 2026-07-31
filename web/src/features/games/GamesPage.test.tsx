@@ -7,7 +7,13 @@ describe('GamesPage', () => {
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))),
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ items: [], page: 1, pageSize: 30, hasMore: false }), {
+            status: 200,
+          }),
+        ),
+      ),
     );
   });
   it('shows create action and empty state', async () => {

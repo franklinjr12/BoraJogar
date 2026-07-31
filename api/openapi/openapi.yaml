@@ -130,7 +130,10 @@ paths:
     get:
       summary: List games visible to current user
       security: [{ cookieAuth: [] }]
-      responses: { '200': { description: Games } }
+      parameters:
+        - { in: query, name: page, schema: { type: integer, minimum: 1, default: 1 } }
+        - { in: query, name: pageSize, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
+      responses: { '200': { description: Games, content: { application/json: { schema: { $ref: '#/components/schemas/GamePage' } } } }, '401': { $ref: '#/components/responses/Unauthorized' }, '422': { $ref: '#/components/responses/ValidationError' } }
     post:
       summary: Create manual game
       security: [{ cookieAuth: [] }]
@@ -167,7 +170,9 @@ paths:
     get:
       summary: List current user's notifications
       security: [{ cookieAuth: [] }]
-      parameters: [{ in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }]
+      parameters:
+        - { in: query, name: page, schema: { type: integer, minimum: 1, default: 1 } }
+        - { in: query, name: pageSize, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
       responses: { '200': { $ref: '#/components/responses/Notifications' }, '401': { $ref: '#/components/responses/Unauthorized' } }
   /api/v1/notifications/{id}/read:
     post:
@@ -292,6 +297,27 @@ components:
         start: { type: string, nullable: true }
         end: { type: string, nullable: true }
         timezone: { type: string }
+    Game:
+      type: object
+      required: [id, startsAt, endsAt, venueId, venueName, capacity, confirmedPlayers, openSlots, minimumSkillLevel, maximumSkillLevel, visibility, status]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        venueId: { type: string, format: uuid }
+        venueName: { type: string }
+        addressLabel: { type: string, nullable: true }
+        latitude: { type: number, format: double }
+        longitude: { type: number, format: double }
+        capacity: { type: integer, minimum: 2, maximum: 12 }
+        confirmedPlayers: { type: integer, minimum: 0 }
+        openSlots: { type: integer, minimum: 0 }
+        minimumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
+        maximumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
+        visibility: { type: string, enum: [public, link-only, private] }
+        status: { type: string, enum: [scheduled, cancelled, completed] }
     GameInput:
       type: object
       required: [startsAt, venueId, capacity, minimumSkillLevel, maximumSkillLevel, visibility]
@@ -350,9 +376,35 @@ components:
         payload: { type: object, additionalProperties: true }
         readAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
+    PageMeta:
+      type: object
+      required: [page, pageSize, hasMore]
+      properties:
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        hasMore: { type: boolean }
+    GamePage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items: { type: array, items: { $ref: '#/components/schemas/Game' } }
+    ApiError:
+      type: object
+      required: [error, requestId]
+      properties:
+        error:
+          type: object
+          required: [code, message, fields]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            fields: { type: object, additionalProperties: { type: string } }
+        requestId: { type: string }
   responses:
-    Unauthorized: { description: Authentication required }
-    Forbidden: { description: Administrator access required }
+    Unauthorized: { description: Authentication required, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+    Forbidden: { description: Administrator access required, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
     CurrentUser: { description: Current authenticated user }
     Profile: { description: Player profile }
     PublicProfile: { description: Limited player profile }
@@ -364,9 +416,11 @@ components:
         application/json:
           schema:
             type: object
-            required: [items, unreadCount, hasMore]
-            properties:
-              items: { type: array, items: { $ref: '#/components/schemas/Notification' } }
-              unreadCount: { type: integer, minimum: 0 }
-              hasMore: { type: boolean }
-    ValidationError: { description: Validation failed }
+            allOf:
+              - $ref: '#/components/schemas/PageMeta'
+              - type: object
+                required: [items, unreadCount]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Notification' } }
+                  unreadCount: { type: integer, minimum: 0 }
+    ValidationError: { description: Validation failed, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }

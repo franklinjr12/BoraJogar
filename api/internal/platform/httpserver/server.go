@@ -72,8 +72,35 @@ func requestID(next http.Handler) http.Handler {
 			id = uuid.NewString()
 		}
 		w.Header().Set("X-Request-ID", id)
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestIDKey, id)))
+		next.ServeHTTP(&requestIDWriter{ResponseWriter: w, requestID: id}, r.WithContext(context.WithValue(r.Context(), requestIDKey, id)))
 	})
+}
+
+type requestIDWriter struct {
+	http.ResponseWriter
+	requestID string
+	status    int
+}
+
+func (w *requestIDWriter) WriteHeader(status int) {
+	w.status = status
+	if status != http.StatusUnauthorized && status != http.StatusForbidden && status < 400 {
+		w.ResponseWriter.WriteHeader(status)
+	}
+}
+
+func (w *requestIDWriter) Write(body []byte) (int, error) {
+	if w.status >= 400 {
+		if w.Header().Get("Content-Type") == "application/json" {
+			var payload map[string]any
+			if json.Unmarshal(body, &payload) == nil {
+				payload["requestId"] = w.requestID
+				body, _ = json.Marshal(payload)
+			}
+		}
+		w.ResponseWriter.WriteHeader(w.status)
+	}
+	return w.ResponseWriter.Write(body)
 }
 func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

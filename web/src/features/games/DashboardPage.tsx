@@ -11,7 +11,7 @@ export function DashboardPage() {
   useEffect(() => {
     gameApi
       .list()
-      .then(setGames)
+      .then((page) => setGames(page.items))
       .catch(() => setError('Could not load your dashboard. Sign in and try again.'));
   }, []);
   const confirmed = games.filter((game) => game.currentUserStatus === 'confirmed');

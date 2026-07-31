@@ -103,22 +103,30 @@ func (s Service) list(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized", "Authentication required.")
 		return
 	}
-	limit := 30
-	if raw := r.URL.Query().Get("limit"); raw != "" {
+	page, pageSize := 1, 30
+	if raw := r.URL.Query().Get("page"); raw != "" {
 		value, err := strconv.Atoi(raw)
-		if err != nil || value < 1 || value > 100 {
-			writeError(w, http.StatusUnprocessableEntity, "invalid_limit", "Limit must be between 1 and 100.")
+		if err != nil || value < 1 {
+			writeError(w, http.StatusUnprocessableEntity, "invalid_pagination", "Page must be positive.")
 			return
 		}
-		limit = value
+		page = value
 	}
-	rows, err := s.DB.Query(r.Context(), `SELECT id,user_id,type,title,body,action_url,payload,read_at,created_at FROM notification_events WHERE user_id=$1 ORDER BY created_at DESC,id DESC LIMIT $2`, user.ID, limit+1)
+	if raw := r.URL.Query().Get("pageSize"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 100 {
+			writeError(w, http.StatusUnprocessableEntity, "invalid_pagination", "Page size must be between 1 and 100.")
+			return
+		}
+		pageSize = value
+	}
+	rows, err := s.DB.Query(r.Context(), `SELECT id,user_id,type,title,body,action_url,payload,read_at,created_at FROM notification_events WHERE user_id=$1 ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3`, user.ID, pageSize+1, (page-1)*pageSize)
 	if err != nil {
 		http.Error(w, "failed to load notifications", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
-	items := make([]Event, 0, limit)
+	items := make([]Event, 0, pageSize)
 	for rows.Next() {
 		var e Event
 		if err := rows.Scan(&e.ID, &e.UserID, &e.Type, &e.Title, &e.Body, &e.ActionURL, &e.Payload, &e.ReadAt, &e.CreatedAt); err != nil {
@@ -127,13 +135,13 @@ func (s Service) list(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, e)
 	}
-	hasMore := len(items) > limit
+	hasMore := len(items) > pageSize
 	if hasMore {
-		items = items[:limit]
+		items = items[:pageSize]
 	}
 	unread := 0
 	_ = s.DB.QueryRow(r.Context(), `SELECT count(*) FROM notification_events WHERE user_id=$1 AND read_at IS NULL`, user.ID).Scan(&unread)
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "unreadCount": unread, "hasMore": hasMore})
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "unreadCount": unread, "hasMore": hasMore, "page": page, "pageSize": pageSize})
 }
 
 func (s Service) action(w http.ResponseWriter, r *http.Request) {

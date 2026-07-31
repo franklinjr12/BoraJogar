@@ -17,7 +17,7 @@ export function CalendarPage() {
   useEffect(() => {
     gameApi
       .list(true)
-      .then(setGames)
+      .then((page) => setGames(page.items))
       .catch(() => setError('Could not load your calendar. Sign in and try again.'));
   }, []);
   const filtered = useMemo(

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -241,11 +242,16 @@ func nullableString(v *string) *string {
 }
 
 func (h Handler) list(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
+	page, pageSize, ok := pagination(r)
+	if !ok {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_pagination", "Page must be positive and pageSize must be between 1 and 100.")
+		return
+	}
 	statusClause := "g.status = 'scheduled'"
 	if r.URL.Query().Get("includeCancelled") == "true" {
 		statusClause = "g.status IN ('scheduled', 'cancelled')"
 	}
-	rows, err := h.DB.Query(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),''),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE `+statusClause+` AND g.ends_at > now() AND (g.visibility='public' OR g.created_by_user_id=$1 OR EXISTS (SELECT 1 FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1 AND gp.status='confirmed')) ORDER BY g.starts_at`, userID)
+	rows, err := h.DB.Query(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),''),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE `+statusClause+` AND g.ends_at > now() AND (g.visibility='public' OR g.created_by_user_id=$1 OR EXISTS (SELECT 1 FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1 AND gp.status='confirmed')) ORDER BY g.starts_at,g.id LIMIT $2 OFFSET $3`, userID, pageSize+1, (page-1)*pageSize)
 	if err != nil {
 		http.Error(w, "game unavailable", 500)
 		return
@@ -261,7 +267,29 @@ func (h Handler) list(w http.ResponseWriter, r *http.Request, userID uuid.UUID) 
 		x.OpenSlots = x.Capacity - x.ConfirmedPlayers
 		out = append(out, x)
 	}
-	writeJSON(w, 200, out)
+	hasMore := len(out) > pageSize
+	if hasMore {
+		out = out[:pageSize]
+	}
+	writeJSON(w, 200, map[string]any{"items": out, "page": page, "pageSize": pageSize, "hasMore": hasMore})
+}
+
+func pagination(r *http.Request) (int, int, bool) {
+	page, pageSize := 1, 30
+	var err error
+	if raw := r.URL.Query().Get("page"); raw != "" {
+		page, err = strconv.Atoi(raw)
+		if err != nil {
+			return 0, 0, false
+		}
+	}
+	if raw := r.URL.Query().Get("pageSize"); raw != "" {
+		pageSize, err = strconv.Atoi(raw)
+		if err != nil {
+			return 0, 0, false
+		}
+	}
+	return page, pageSize, page >= 1 && pageSize >= 1 && pageSize <= 100
 }
 
 func (h Handler) calendar(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
