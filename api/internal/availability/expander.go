@@ -33,6 +33,9 @@ func ExpandFuture(ctx context.Context, db *pgxpool.Pool, now time.Time) error {
 			return err
 		}
 		rule.ValidFrom = fromDate
+		if rule.VenueIDs, rule.AreaIDs, err = loadRuleLocations(ctx, tx, rule.ID); err != nil {
+			return err
+		}
 		exceptions, queryErr := loadExceptions(ctx, tx, rule.UserID, from, to)
 		if queryErr != nil {
 			return queryErr
@@ -74,6 +77,28 @@ func ExpandFuture(ctx context.Context, db *pgxpool.Pool, now time.Time) error {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func loadRuleLocations(ctx context.Context, tx pgx.Tx, ruleID string) ([]string, []string, error) {
+	rows, err := tx.Query(ctx, `SELECT venue_id::text,'' FROM availability_rule_venues WHERE availability_rule_id=$1 UNION ALL SELECT '',preferred_area_id::text FROM availability_rule_areas WHERE availability_rule_id=$1`, ruleID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	venues := []string{}
+	areas := []string{}
+	for rows.Next() {
+		var venue, area string
+		if err = rows.Scan(&venue, &area); err != nil {
+			return nil, nil, err
+		}
+		if venue != "" {
+			venues = append(venues, venue)
+		} else {
+			areas = append(areas, area)
+		}
+	}
+	return venues, areas, rows.Err()
 }
 
 func loadExceptions(ctx context.Context, tx pgx.Tx, userID string, from, to time.Time) ([]Exception, error) {

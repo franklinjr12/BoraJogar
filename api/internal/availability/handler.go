@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var errAvailabilityLocationUnavailable = errors.New("availability location unavailable")
 
 type Handler struct{ DB *pgxpool.Pool }
 type ruleInput struct {
@@ -150,6 +153,10 @@ func (h Handler) createRule(w http.ResponseWriter, r *http.Request, userID uuid.
 		return
 	}
 	if err = insertLocations(r, tx, rule, userID); err != nil {
+		if errors.Is(err, errAvailabilityLocationUnavailable) {
+			writeError(w, 422, "invalid_availability_rule", err.Error())
+			return
+		}
 		http.Error(w, "availability unavailable", 500)
 		return
 	}
@@ -166,8 +173,12 @@ func insertLocations(r *http.Request, tx pgx.Tx, rule Rule, userID uuid.UUID) er
 		if e != nil {
 			return errors.New("invalid venue id")
 		}
-		if _, e = tx.Exec(r.Context(), `INSERT INTO availability_rule_venues(availability_rule_id,venue_id) SELECT $1,id FROM venues WHERE id=$2 AND active=true AND (approved_at IS NOT NULL OR created_by_user_id=$3)`, rule.ID, id, userID); e != nil {
+		tag, e := tx.Exec(r.Context(), `INSERT INTO availability_rule_venues(availability_rule_id,venue_id) SELECT $1,id FROM venues WHERE id=$2 AND active=true AND (approved_at IS NOT NULL OR created_by_user_id=$3)`, rule.ID, id, userID)
+		if e != nil {
 			return e
+		}
+		if tag.RowsAffected() != 1 {
+			return fmt.Errorf("%w: venue is not available", errAvailabilityLocationUnavailable)
 		}
 	}
 	for _, raw := range rule.AreaIDs {
@@ -175,8 +186,12 @@ func insertLocations(r *http.Request, tx pgx.Tx, rule Rule, userID uuid.UUID) er
 		if e != nil {
 			return errors.New("invalid preferred area id")
 		}
-		if _, e = tx.Exec(r.Context(), `INSERT INTO availability_rule_areas(availability_rule_id,preferred_area_id) SELECT $1,id FROM preferred_areas WHERE id=$2 AND user_id=$3 AND active=true`, rule.ID, id, userID); e != nil {
+		tag, e := tx.Exec(r.Context(), `INSERT INTO availability_rule_areas(availability_rule_id,preferred_area_id) SELECT $1,id FROM preferred_areas WHERE id=$2 AND user_id=$3 AND active=true`, rule.ID, id, userID)
+		if e != nil {
 			return e
+		}
+		if tag.RowsAffected() != 1 {
+			return fmt.Errorf("%w: preferred area is not available", errAvailabilityLocationUnavailable)
 		}
 	}
 	return nil
@@ -284,6 +299,10 @@ func (h Handler) updateRule(w http.ResponseWriter, r *http.Request, userID, id u
 	}
 	rule.ID = id.String()
 	if err = insertLocations(r, tx, rule, userID); err != nil {
+		if errors.Is(err, errAvailabilityLocationUnavailable) {
+			writeError(w, 422, "invalid_availability_rule", err.Error())
+			return
+		}
 		http.Error(w, "availability unavailable", 500)
 		return
 	}

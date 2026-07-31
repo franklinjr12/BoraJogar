@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  ApiError,
   availabilityApi,
   locationApi,
   type AvailabilityRule,
@@ -61,8 +62,12 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
       });
       event.currentTarget.reset();
       await load();
-    } catch {
-      setError('Could not save interval. Check times and location.');
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : 'Could not save interval. Check times and location.',
+      );
     }
   };
   const remove = async (id: string) => {

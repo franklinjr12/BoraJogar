@@ -35,9 +35,22 @@ describe('AvailabilityPage', () => {
     expect(screen.getByRole('option', { name: 'Near home' })).toBeInTheDocument();
   });
 
-  it('surfaces save failure while preserving form', async () => {
+  it('surfaces API save failure while preserving form', async () => {
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-      if (init?.method === 'POST') return Promise.resolve(new Response('{}', { status: 422 }));
+      if (init?.method === 'POST') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: {
+                code: 'availability_rule_conflict',
+                message: 'This interval overlaps an existing availability rule.',
+                fields: {},
+              },
+            }),
+            { status: 409, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
       const body = url.includes('preferred-areas')
         ? [{ id: 'area-1', label: 'Near home', active: true }]
         : [];
@@ -51,7 +64,7 @@ describe('AvailabilityPage', () => {
     );
     await screen.findByRole('heading', { name: /weekly availability/i });
     fireEvent.submit(screen.getAllByRole('button', { name: /add interval/i })[0]!.closest('form')!);
-    expect(await screen.findByRole('alert')).toHaveTextContent(/could not save/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/overlaps an existing/i);
     expect(screen.getByLabelText(/preferred area/i)).toHaveValue('');
   });
 
