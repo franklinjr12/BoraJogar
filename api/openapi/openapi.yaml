@@ -79,7 +79,7 @@ paths:
       responses: { '204': { description: Disabled }, '403': { $ref: '#/components/responses/Forbidden' } }
   /api/v1/venues:
     get:
-      summary: List approved venues
+      summary: List approved venues and current user's active venues
       security: [{ cookieAuth: [] }]
       parameters:
         - { in: query, name: city, schema: { type: string } }
@@ -98,6 +98,12 @@ paths:
       security: [{ cookieAuth: [] }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VenueSuggestionInput' } } } }
       responses: { '201': { description: Pending venue suggestion }, '422': { $ref: '#/components/responses/ValidationError' } }
+  /api/v1/me/venues:
+    post:
+      summary: Create a current-user venue usable for manual games
+      security: [{ cookieAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VenueInput' } } } }
+      responses: { '201': { description: Venue created, content: { application/json: { schema: { $ref: '#/components/schemas/Venue' } } } }, '422': { $ref: '#/components/responses/ValidationError' } }
   /api/v1/me/preferred-areas:
     get: { summary: List current user's preferred areas, security: [{ cookieAuth: [] }], responses: { '200': { description: Preferred areas } } }
     post:
@@ -261,6 +267,17 @@ components:
       required: [redirectTo]
       properties:
         redirectTo: { type: string }
+    CurrentUser:
+      type: object
+      required: [id, displayName, email, timeZone, onboardingComplete, isAdmin]
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string }
+        email: { type: string }
+        avatarUrl: { type: string, nullable: true }
+        timeZone: { type: string }
+        onboardingComplete: { type: boolean }
+        isAdmin: { type: boolean }
     ProfileInput:
       type: object
       required: [displayName, timeZone, skillLevel, styles, preferredGameDurationMinutes, minimumNoticeMinutes]
@@ -314,6 +331,19 @@ components:
         city: { type: string, minLength: 1, maxLength: 120 }
         latitude: { type: number, format: double, minimum: -90, maximum: 90 }
         longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+    VenueInput:
+      type: object
+      required: [name, city, latitude, longitude]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 160 }
+        description: { type: string, nullable: true }
+        addressLabel: { type: string, nullable: true }
+        city: { type: string, minLength: 1, maxLength: 120 }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+        lightingStatus: { type: string, enum: [unknown, no_lighting, has_lighting] }
+        surfaceType: { type: string, enum: [unknown, sand, grass, hard_court, other] }
+        accessType: { type: string, enum: [public, private, paid_entry, unknown] }
     AvailabilityRuleInput:
       type: object
       required: [weekday, start, end, timezone, validFrom]
@@ -446,7 +476,7 @@ components:
     Forbidden: { description: Administrator access required, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
     Conflict: { description: Request conflicts with existing state, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
     AuthResult: { description: Authenticated session and redirect target, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResult' } } } }
-    CurrentUser: { description: Current authenticated user }
+    CurrentUser: { description: Current authenticated user, content: { application/json: { schema: { $ref: '#/components/schemas/CurrentUser' } } } }
     Profile: { description: Player profile }
     PublicProfile: { description: Limited player profile }
     Reliability: { description: Private reliability summary, content: { application/json: { schema: { $ref: '#/components/schemas/Reliability' } } } }

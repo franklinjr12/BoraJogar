@@ -6,11 +6,23 @@ import {
   type AvailabilityRule,
   type PreferredArea,
 } from '../../api/client';
+import { getDeviceTimeZone } from '../../platform/timeZone';
 
 const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const today = new Date().toISOString().slice(0, 10);
 
 export function AvailabilityPage() {
+  return (
+    <main className="shell">
+      <Link className="text-link" to="/">
+        &lt;- Home
+      </Link>
+      <AvailabilityEditor />
+    </main>
+  );
+}
+
+export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
   const [rules, setRules] = useState<AvailabilityRule[]>([]);
   const [areas, setAreas] = useState<PreferredArea[]>([]);
   const [error, setError] = useState('');
@@ -41,7 +53,7 @@ export function AvailabilityPage() {
         weekday: Number(form.get('weekday')),
         start: String(form.get('start')),
         end: String(form.get('end')),
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        timezone: getDeviceTimeZone(),
         validFrom: today,
         active: true,
         venueIds: [],
@@ -63,20 +75,25 @@ export function AvailabilityPage() {
   };
   if (loading)
     return (
-      <main className="shell">
-        <p>Loading availability…</p>
-      </main>
+      <section>
+        <p>Loading availability...</p>
+      </section>
     );
   return (
-    <main className="shell">
-      <Link className="text-link" to="/">
-        ← Home
-      </Link>
+    <>
       <p className="eyebrow">Your schedule</p>
-      <h1>Weekly availability.</h1>
+      {!compact && <h1>Weekly availability.</h1>}
       <p className="lead">
         Tell us when you can play. Rules repeat weekly; exceptions handle one-off changes.
       </p>
+      {areas.length === 0 && (
+        <p className="hint">
+          Add a preferred area first so each interval has a place to match against.{' '}
+          <Link className="text-link" to="/locations">
+            Create preferred area
+          </Link>
+        </p>
+      )}
       <form className="card" onSubmit={create}>
         <label>
           Day
@@ -100,8 +117,7 @@ export function AvailabilityPage() {
         </div>
         <label>
           Preferred area
-          <select name="area" required defaultValue="">
-            {' '}
+          <select name="area" required defaultValue="" disabled={areas.length === 0}>
             <option value="" disabled>
               Choose an area
             </option>
@@ -112,7 +128,7 @@ export function AvailabilityPage() {
             ))}
           </select>
         </label>
-        <button className="button" type="submit">
+        <button className="button" type="submit" disabled={areas.length === 0}>
           Add interval
         </button>
       </form>
@@ -134,7 +150,7 @@ export function AvailabilityPage() {
                 {dayRules.map((rule) => (
                   <div className="availability-row" key={rule.id}>
                     <span>
-                      {rule.start}–{rule.end}
+                      {rule.start}-{rule.end}
                     </span>
                     <button className="text-button" onClick={() => void remove(rule.id)}>
                       Remove
@@ -146,6 +162,6 @@ export function AvailabilityPage() {
           })
         )}
       </section>
-    </main>
+    </>
   );
 }

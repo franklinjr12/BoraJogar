@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Link } from 'react-router-dom';
 import { locationApi, type PreferredArea, type Venue } from '../../api/client';
+import { VenueForm } from './VenueForm';
+import { blankVenueDraft, type VenueDraft } from './venueDraft';
 
 const defaultCenter = { latitude: -23.5505, longitude: -46.6333 };
 
@@ -47,18 +49,38 @@ function MapPanel({
 }
 
 function venueLabel(venue: Venue) {
-  return `${venue.lightingStatus === 'has_lighting' ? 'Lit' : venue.lightingStatus === 'no_lighting' ? 'No lighting' : 'Lighting unknown'} · ${venue.accessType === 'paid_entry' ? 'Paid entry' : venue.accessType}`;
+  const lighting =
+    venue.lightingStatus === 'has_lighting'
+      ? 'Lit'
+      : venue.lightingStatus === 'no_lighting'
+        ? 'No lighting'
+        : 'Lighting unknown';
+  const access = venue.accessType === 'paid_entry' ? 'Paid entry' : venue.accessType;
+  return `${lighting} - ${access}`;
 }
 
 export function LocationsPage() {
+  return (
+    <main className="shell locations">
+      <Link className="text-link" to="/">
+        &lt;- Home
+      </Link>
+      <LocationSetup />
+    </main>
+  );
+}
+
+export function LocationSetup({ compact = false }: { compact?: boolean }) {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [areas, setAreas] = useState<PreferredArea[]>([]);
   const [point, setPoint] = useState(defaultCenter);
   const [radius, setRadius] = useState(2500);
   const [label, setLabel] = useState('');
+  const [venueDraft, setVenueDraft] = useState<VenueDraft>(blankVenueDraft());
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     Promise.all([locationApi.venues(), locationApi.favoriteVenues(), locationApi.preferredAreas()])
       .then(([loadedVenues, loadedFavorites, loadedAreas]) => {
@@ -69,6 +91,7 @@ export function LocationsPage() {
       .catch(() => setMessage('Could not load locations. Check connection and try again.'))
       .finally(() => setLoading(false));
   }, []);
+
   const selectPoint = (latitude: number, longitude: number) => setPoint({ latitude, longitude });
   const useCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -126,13 +149,11 @@ export function LocationsPage() {
       setMessage('Could not remove preferred area.');
     }
   };
+
   return (
-    <main className="shell locations">
-      <Link className="text-link" to="/">
-        ← Home
-      </Link>
+    <>
       <p className="eyebrow">Where you play</p>
-      <h1>Venues and preferred areas</h1>
+      {!compact && <h1>Venues and preferred areas</h1>}
       <p className="lead">Choose courts or broad areas. Current location is optional.</p>
       <section className="location-grid">
         <div>
@@ -161,9 +182,6 @@ export function LocationsPage() {
                 onChange={(event) => setRadius(Number(event.target.value))}
               />
             </label>
-            <p className="hint">
-              Pin: {point.latitude.toFixed(4)}, {point.longitude.toFixed(4)}
-            </p>
             <button
               className="button"
               type="button"
@@ -173,11 +191,23 @@ export function LocationsPage() {
               Save preferred area
             </button>
           </div>
+          <div className="card area-form">
+            <h2>Create court/location</h2>
+            <VenueForm
+              draft={venueDraft}
+              onChange={setVenueDraft}
+              onCreated={(created) => {
+                setVenues((current) => [...current, created]);
+                setFavorites((current) => new Set(current).add(created.id));
+                void locationApi.favoriteVenue(created.id).catch(() => undefined);
+              }}
+            />
+          </div>
         </div>
         <div className="card">
-          <h2>Approved venues</h2>
-          {loading && <p role="status">Loading venues…</p>}
-          {!loading && venues.length === 0 && <p>No approved venues found.</p>}
+          <h2>Available venues</h2>
+          {loading && <p role="status">Loading venues...</p>}
+          {!loading && venues.length === 0 && <p>No venues found. Create one to host a game.</p>}
           <div className="venue-list">
             {venues.map((venue) => (
               <article className="venue" key={venue.id}>
@@ -187,7 +217,7 @@ export function LocationsPage() {
                   <span>
                     {venueLabel(venue)}
                     {venue.distanceMeters !== undefined &&
-                      ` · ${Math.round(venue.distanceMeters)} m`}
+                      ` - ${Math.round(venue.distanceMeters)} m`}
                   </span>
                 </div>
                 <button
@@ -196,7 +226,7 @@ export function LocationsPage() {
                   onClick={() => toggleFavorite(venue)}
                   aria-label={`${favorites.has(venue.id) ? 'Remove' : 'Add'} ${venue.name} favorite`}
                 >
-                  {favorites.has(venue.id) ? '★ Favorite' : '☆ Favorite'}
+                  {favorites.has(venue.id) ? 'Favorited' : 'Favorite'}
                 </button>
               </article>
             ))}
@@ -206,7 +236,7 @@ export function LocationsPage() {
           {areas.map((area) => (
             <div className="area-row" key={area.id}>
               <span>
-                {area.label} · {(area.radiusMeters / 1000).toFixed(1)} km
+                {area.label} - {(area.radiusMeters / 1000).toFixed(1)} km
               </span>
               <button className="text-button" type="button" onClick={() => removeArea(area.id)}>
                 Remove
@@ -220,6 +250,6 @@ export function LocationsPage() {
           {message}
         </p>
       )}
-    </main>
+    </>
   );
 }

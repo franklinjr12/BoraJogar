@@ -86,4 +86,45 @@ describe('locations page', () => {
       screen.getByRole('button', { name: /remove praia central favorite/i }),
     ).toBeInTheDocument();
   });
+
+  it('shows create-location controls when venue list is empty', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'venue-2',
+            name: 'Nova Quadra',
+            city: 'Sao Paulo',
+            latitude: -23.5,
+            longitude: -46.6,
+            lightingStatus: 'unknown',
+            surfaceType: 'sand',
+            accessType: 'unknown',
+            active: true,
+          }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    render(
+      <MemoryRouter>
+        <LocationsPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/create one to host a game/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: 'Nova Quadra' } });
+    fireEvent.click(screen.getByRole('button', { name: /^create location$/i }));
+    expect(await screen.findByText(/ready for games/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/latitude/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/longitude/i)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/me/venues',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
 });

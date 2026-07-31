@@ -27,13 +27,13 @@ var ErrDuplicateEmail = errors.New("duplicate email")
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
 type User struct {
-	ID                 uuid.UUID
-	DisplayName        string
-	Email              string
-	AvatarURL          *string
-	TimeZone           string
-	OnboardingComplete bool
-	IsAdmin            bool
+	ID                 uuid.UUID `json:"id"`
+	DisplayName        string    `json:"displayName"`
+	Email              string    `json:"email"`
+	AvatarURL          *string   `json:"avatarUrl,omitempty"`
+	TimeZone           string    `json:"timeZone"`
+	OnboardingComplete bool      `json:"onboardingComplete"`
+	IsAdmin            bool      `json:"isAdmin"`
 }
 
 type Store struct{ DB *pgxpool.Pool }

@@ -156,6 +156,15 @@ export interface ApiErrorPayload {
 export interface AuthResult {
   redirectTo: string;
 }
+export interface CurrentUser {
+  id: string;
+  displayName: string;
+  email: string;
+  avatarUrl?: string;
+  timeZone: string;
+  onboardingComplete: boolean;
+  isAdmin: boolean;
+}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -232,6 +241,7 @@ export const profileApi = {
 };
 
 export const authApi = {
+  currentUser: () => request<CurrentUser>('/api/v1/me'),
   emailSignup: (input: { email: string; password: string; displayName?: string }) =>
     request<AuthResult>('/api/v1/auth/email/signup', {
       method: 'POST',
@@ -266,6 +276,19 @@ export const locationApi = {
   preferredAreas: () => request<PreferredArea[]>('/api/v1/me/preferred-areas'),
   createPreferredArea: (input: Omit<PreferredArea, 'id' | 'active'>) =>
     request<PreferredArea>('/api/v1/me/preferred-areas', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  createVenue: (
+    input: Pick<Venue, 'name' | 'city' | 'latitude' | 'longitude'> &
+      Partial<
+        Pick<
+          Venue,
+          'description' | 'addressLabel' | 'lightingStatus' | 'surfaceType' | 'accessType'
+        >
+      >,
+  ) =>
+    request<Venue>('/api/v1/me/venues', {
       method: 'POST',
       body: JSON.stringify(input),
     }),

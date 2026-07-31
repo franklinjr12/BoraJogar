@@ -24,6 +24,7 @@ func TestInvalidLocationRequestsDoNotAccessDatabase(t *testing.T) {
 	for _, test := range []struct{ name, method, path, body, code string }{
 		{"bad coordinates", http.MethodGet, "/api/v1/venues?latitude=91&longitude=0", "", "invalid_location"},
 		{"bad suggestion", http.MethodPost, "/api/v1/venues/suggestions", `{"name":"","city":"São Paulo","latitude":0,"longitude":0}`, "invalid_venue_suggestion"},
+		{"bad owned venue", http.MethodPost, "/api/v1/me/venues", `{"name":"","city":"Sao Paulo","latitude":0,"longitude":0}`, "invalid_venue"},
 		{"bad area json", http.MethodPost, "/api/v1/me/preferred-areas", `{`, "invalid_preferred_area"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -32,6 +33,8 @@ func TestInvalidLocationRequestsDoNotAccessDatabase(t *testing.T) {
 				h.venues(w, r)
 			} else if strings.Contains(test.path, "/suggestions") {
 				h.suggestVenue(w, r)
+			} else if strings.Contains(test.path, "/me/venues") {
+				h.ownedVenues(w, r)
 			} else {
 				h.createArea(w, r, u.ID)
 			}

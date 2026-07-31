@@ -206,7 +206,7 @@ func (h Handler) create(w http.ResponseWriter, r *http.Request, userID uuid.UUID
 	}
 	defer tx.Rollback(r.Context())
 	var active bool
-	if err = tx.QueryRow(r.Context(), `SELECT active FROM venues WHERE id=$1`, venueID).Scan(&active); errors.Is(err, pgx.ErrNoRows) || !active {
+	if err = tx.QueryRow(r.Context(), `SELECT active FROM venues WHERE id=$1 AND (approved_at IS NOT NULL OR created_by_user_id=$2)`, venueID, userID).Scan(&active); errors.Is(err, pgx.ErrNoRows) || !active {
 		writeError(w, 422, "venue_inactive", "Selected venue is inactive or unavailable.")
 		return
 	} else if err != nil {

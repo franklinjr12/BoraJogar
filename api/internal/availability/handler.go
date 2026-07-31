@@ -166,7 +166,7 @@ func insertLocations(r *http.Request, tx pgx.Tx, rule Rule, userID uuid.UUID) er
 		if e != nil {
 			return errors.New("invalid venue id")
 		}
-		if _, e = tx.Exec(r.Context(), `INSERT INTO availability_rule_venues(availability_rule_id,venue_id) SELECT $1,id FROM venues WHERE id=$2 AND active=true`, rule.ID, id); e != nil {
+		if _, e = tx.Exec(r.Context(), `INSERT INTO availability_rule_venues(availability_rule_id,venue_id) SELECT $1,id FROM venues WHERE id=$2 AND active=true AND (approved_at IS NOT NULL OR created_by_user_id=$3)`, rule.ID, id, userID); e != nil {
 			return e
 		}
 	}

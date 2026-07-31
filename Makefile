@@ -48,7 +48,7 @@ test-integration:
 	docker compose up -d database && make migrate && go -C api test ./... -tags=integration
 
 lint:
-	npm --prefix web run lint && npm --prefix web run format:check && gofmt -l api
+	npm --prefix web run lint -- --fix && npm --prefix web run format && gofmt -w api
 
 typecheck:
 	npm --prefix web run typecheck

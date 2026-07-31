@@ -350,6 +350,11 @@ textarea:focus-visible {
 .area-form {
   margin-top: 1rem;
 }
+.inline-panel {
+  border-top: 1px solid #dbe4df;
+  margin: 1rem 0;
+  padding-top: 1rem;
+}
 .venue-list {
   display: grid;
   gap: 0.5rem;

@@ -40,6 +40,31 @@ describe('onboarding', () => {
     expect(localStorage.getItem('borajogar_onboarding')).toContain('"step":2');
   });
 
+  it('prefills display name from current signed-in user', async () => {
+    vi.spyOn(window, 'fetch').mockImplementation(async (input, init) => {
+      if (String(input).endsWith('/api/v1/me')) {
+        return new Response(
+          JSON.stringify({
+            id: 'user-1',
+            displayName: 'Signup Name',
+            email: 'player@example.com',
+            timeZone: 'UTC',
+            onboardingComplete: false,
+            isAdmin: false,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ currentStep: 1, completedSteps: [0] }), {
+        status: init?.method === 'PUT' ? 200 : 204,
+      });
+    });
+    renderApp('/onboarding');
+    fireEvent.click(screen.getByRole('button', { name: /let.?s go/i }));
+    const input = await screen.findByLabelText(/display name/i);
+    await waitFor(() => expect(input).toHaveValue('Signup Name'));
+  });
+
   it('sends profile and completion requests after final step', async () => {
     const fetchMock = vi
       .spyOn(window, 'fetch')

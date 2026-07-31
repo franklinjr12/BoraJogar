@@ -17,6 +17,12 @@ import (
 
 const maxActiveAreas = 5
 
+var (
+	validLighting = map[string]bool{"unknown": true, "no_lighting": true, "has_lighting": true}
+	validSurface  = map[string]bool{"unknown": true, "sand": true, "grass": true, "hard_court": true, "other": true}
+	validAccess   = map[string]bool{"unknown": true, "public": true, "private": true, "paid_entry": true}
+)
+
 type Handler struct{ DB *pgxpool.Pool }
 
 type venue struct {
@@ -66,6 +72,7 @@ type venueSuggestion struct {
 func (h Handler) Register(mux *http.ServeMux, requireAuth, requireAdmin func(http.Handler) http.Handler) {
 	mux.Handle("/api/v1/venues", requireAuth(http.HandlerFunc(h.venues)))
 	mux.Handle("/api/v1/venues/", requireAuth(http.HandlerFunc(h.venueByID)))
+	mux.Handle("/api/v1/me/venues", requireAuth(http.HandlerFunc(h.ownedVenues)))
 	mux.Handle("/api/v1/me/preferred-areas", requireAuth(http.HandlerFunc(h.preferredAreas)))
 	mux.Handle("/api/v1/me/preferred-areas/", requireAuth(http.HandlerFunc(h.preferredAreaByID)))
 	mux.Handle("/api/v1/me/favorite-venues", requireAuth(http.HandlerFunc(h.favoriteVenues)))
@@ -82,6 +89,9 @@ func validPoint(latitude, longitude float64) bool {
 func pointArgs(latitude, longitude float64) (string, string) {
 	return strconv.FormatFloat(longitude, 'f', 7, 64), strconv.FormatFloat(latitude, 'f', 7, 64)
 }
+func visibleVenueWhere() string {
+	return `v.active=true AND (v.approved_at IS NOT NULL OR v.created_by_user_id=$1) AND ($2='' OR lower(v.city)=lower($2))`
+}
 
 func (h Handler) venues(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -97,12 +107,12 @@ func (h Handler) venues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := `SELECT v.id,v.name,v.description,v.address_label,v.city,ST_Y(v.location::geometry),ST_X(v.location::geometry),v.lighting_status,v.surface_type,v.access_type,v.active` +
-		` FROM venues v WHERE v.active=true AND ($2='' OR lower(v.city)=lower($2)) ORDER BY EXISTS (SELECT 1 FROM user_favorite_venues f WHERE f.user_id=$1 AND f.venue_id=v.id) DESC, v.name`
+		` FROM venues v WHERE ` + visibleVenueWhere() + ` ORDER BY EXISTS (SELECT 1 FROM user_favorite_venues f WHERE f.user_id=$1 AND f.venue_id=v.id) DESC, v.name`
 	args := []any{mustUserID(r), city}
 	if hasPoint {
 		lonText, latText := pointArgs(lat, lon)
 		query = `SELECT v.id,v.name,v.description,v.address_label,v.city,ST_Y(v.location::geometry),ST_X(v.location::geometry),v.lighting_status,v.surface_type,v.access_type,v.active,ST_Distance(v.location,ST_SetSRID(ST_MakePoint($3,$4),4326)::geography) AS distance_meters` +
-			` FROM venues v WHERE v.active=true AND ($2='' OR lower(v.city)=lower($2)) ORDER BY EXISTS (SELECT 1 FROM user_favorite_venues f WHERE f.user_id=$1 AND f.venue_id=v.id) DESC, distance_meters, v.name`
+			` FROM venues v WHERE ` + visibleVenueWhere() + ` ORDER BY EXISTS (SELECT 1 FROM user_favorite_venues f WHERE f.user_id=$1 AND f.venue_id=v.id) DESC, distance_meters, v.name`
 		args = []any{mustUserID(r), city, lonText, latText}
 	}
 	rows, err := h.DB.Query(r.Context(), query, args...)
@@ -129,6 +139,55 @@ func (h Handler) venues(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
+func (h Handler) ownedVenues(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	u, _ := currentUser(r)
+	var in struct {
+		Name           string  `json:"name"`
+		Description    *string `json:"description"`
+		AddressLabel   *string `json:"addressLabel"`
+		City           string  `json:"city"`
+		Latitude       float64 `json:"latitude"`
+		Longitude      float64 `json:"longitude"`
+		LightingStatus string  `json:"lightingStatus"`
+		SurfaceType    string  `json:"surfaceType"`
+		AccessType     string  `json:"accessType"`
+	}
+	if json.NewDecoder(r.Body).Decode(&in) != nil || strings.TrimSpace(in.Name) == "" || len(strings.TrimSpace(in.Name)) < 2 || len(strings.TrimSpace(in.Name)) > 160 || strings.TrimSpace(in.City) == "" || len(strings.TrimSpace(in.City)) > 120 || !validPoint(in.Latitude, in.Longitude) {
+		writeError(w, 422, "invalid_venue", "Venue name, city, and map pin are required.")
+		return
+	}
+	if in.LightingStatus == "" {
+		in.LightingStatus = "unknown"
+	}
+	if in.SurfaceType == "" {
+		in.SurfaceType = "sand"
+	}
+	if in.AccessType == "" {
+		in.AccessType = "unknown"
+	}
+	if !validLighting[in.LightingStatus] || !validSurface[in.SurfaceType] || !validAccess[in.AccessType] {
+		writeError(w, 422, "invalid_venue", "Venue details are invalid.")
+		return
+	}
+	lon, lat := pointArgs(in.Latitude, in.Longitude)
+	id := uuid.New()
+	var out venue
+	err := h.DB.QueryRow(
+		r.Context(),
+		`INSERT INTO venues(id,name,description,address_label,city,location,lighting_status,surface_type,access_type,active,created_by_user_id) VALUES($1,$2,$3,$4,$5,ST_SetSRID(ST_MakePoint($6,$7),4326)::geography,$8,$9,$10,true,$11) RETURNING id,name,description,address_label,city,ST_Y(location::geometry),ST_X(location::geometry),lighting_status,surface_type,access_type,active`,
+		id, strings.TrimSpace(in.Name), in.Description, in.AddressLabel, strings.TrimSpace(in.City), lon, lat, in.LightingStatus, in.SurfaceType, in.AccessType, u.ID,
+	).Scan(&out.ID, &out.Name, &out.Description, &out.AddressLabel, &out.City, &out.Latitude, &out.Longitude, &out.LightingStatus, &out.SurfaceType, &out.AccessType, &out.Active)
+	if err != nil {
+		http.Error(w, "venues unavailable", 500)
+		return
+	}
+	writeJSON(w, http.StatusCreated, out)
+}
+
 func (h Handler) venueByID(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(r.URL.Path, "/suggestions") {
 		h.suggestVenue(w, r)
@@ -148,7 +207,7 @@ func (h Handler) venueByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var v venue
-	err = h.DB.QueryRow(r.Context(), `SELECT id,name,description,address_label,city,ST_Y(location::geometry),ST_X(location::geometry),lighting_status,surface_type,access_type,active FROM venues WHERE id=$1 AND active=true`, id).Scan(&v.ID, &v.Name, &v.Description, &v.AddressLabel, &v.City, &v.Latitude, &v.Longitude, &v.LightingStatus, &v.SurfaceType, &v.AccessType, &v.Active)
+	err = h.DB.QueryRow(r.Context(), `SELECT id,name,description,address_label,city,ST_Y(location::geometry),ST_X(location::geometry),lighting_status,surface_type,access_type,active FROM venues WHERE id=$1 AND active=true AND (approved_at IS NOT NULL OR created_by_user_id=$2)`, id, mustUserID(r)).Scan(&v.ID, &v.Name, &v.Description, &v.AddressLabel, &v.City, &v.Latitude, &v.Longitude, &v.LightingStatus, &v.SurfaceType, &v.AccessType, &v.Active)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, 404, "venue_not_found", "Venue not found.")
 		return
@@ -355,7 +414,7 @@ func (h Handler) addFavorite(w http.ResponseWriter, r *http.Request, userID uuid
 		return
 	}
 	var active bool
-	err = h.DB.QueryRow(r.Context(), `SELECT active FROM venues WHERE id=$1`, id).Scan(&active)
+	err = h.DB.QueryRow(r.Context(), `SELECT active FROM venues WHERE id=$1 AND (approved_at IS NOT NULL OR created_by_user_id=$2)`, id, userID).Scan(&active)
 	if errors.Is(err, pgx.ErrNoRows) || !active {
 		writeError(w, 404, "venue_not_found", "Venue not found.")
 		return

@@ -73,4 +73,23 @@ describe('AvailabilityPage', () => {
     );
     expect(await screen.findByText(/no recurring intervals yet/i)).toBeInTheDocument();
   });
+
+  it('points users to locations before adding availability without areas', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))),
+    );
+    render(
+      <MemoryRouter>
+        <AvailabilityPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/add a preferred area first/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /create preferred area/i })).toHaveAttribute(
+      'href',
+      '/locations',
+    );
+    expect(screen.getByRole('button', { name: /add interval/i })).toBeDisabled();
+  });
 });

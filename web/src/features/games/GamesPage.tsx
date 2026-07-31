@@ -9,6 +9,15 @@ import {
   type GameSkillLevel,
   type GameVisibility,
 } from '../../api/client';
+import {
+  VenueForm,
+} from '../locations/VenueForm';
+import {
+  blankVenueDraft,
+  createVenueFromDraft,
+  venueDraftReady,
+  type VenueDraft,
+} from '../locations/venueDraft';
 
 const levels: GameSkillLevel[] = [
   'learning',
@@ -73,10 +82,15 @@ export function CreateGamePage() {
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [venues, setVenues] = useState<Array<{ id: string; name: string }>>([]);
+  const [venueId, setVenueId] = useState('');
+  const [venueDraft, setVenueDraft] = useState<VenueDraft>(blankVenueDraft());
   useEffect(() => {
     locationApi
       .venues()
-      .then((items) => setVenues(items.map(({ id, name }) => ({ id, name }))))
+      .then((items) => {
+        const nextVenues = items.map(({ id, name }) => ({ id, name }));
+        setVenues(nextVenues);
+      })
       .catch(() => setVenues([]));
   }, []);
   const save = async (event: FormEvent<HTMLFormElement>) => {
@@ -84,10 +98,31 @@ export function CreateGamePage() {
     setError('');
     const form = new FormData(event.currentTarget);
     const starts = `${String(form.get('date'))}T${String(form.get('time'))}:00`;
+    let gameVenueId = venueId;
+    if (!gameVenueId) {
+      if (!venueDraftReady(venueDraft)) {
+        setError('Enter location name and city, or choose a saved location.');
+        return;
+      }
+      try {
+        const created = await createVenueFromDraft(venueDraft);
+        gameVenueId = created.id;
+        setVenues((current) => [...current, { id: created.id, name: created.name }]);
+        setVenueId(created.id);
+        setVenueDraft(blankVenueDraft());
+      } catch (cause: unknown) {
+        setError(
+          cause instanceof Error
+            ? `Could not create location: ${cause.message}`
+            : 'Could not create location. Check name, city, and address.',
+        );
+        return;
+      }
+    }
     const input: GameInput = {
       startsAt: new Date(starts).toISOString(),
       durationMinutes: Number(form.get('duration')) as 60 | 90 | 120,
-      venueId: String(form.get('venueId')),
+      venueId: gameVenueId,
       capacity: Number(form.get('capacity')),
       minimumSkillLevel: String(form.get('minimum')) as GameSkillLevel,
       maximumSkillLevel: String(form.get('maximum')) as GameSkillLevel,
@@ -130,19 +165,25 @@ export function CreateGamePage() {
             <option value="120">120 minutes</option>
           </select>
         </label>
-        <label>
-          Venue
-          <select name="venueId" required defaultValue="">
-            <option value="" disabled>
-              Select an active venue
-            </option>
-            {venues.map((venue) => (
-              <option key={venue.id} value={venue.id}>
-                {venue.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <section className="inline-panel" aria-label="Location">
+          <h2>Location</h2>
+          <label>
+            Saved location
+            <select
+              name="venueId"
+              value={venueId}
+              onChange={(event) => setVenueId(event.target.value)}
+            >
+              <option value="">Create a new location</option>
+              {venues.map((venue) => (
+                <option key={venue.id} value={venue.id}>
+                  {venue.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <VenueForm draft={venueDraft} onChange={setVenueDraft} />
+        </section>
         <label>
           Capacity
           <input name="capacity" type="number" min="2" max="12" defaultValue="4" required />

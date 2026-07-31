@@ -1,13 +1,20 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, Route, Routes, useParams, useSearchParams } from 'react-router-dom';
-import { authApi, profileApi, type PlayingStyle, type Profile, type SkillLevel } from '../api/client';
-import { LocationsPage } from '../features/locations/LocationsPage';
-import { AvailabilityPage } from '../features/availability/AvailabilityPage';
+import {
+  authApi,
+  profileApi,
+  type PlayingStyle,
+  type Profile,
+  type SkillLevel,
+} from '../api/client';
+import { LocationSetup, LocationsPage } from '../features/locations/LocationsPage';
+import { AvailabilityEditor, AvailabilityPage } from '../features/availability/AvailabilityPage';
 import { CreateGamePage, GameDetailsPage, GamesPage } from '../features/games/GamesPage';
 import { CalendarPage } from '../features/games/CalendarPage';
 import { DashboardPage } from '../features/games/DashboardPage';
 import { NotificationsPage } from '../features/notifications/NotificationsPage';
 import { AppShell } from '../platform/AppShell';
+import { getDeviceTimeZone } from '../platform/timeZone';
 
 const skills: Array<{ value: SkillLevel; label: string; description: string }> = [
   {
@@ -46,7 +53,7 @@ const styles: Array<{ value: PlayingStyle; label: string }> = [
 ];
 const blankProfile: Omit<Profile, 'userId' | 'avatarUrl'> = {
   displayName: '',
-  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+  timeZone: getDeviceTimeZone(),
   skillLevel: 'beginner',
   bio: '',
   styles: ['mixed'],
@@ -204,6 +211,19 @@ function Onboarding() {
   const [error, setError] = useState('');
   const total = 9;
   useEffect(() => {
+    setProfile((current) => ({ ...current, timeZone: getDeviceTimeZone() }));
+    authApi
+      .currentUser()
+      .then((user) =>
+        setProfile((current) => ({
+          ...current,
+          displayName: current.displayName.trim() ? current.displayName : user.displayName,
+          timeZone: getDeviceTimeZone() || user.timeZone || 'America/Sao_Paulo',
+        })),
+      )
+      .catch(() => undefined);
+  }, []);
+  useEffect(() => {
     localStorage.setItem('borajogar_onboarding', JSON.stringify({ step, profile }));
   }, [step, profile]);
   const update = <K extends keyof typeof profile>(key: K, value: (typeof profile)[K]) =>
@@ -332,12 +352,9 @@ function Onboarding() {
           ))}
         </div>
       )}
-      {step === 4 && (
-        <label>
-          Time zone
-          <input value={profile.timeZone} onChange={(e) => update('timeZone', e.target.value)} />
-        </label>
-      )}
+      {step === 4 && <p className="card">Time zone: {profile.timeZone}</p>}
+      {step === 5 && <LocationSetup compact />}
+      {step === 6 && <AvailabilityEditor compact />}
       {step === 8 && (
         <section className="card summary">
           <p>
