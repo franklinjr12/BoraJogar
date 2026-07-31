@@ -9,9 +9,7 @@ import {
   type GameSkillLevel,
   type GameVisibility,
 } from '../../api/client';
-import {
-  VenueForm,
-} from '../locations/VenueForm';
+import { VenueForm } from '../locations/VenueForm';
 import {
   blankVenueDraft,
   createVenueFromDraft,
@@ -168,7 +166,7 @@ export function CreateGamePage() {
         <section className="inline-panel" aria-label="Location">
           <h2>Location</h2>
           <label>
-            Saved location
+            Venue
             <select
               name="venueId"
               value={venueId}

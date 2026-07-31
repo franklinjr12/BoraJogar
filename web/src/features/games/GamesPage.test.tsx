@@ -161,7 +161,7 @@ describe('CreateGamePage', () => {
     await screen.findByRole('heading', { name: /set up a game/i });
     fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: '2026-08-01' } });
     fireEvent.change(screen.getByLabelText(/start time/i), { target: { value: '09:00' } });
-    fireEvent.change(screen.getByLabelText(/saved location/i), { target: { value: 'venue-1' } });
+    fireEvent.change(screen.getByLabelText(/venue/i), { target: { value: 'venue-1' } });
     fireEvent.click(screen.getByRole('button', { name: /^create game$/i }));
 
     await waitFor(() =>

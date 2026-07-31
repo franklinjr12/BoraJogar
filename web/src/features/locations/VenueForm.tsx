@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Venue } from '../../api/client';
-import { blankVenueDraft, createVenueFromDraft, venueDraftReady, type VenueDraft } from './venueDraft';
+import {
+  blankVenueDraft,
+  createVenueFromDraft,
+  venueDraftReady,
+  type VenueDraft,
+} from './venueDraft';
 
 function MapPicker({
   point,
