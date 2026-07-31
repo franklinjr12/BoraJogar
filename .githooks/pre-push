@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+echo "Running mandatory local CI before push..."
+make ci-local

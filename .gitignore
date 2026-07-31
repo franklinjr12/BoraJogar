@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+web/node_modules/
+
+# Builds and coverage
+dist/
+web/dist/
+coverage/
+
+# Local configuration and data
+.env
+.env.*
+!.env.example
+postgres-data/
+
+# Go
+api/bin/
+*.test
+
+# IDE / OS
+.idea/
+.vscode/*.local.json
+*.swp
+.DS_Store
+Thumbs.db
+
+# Generated local files
+playwright-report/
+test-results/
+
+# Documentation
+docs/backlog.md
