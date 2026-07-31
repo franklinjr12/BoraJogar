@@ -26,3 +26,13 @@ func TestSummaryNeutralUntilFiveGames(t *testing.T) {
 		t.Fatalf("summary = %+v", got)
 	}
 }
+
+func TestClassifyCancellationUsesDefaultThresholdAndBoundary(t *testing.T) {
+	start := time.Date(2026, 7, 31, 18, 0, 0, 0, time.UTC)
+	if got := ClassifyCancellation(start.Add(-6*time.Hour), start, 0); got != Early {
+		t.Fatalf("exact default threshold = %q, want early", got)
+	}
+	if got := ClassifyCancellation(start, start, time.Hour); got != NoShowCancellation {
+		t.Fatalf("at-start cancellation = %q", got)
+	}
+}

@@ -24,3 +24,10 @@ func TestEndpointHashNotPlaintext(t *testing.T) {
 		t.Fatal("endpoint leaked")
 	}
 }
+
+func TestReminderTimesReturnsNoPastReminders(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	if got := ReminderTimes(now.Add(time.Hour), now); len(got) != 0 {
+		t.Fatalf("past reminders = %v", got)
+	}
+}

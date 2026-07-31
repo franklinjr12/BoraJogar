@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { gameApi, locationApi } from './client';
+import { gameApi, locationApi, notificationApi } from './client';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -40,5 +40,22 @@ describe('typed API client', () => {
       expect.stringContaining('city=S%C3%A3o+Paulo'),
       expect.objectContaining({ credentials: 'include' }),
     );
+  });
+
+  it('handles empty success responses and fallback HTTP errors', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(null, { status: 204 }))),
+    );
+    await expect(notificationApi.markAllRead()).resolves.toBeUndefined();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response('not json', { status: 503 }))),
+    );
+    await expect(gameApi.list()).rejects.toMatchObject({
+      status: 503,
+      code: 'http_503',
+    });
   });
 });

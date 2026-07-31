@@ -30,3 +30,16 @@ func TestScoreCandidateNewUserNeutralReliability(t *testing.T) {
 		t.Fatalf("score = %+v", s)
 	}
 }
+
+func TestGenerateCandidateSlotsRejectsInvalidConfigAndMinimumNotice(t *testing.T) {
+	now := time.Date(2026, 7, 30, 8, 0, 0, 0, time.UTC)
+	id := uuid.New()
+	players := map[uuid.UUID]Player{id: {ID: id, Active: true, OnboardingCompleted: true, ActiveForMatchmaking: true}}
+	occurrences := []Occurrence{{UserID: id, StartsAt: now.Add(30 * time.Minute), EndsAt: now.Add(3 * time.Hour)}}
+	if got := GenerateCandidateSlots(occurrences, players, now, Config{LookaheadDays: 0, DurationMinutes: 90, PlayerCount: 1, SlotIncrementMinutes: 30}); got != nil {
+		t.Fatalf("invalid config returned slots: %#v", got)
+	}
+	if got := GenerateCandidateSlots(occurrences, players, now, Config{LookaheadDays: 2, DurationMinutes: 90, PlayerCount: 1, SlotIncrementMinutes: 30, MinimumNoticeMinutes: 60}); len(got) != 2 || !got[0].StartsAt.Equal(now.Add(time.Hour).Truncate(time.Minute)) {
+		t.Fatalf("minimum notice slots = %#v", got)
+	}
+}

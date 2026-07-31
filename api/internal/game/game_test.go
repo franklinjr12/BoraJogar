@@ -35,3 +35,36 @@ func TestValidateCreateRejectsPastAndInvalidVisibility(t *testing.T) {
 		t.Fatal("invalid visibility accepted")
 	}
 }
+
+func TestValidateCreateCoversDurationAndSkillBoundaries(t *testing.T) {
+	now := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
+	in := CreateInput{StartsAt: now.Add(time.Hour).Format(time.RFC3339), DurationMinutes: 90, VenueID: "venue", Capacity: 2, MinimumSkillLevel: "learning", MaximumSkillLevel: "competitive", Visibility: "public"}
+	starts, ends, err := ValidateCreate(in, now)
+	if err != nil || !ends.Equal(starts.Add(90*time.Minute)) {
+		t.Fatalf("duration defaults = %v, %v, err=%v", starts, ends, err)
+	}
+	for _, capacity := range []int{1, 13} {
+		in.Capacity = capacity
+		if _, _, err := ValidateCreate(in, now); err == nil {
+			t.Fatalf("capacity %d accepted", capacity)
+		}
+	}
+	in.Capacity = 2
+	in.MinimumSkillLevel = "advanced"
+	in.MaximumSkillLevel = "beginner"
+	if _, _, err := ValidateCreate(in, now); err == nil {
+		t.Fatal("reversed skill range accepted")
+	}
+}
+
+func TestSkillAllowedRejectsUnknownAndOutOfRangeLevels(t *testing.T) {
+	for _, tc := range []struct{ min, max, user string }{
+		{"beginner", "advanced", "learning"},
+		{"beginner", "advanced", "competitive"},
+		{"unknown", "advanced", "beginner"},
+	} {
+		if SkillAllowed(tc.min, tc.max, tc.user) {
+			t.Fatalf("skill accepted: %+v", tc)
+		}
+	}
+}

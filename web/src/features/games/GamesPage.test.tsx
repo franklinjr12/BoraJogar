@@ -1,9 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GamesPage } from './GamesPage';
 
 describe('GamesPage', () => {
+  afterEach(cleanup);
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
@@ -30,5 +31,19 @@ describe('GamesPage', () => {
       '/games/new',
     );
     expect(screen.getByText(/no upcoming games/i)).toBeInTheDocument();
+  });
+
+  it('shows API failure instead of stale empty state', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response('{}', { status: 401 }))),
+    );
+    render(
+      <MemoryRouter>
+        <GamesPage />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(/sign in/i);
+    expect(screen.queryByText(/no upcoming games/i)).not.toBeInTheDocument();
   });
 });
