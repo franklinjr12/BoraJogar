@@ -89,6 +89,9 @@ progress { width: 100%; accent-color: #0b6b68; }
   box-shadow: 0 1rem 3rem #173b3b0d;
   line-height: 1.6;
 }
+.game-list { display: grid; gap: 1rem; }
+.game-card { color: inherit; text-decoration: none; }
+.game-card h2 { color: #102f31; }
 .error {
   color: #a52424;
   font-weight: 700;

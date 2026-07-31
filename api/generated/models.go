@@ -3,3 +3,201 @@
 //   sqlc v1.29.0
 
 package generated
+
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type AvailabilityException struct {
+	ID             pgtype.UUID
+	UserID         pgtype.UUID
+	ExceptionDate  pgtype.Date
+	ExceptionType  string
+	StartLocalTime pgtype.Time
+	EndLocalTime   pgtype.Time
+	Timezone       string
+	CreatedAt      pgtype.Timestamptz
+}
+
+type AvailabilityOccurrence struct {
+	ID          pgtype.UUID
+	UserID      pgtype.UUID
+	StartsAt    pgtype.Timestamptz
+	EndsAt      pgtype.Timestamptz
+	SourceType  string
+	SourceID    pgtype.UUID
+	GeneratedAt pgtype.Timestamptz
+}
+
+type AvailabilityRule struct {
+	ID             pgtype.UUID
+	UserID         pgtype.UUID
+	Weekday        int16
+	StartLocalTime pgtype.Time
+	EndLocalTime   pgtype.Time
+	Timezone       string
+	ValidFrom      pgtype.Date
+	ValidUntil     pgtype.Date
+	Active         bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type AvailabilityRuleArea struct {
+	AvailabilityRuleID pgtype.UUID
+	PreferredAreaID    pgtype.UUID
+}
+
+type AvailabilityRuleVenue struct {
+	AvailabilityRuleID pgtype.UUID
+	VenueID            pgtype.UUID
+}
+
+type Game struct {
+	ID                 pgtype.UUID
+	SourceType         string
+	SourceProposalID   pgtype.UUID
+	CreatedByUserID    pgtype.UUID
+	Title              pgtype.Text
+	Description        pgtype.Text
+	StartsAt           pgtype.Timestamptz
+	EndsAt             pgtype.Timestamptz
+	VenueID            pgtype.UUID
+	Capacity           int32
+	MinimumSkillLevel  string
+	MaximumSkillLevel  string
+	Visibility         string
+	Status             string
+	ShareTokenHash     pgtype.Text
+	CancelledAt        pgtype.Timestamptz
+	CancellationReason pgtype.Text
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
+type GameInvitation struct {
+	ID                  pgtype.UUID
+	GameID              pgtype.UUID
+	InvitedUserID       pgtype.UUID
+	InvitedEmail        pgtype.Text
+	InvitationTokenHash string
+	Status              string
+	ExpiresAt           pgtype.Timestamptz
+	CreatedAt           pgtype.Timestamptz
+}
+
+type GamePlayer struct {
+	GameID           pgtype.UUID
+	UserID           pgtype.UUID
+	Role             string
+	Status           string
+	JoinedAt         pgtype.Timestamptz
+	CancelledAt      pgtype.Timestamptz
+	AttendanceStatus pgtype.Text
+	InvitedByUserID  pgtype.UUID
+}
+
+type GameWaitlist struct {
+	GameID   pgtype.UUID
+	UserID   pgtype.UUID
+	Position int32
+	JoinedAt pgtype.Timestamptz
+}
+
+type Invitation struct {
+	ID              pgtype.UUID
+	CodeHash        string
+	CreatedByUserID pgtype.UUID
+	Email           pgtype.Text
+	MaxUses         int32
+	CurrentUses     int32
+	ExpiresAt       pgtype.Timestamptz
+	DisabledAt      pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+}
+
+type OnboardingProgress struct {
+	UserID         pgtype.UUID
+	CurrentStep    int32
+	CompletedSteps []int32
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type PlayerProfile struct {
+	UserID                       pgtype.UUID
+	SkillLevel                   string
+	Bio                          pgtype.Text
+	PreferredGameDurationMinutes int32
+	MinimumNoticeMinutes         int32
+	ActiveForMatchmaking         bool
+	CreatedAt                    pgtype.Timestamptz
+	UpdatedAt                    pgtype.Timestamptz
+}
+
+type PlayerStylePreference struct {
+	UserID pgtype.UUID
+	Style  string
+}
+
+type PreferredArea struct {
+	ID           pgtype.UUID
+	UserID       pgtype.UUID
+	Label        string
+	Center       interface{}
+	RadiusMeters int32
+	Priority     int32
+	Active       bool
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+}
+
+type Session struct {
+	TokenHash  string
+	UserID     pgtype.UUID
+	ExpiresAt  pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	LastSeenAt pgtype.Timestamptz
+	UserAgent  pgtype.Text
+	IpHash     pgtype.Text
+}
+
+type User struct {
+	ID                    pgtype.UUID
+	GoogleSubject         string
+	Email                 string
+	DisplayName           string
+	AvatarUrl             pgtype.Text
+	TimeZone              string
+	OnboardingCompleted   bool
+	IsAdmin               bool
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+	Status                string
+	OnboardingCompletedAt pgtype.Timestamptz
+	DeletedAt             pgtype.Timestamptz
+}
+
+type UserFavoriteVenue struct {
+	UserID    pgtype.UUID
+	VenueID   pgtype.UUID
+	Priority  int32
+	CreatedAt pgtype.Timestamptz
+}
+
+type Venue struct {
+	ID              pgtype.UUID
+	Name            string
+	Description     pgtype.Text
+	AddressLabel    pgtype.Text
+	City            string
+	Location        interface{}
+	LightingStatus  string
+	SurfaceType     string
+	AccessType      string
+	Active          bool
+	CreatedByUserID pgtype.UUID
+	ApprovedAt      pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	RejectedAt      pgtype.Timestamptz
+}

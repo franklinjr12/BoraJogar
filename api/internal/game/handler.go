@@ -1,0 +1,604 @@
+package game
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/borajogar/borajogar/api/internal/auth"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type Handler struct {
+	DB  *pgxpool.Pool
+	Now func() time.Time
+}
+type gameSummary struct {
+	ID                string    `json:"id"`
+	Title             *string   `json:"title,omitempty"`
+	StartsAt          time.Time `json:"startsAt"`
+	EndsAt            time.Time `json:"endsAt"`
+	VenueID           string    `json:"venueId"`
+	VenueName         string    `json:"venueName"`
+	Capacity          int       `json:"capacity"`
+	ConfirmedPlayers  int       `json:"confirmedPlayers"`
+	OpenSlots         int       `json:"openSlots"`
+	MinimumSkillLevel string    `json:"minimumSkillLevel"`
+	MaximumSkillLevel string    `json:"maximumSkillLevel"`
+	Visibility        string    `json:"visibility"`
+	Status            string    `json:"status"`
+}
+type gameDetails struct {
+	gameSummary
+	Description       *string  `json:"description,omitempty"`
+	Organizer         player   `json:"organizer"`
+	Players           []player `json:"players"`
+	Waitlist          []player `json:"waitlist"`
+	IsMember          bool     `json:"isMember"`
+	CurrentUserStatus string   `json:"currentUserStatus,omitempty"`
+	CurrentUserRole   string   `json:"currentUserRole,omitempty"`
+	ShareURL          string   `json:"shareUrl,omitempty"`
+	shareTokenHash    string
+}
+type player struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"displayName"`
+	Role        string `json:"role,omitempty"`
+	Status      string `json:"status,omitempty"`
+}
+type actionResponse struct {
+	Result         string `json:"result"`
+	PromotedUserID string `json:"promotedUserId,omitempty"`
+}
+
+func (h Handler) now() time.Time {
+	if h.Now != nil {
+		return h.Now()
+	}
+	return time.Now().UTC()
+}
+func (h Handler) Register(mux *http.ServeMux, requireAuth func(http.Handler) http.Handler) {
+	mux.Handle("/api/v1/games", requireAuth(http.HandlerFunc(h.games)))
+	mux.Handle("/api/v1/games/", requireAuth(http.HandlerFunc(h.gameByID)))
+}
+func (h Handler) games(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	if r.Method == http.MethodPost {
+		h.create(w, r, u.ID)
+		return
+	}
+	if r.Method == http.MethodGet {
+		h.list(w, r, u.ID)
+		return
+	}
+	w.WriteHeader(http.StatusMethodNotAllowed)
+}
+func (h Handler) gameByID(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/games/"), "/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	id, err := uuid.Parse(parts[0])
+	if err != nil {
+		writeError(w, 404, "game_not_found", "Game not found.")
+		return
+	}
+	if len(parts) > 1 && r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		h.details(w, r, id, u.ID)
+	case http.MethodPut:
+		h.update(w, r, id, u.ID)
+	case http.MethodPost:
+		h.action(w, r, id, u.ID)
+	case http.MethodDelete:
+		h.action(w, r, id, u.ID)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+func (h Handler) action(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
+	// Action routes use the stable game resource prefix plus operation suffix.
+	var op string
+	if r.Method == http.MethodDelete {
+		op = "waitlist"
+	} else {
+		op = strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/games/"+id.String()), "/")
+	}
+	switch op {
+	case "join":
+		h.join(w, r, id, userID)
+	case "leave":
+		h.leave(w, r, id, userID)
+	case "cancel":
+		h.cancel(w, r, id, userID)
+	case "waitlist":
+		if r.Method == http.MethodPost {
+			h.addWaitlist(w, r, id, userID)
+		} else {
+			h.removeWaitlist(w, r, id, userID)
+		}
+	default:
+		writeError(w, 404, "game_action_not_found", "Game action not found.")
+	}
+}
+
+func (h Handler) create(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
+	var in CreateInput
+	if json.NewDecoder(r.Body).Decode(&in) != nil {
+		writeError(w, 422, "invalid_game", "Game input is invalid.")
+		return
+	}
+	if in.Capacity == 0 {
+		in.Capacity = 4
+	}
+	if in.DurationMinutes == 0 && in.EndsAt == "" {
+		in.DurationMinutes = 90
+	}
+	if in.Visibility == "" {
+		in.Visibility = "link-only"
+	}
+	if in.MinimumSkillLevel == "" && in.MaximumSkillLevel == "" {
+		var creatorSkill string
+		if err := h.DB.QueryRow(r.Context(), `SELECT skill_level FROM player_profiles WHERE user_id=$1`, userID).Scan(&creatorSkill); err != nil {
+			writeError(w, 422, "profile_required", "Complete your profile before creating a game.")
+			return
+		}
+		minimum, maximum := skillRank[creatorSkill]-1, skillRank[creatorSkill]+1
+		if minimum < 0 {
+			minimum = 0
+		}
+		if maximum > 4 {
+			maximum = 4
+		}
+		for skill, rank := range skillRank {
+			if rank == minimum {
+				in.MinimumSkillLevel = skill
+			}
+			if rank == maximum {
+				in.MaximumSkillLevel = skill
+			}
+		}
+	}
+	starts, ends, err := ValidateCreate(in, h.now())
+	if err != nil {
+		writeError(w, 422, "invalid_game", err.Error())
+		return
+	}
+	venueID, err := uuid.Parse(in.VenueID)
+	if err != nil {
+		writeError(w, 422, "invalid_game", "venueId is invalid.")
+		return
+	}
+	id := uuid.New()
+	token, hash, err := newShareToken()
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	tx, err := h.DB.Begin(r.Context())
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var active bool
+	if err = tx.QueryRow(r.Context(), `SELECT active FROM venues WHERE id=$1`, venueID).Scan(&active); errors.Is(err, pgx.ErrNoRows) || !active {
+		writeError(w, 422, "venue_inactive", "Selected venue is inactive or unavailable.")
+		return
+	} else if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if _, err = tx.Exec(r.Context(), `INSERT INTO games(id,source_type,created_by_user_id,title,description,starts_at,ends_at,venue_id,capacity,minimum_skill_level,maximum_skill_level,visibility,share_token_hash) VALUES($1,'manual',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, id, userID, nullableString(in.Title), nullableString(in.Description), starts, ends, venueID, in.Capacity, in.MinimumSkillLevel, in.MaximumSkillLevel, in.Visibility, hash); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if _, err = tx.Exec(r.Context(), `INSERT INTO game_players(game_id,user_id,role,status,attendance_status) VALUES($1,$2,'organizer','confirmed','unknown')`, id, userID); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	details, err := h.readDetails(r, id, userID)
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	details.ShareURL = "/games/" + id.String() + "?access=" + token
+	writeJSON(w, 201, details)
+}
+func nullableString(v *string) *string {
+	if v == nil || strings.TrimSpace(*v) == "" {
+		return nil
+	}
+	value := strings.TrimSpace(*v)
+	return &value
+}
+
+func (h Handler) list(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
+	rows, err := h.DB.Query(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.status='scheduled' AND g.ends_at > now() AND (g.visibility='public' OR g.created_by_user_id=$1 OR EXISTS (SELECT 1 FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1 AND gp.status='confirmed')) ORDER BY g.starts_at`, userID)
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	defer rows.Close()
+	out := []gameSummary{}
+	for rows.Next() {
+		var x gameSummary
+		if err = rows.Scan(&x.ID, &x.Title, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.Capacity, &x.ConfirmedPlayers, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status); err != nil {
+			http.Error(w, "game unavailable", 500)
+			return
+		}
+		x.OpenSlots = x.Capacity - x.ConfirmedPlayers
+		out = append(out, x)
+	}
+	writeJSON(w, 200, out)
+}
+func (h Handler) details(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
+	x, err := h.readDetails(r, id, userID)
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, 404, "game_not_found", "Game not found.")
+		return
+	}
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if x.Visibility == "link-only" && !x.IsMember {
+		token := r.URL.Query().Get("access")
+		if token == "" || hashToken(token) != x.shareTokenHash {
+			writeError(w, 404, "game_not_found", "Game not found.")
+			return
+		}
+	}
+	if x.Visibility == "private" && !x.IsMember {
+		writeError(w, 404, "game_not_found", "Game not found.")
+		return
+	}
+	writeJSON(w, 200, x)
+}
+func (h Handler) readDetails(r *http.Request, id, userID uuid.UUID) (gameDetails, error) {
+	var x gameDetails
+	err := h.DB.QueryRow(r.Context(), `SELECT g.id,g.title,g.description,g.starts_at,g.ends_at,g.venue_id,v.name,g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE(g.share_token_hash,'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.id=$1`, id).Scan(&x.ID, &x.Title, &x.Description, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.Capacity, &x.ConfirmedPlayers, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.shareTokenHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return x, ErrNotFound
+	}
+	if err != nil {
+		return x, err
+	}
+	x.OpenSlots = x.Capacity - x.ConfirmedPlayers
+	var organizer player
+	err = h.DB.QueryRow(r.Context(), `SELECT u.id,u.display_name,gp.role,gp.status FROM game_players gp JOIN users u ON u.id=gp.user_id WHERE gp.game_id=$1 AND gp.role='organizer'`, id).Scan(&organizer.ID, &organizer.DisplayName, &organizer.Role, &organizer.Status)
+	if err != nil {
+		return x, err
+	}
+	x.Organizer = organizer
+	rows, err := h.DB.Query(r.Context(), `SELECT u.id,u.display_name,gp.role,gp.status FROM game_players gp JOIN users u ON u.id=gp.user_id WHERE gp.game_id=$1 AND gp.status='confirmed' ORDER BY gp.joined_at`, id)
+	if err != nil {
+		return x, err
+	}
+	defer rows.Close()
+	x.Players = []player{}
+	for rows.Next() {
+		var p player
+		if err = rows.Scan(&p.ID, &p.DisplayName, &p.Role, &p.Status); err != nil {
+			return x, err
+		}
+		x.Players = append(x.Players, p)
+	}
+	rows, err = h.DB.Query(r.Context(), `SELECT u.id,u.display_name FROM game_waitlist gw JOIN users u ON u.id=gw.user_id WHERE gw.game_id=$1 ORDER BY gw.position`, id)
+	if err != nil {
+		return x, err
+	}
+	defer rows.Close()
+	x.Waitlist = []player{}
+	for rows.Next() {
+		var p player
+		if err = rows.Scan(&p.ID, &p.DisplayName); err != nil {
+			return x, err
+		}
+		x.Waitlist = append(x.Waitlist, p)
+	}
+	var status, role string
+	err = h.DB.QueryRow(r.Context(), `SELECT status,role FROM game_players WHERE game_id=$1 AND user_id=$2`, id, userID).Scan(&status, &role)
+	if err == nil {
+		x.IsMember = true
+		x.CurrentUserStatus = status
+		x.CurrentUserRole = role
+	}
+	return x, nil
+}
+
+func (h Handler) join(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
+	tx, err := h.DB.Begin(r.Context())
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var starts time.Time
+	var ends time.Time
+	var cap int
+	var min, max, status string
+	var creator uuid.UUID
+	if err = tx.QueryRow(r.Context(), `SELECT starts_at,ends_at,capacity,minimum_skill_level,maximum_skill_level,status,created_by_user_id FROM games WHERE id=$1 FOR UPDATE`, id).Scan(&starts, &ends, &cap, &min, &max, &status, &creator); errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, 404, "game_not_found", "Game not found.")
+		return
+	} else if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if status != "scheduled" || !starts.After(h.now()) {
+		writeError(w, 409, "game_not_joinable", "Game is not open for joining.")
+		return
+	}
+	var skill string
+	if err = tx.QueryRow(r.Context(), `SELECT skill_level FROM player_profiles WHERE user_id=$1`, userID).Scan(&skill); err != nil {
+		writeError(w, 422, "profile_required", "Complete your profile before joining.")
+		return
+	}
+	if !SkillAllowed(min, max, skill) {
+		writeError(w, 409, "skill_out_of_range", "Your skill level is outside this game range.")
+		return
+	}
+	var existing string
+	err = tx.QueryRow(r.Context(), `SELECT status FROM game_players WHERE game_id=$1 AND user_id=$2`, id, userID).Scan(&existing)
+	if err == nil && existing == "confirmed" {
+		writeError(w, 409, "already_joined", "You already joined this game.")
+		return
+	}
+	var conflicting int
+	if err = tx.QueryRow(r.Context(), `SELECT count(*) FROM game_players gp JOIN games g ON g.id=gp.game_id WHERE gp.user_id=$1 AND gp.status='confirmed' AND g.status='scheduled' AND g.starts_at < $3 AND g.ends_at > $2`, userID, starts, ends).Scan(&conflicting); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if conflicting > 0 {
+		writeError(w, 409, "conflicting_game", "You already have a conflicting confirmed game.")
+		return
+	}
+	var count int
+	if err = tx.QueryRow(r.Context(), `SELECT count(*) FROM game_players WHERE game_id=$1 AND status='confirmed'`, id).Scan(&count); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if count < cap {
+		_, err = tx.Exec(r.Context(), `INSERT INTO game_players(game_id,user_id,role,status,attendance_status) VALUES($1,$2,'player','confirmed','unknown') ON CONFLICT(game_id,user_id) DO UPDATE SET status='confirmed',cancelled_at=NULL,joined_at=now()`, id, userID)
+		if err != nil {
+			http.Error(w, "game unavailable", 500)
+			return
+		}
+		if err = tx.Commit(r.Context()); err != nil {
+			http.Error(w, "game unavailable", 500)
+			return
+		}
+		writeJSON(w, 200, actionResponse{Result: "confirmed"})
+		return
+	}
+	if err = insertWaitlist(r, tx, id, userID); err != nil {
+		if errors.Is(err, ErrConflict) {
+			writeError(w, 409, "already_waitlisted", "You already joined the waitlist.")
+			return
+		}
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	writeJSON(w, 200, actionResponse{Result: "waitlisted"})
+}
+func insertWaitlist(r *http.Request, tx pgx.Tx, id, userID uuid.UUID) error {
+	var exists int
+	if err := tx.QueryRow(r.Context(), `SELECT count(*) FROM game_waitlist WHERE game_id=$1 AND user_id=$2`, id, userID).Scan(&exists); err != nil {
+		return err
+	}
+	if exists > 0 {
+		return ErrConflict
+	}
+	var pos int
+	if err := tx.QueryRow(r.Context(), `SELECT COALESCE(max(position),0)+1 FROM game_waitlist WHERE game_id=$1`, id).Scan(&pos); err != nil {
+		return err
+	}
+	_, err := tx.Exec(r.Context(), `INSERT INTO game_waitlist(game_id,user_id,position) VALUES($1,$2,$3)`, id, userID, pos)
+	return err
+}
+func (h Handler) addWaitlist(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
+	tx, err := h.DB.Begin(r.Context())
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var status string
+	var starts time.Time
+	if err = tx.QueryRow(r.Context(), `SELECT status,starts_at FROM games WHERE id=$1 FOR UPDATE`, id).Scan(&status, &starts); errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, 404, "game_not_found", "Game not found.")
+		return
+	}
+	if err != nil || status != "scheduled" {
+		writeError(w, 409, "game_not_joinable", "Game is not open for joining.")
+		return
+	}
+	if err = insertWaitlist(r, tx, id, userID); err != nil {
+		writeError(w, 409, "already_waitlisted", "You already joined the waitlist.")
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	writeJSON(w, 200, actionResponse{Result: "waitlisted"})
+}
+func (h Handler) removeWaitlist(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
+	tag, err := h.DB.Exec(r.Context(), `DELETE FROM game_waitlist WHERE game_id=$1 AND user_id=$2`, id, userID)
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		writeError(w, 404, "waitlist_entry_not_found", "Waitlist entry not found.")
+		return
+	}
+	w.WriteHeader(204)
+}
+func (h Handler) leave(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
+	tx, err := h.DB.Begin(r.Context())
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var role, status string
+	if err = tx.QueryRow(r.Context(), `SELECT role,status FROM game_players WHERE game_id=$1 AND user_id=$2 FOR UPDATE`, id, userID).Scan(&role, &status); errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, 404, "player_not_found", "You are not a player in this game.")
+		return
+	}
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if role == "organizer" {
+		writeError(w, 409, "organizer_must_cancel", "Organizer must cancel the game.")
+		return
+	}
+	if status != "confirmed" {
+		writeError(w, 409, "not_confirmed", "You are not confirmed in this game.")
+		return
+	}
+	if _, err = tx.Exec(r.Context(), `UPDATE game_players SET status='cancelled',cancelled_at=now() WHERE game_id=$1 AND user_id=$2`, id, userID); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	promoted, err := promote(tx, r, id)
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	writeJSON(w, 200, actionResponse{Result: "left", PromotedUserID: promoted})
+}
+func promote(tx pgx.Tx, r *http.Request, id uuid.UUID) (string, error) {
+	var starts, ends time.Time
+	var minimum, maximum string
+	if err := tx.QueryRow(r.Context(), `SELECT starts_at,ends_at,minimum_skill_level,maximum_skill_level FROM games WHERE id=$1 FOR UPDATE`, id).Scan(&starts, &ends, &minimum, &maximum); err != nil {
+		return "", err
+	}
+	rows, err := tx.Query(r.Context(), `SELECT gw.user_id,pp.skill_level FROM game_waitlist gw JOIN player_profiles pp ON pp.user_id=gw.user_id WHERE gw.game_id=$1 ORDER BY gw.position FOR UPDATE SKIP LOCKED`, id)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	var candidates []struct {
+		ID    uuid.UUID
+		Skill string
+	}
+	for rows.Next() {
+		var c struct {
+			ID    uuid.UUID
+			Skill string
+		}
+		if err = rows.Scan(&c.ID, &c.Skill); err != nil {
+			return "", err
+		}
+		candidates = append(candidates, c)
+	}
+	if err = rows.Err(); err != nil {
+		return "", err
+	}
+	for _, candidate := range candidates {
+		if !SkillAllowed(minimum, maximum, candidate.Skill) {
+			continue
+		}
+		var conflicting int
+		if err = tx.QueryRow(r.Context(), `SELECT count(*) FROM game_players gp JOIN games g ON g.id=gp.game_id WHERE gp.user_id=$1 AND gp.status='confirmed' AND g.status='scheduled' AND g.starts_at < $3 AND g.ends_at > $2`, candidate.ID, starts, ends).Scan(&conflicting); err != nil {
+			return "", err
+		}
+		if conflicting > 0 {
+			continue
+		}
+		if _, err = tx.Exec(r.Context(), `INSERT INTO game_players(game_id,user_id,role,status,attendance_status) VALUES($1,$2,'player','confirmed','unknown') ON CONFLICT(game_id,user_id) DO UPDATE SET status='confirmed',cancelled_at=NULL,joined_at=now()`, id, candidate.ID); err != nil {
+			return "", err
+		}
+		if _, err = tx.Exec(r.Context(), `DELETE FROM game_waitlist WHERE game_id=$1 AND user_id=$2`, id, candidate.ID); err != nil {
+			return "", err
+		}
+		return candidate.ID.String(), nil
+	}
+	return "", nil
+}
+func (h Handler) cancel(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
+	var in struct {
+		Reason *string `json:"reason"`
+	}
+	if json.NewDecoder(r.Body).Decode(&in) != nil && r.ContentLength > 0 {
+		writeError(w, 422, "invalid_cancellation", "Cancellation input is invalid.")
+		return
+	}
+	tag, err := h.DB.Exec(r.Context(), `UPDATE games SET status='cancelled',cancelled_at=now(),cancellation_reason=$1,updated_at=now() WHERE id=$2 AND status='scheduled' AND (created_by_user_id=$3 OR EXISTS (SELECT 1 FROM users WHERE id=$3 AND is_admin=true))`, nullableString(in.Reason), id, userID)
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		writeError(w, 403, "game_cancel_forbidden", "Only organizer or admin can cancel this game.")
+		return
+	}
+	w.WriteHeader(204)
+}
+func (h Handler) update(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
+	var in struct {
+		Title       *string `json:"title"`
+		Description *string `json:"description"`
+	}
+	if json.NewDecoder(r.Body).Decode(&in) != nil {
+		writeError(w, 422, "invalid_game", "Game input is invalid.")
+		return
+	}
+	tag, err := h.DB.Exec(r.Context(), `UPDATE games SET title=$1,description=$2,updated_at=now() WHERE id=$3 AND created_by_user_id=$4 AND status='scheduled'`, nullableString(in.Title), nullableString(in.Description), id, userID)
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		writeError(w, 403, "game_update_forbidden", "Only organizer can update this game.")
+		return
+	}
+	h.details(w, r, id, userID)
+}
+func newShareToken() (string, string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", "", err
+	}
+	token := base64.RawURLEncoding.EncodeToString(b)
+	return token, hashToken(token), nil
+}
+func hashToken(v string) string { s := sha256.Sum256([]byte(v)); return hex.EncodeToString(s[:]) }
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+func writeError(w http.ResponseWriter, status int, code, message string) {
+	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": message, "fields": map[string]string{}}})
+}
