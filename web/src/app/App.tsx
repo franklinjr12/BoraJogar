@@ -1,86 +1,33 @@
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, Route, Routes, useParams, useSearchParams } from 'react-router-dom';
+import { profileApi, type PlayingStyle, type Profile, type SkillLevel } from '../api/client';
 
-function Home() {
-  return (
-    <main className="shell">
-      <p className="eyebrow">Bora Jogar</p>
-      <h1>Beach volleyball, easier to organize.</h1>
-      <p className="lead">Find compatible players, coordinate schedules, and get on court.</p>
-      <div className="actions">
-        <Link className="button" to="/login">
-          Get started
-        </Link>
-        <Link className="text-link" to="/games">
-          Explore games
-        </Link>
-      </div>
-      <section className="card" aria-labelledby="foundation-title">
-        <h2 id="foundation-title">Project foundation ready</h2>
-        <p>
-          React, strict TypeScript, routing, server-state management, testing, and responsive
-          PWA-ready layout are configured.
-        </p>
-      </section>
-    </main>
-  );
+const skills: Array<{ value: SkillLevel; label: string; description: string }> = [
+  { value: 'learning', label: 'Learning', description: 'Still learning basic passing, setting, serving, positioning, and rules.' },
+  { value: 'beginner', label: 'Beginner', description: 'Can maintain short rallies and understands basic positioning, with some inconsistency.' },
+  { value: 'intermediate', label: 'Intermediate', description: 'Can pass, set, attack, serve, and position with reasonable consistency.' },
+  { value: 'advanced', label: 'Advanced', description: 'Plays with strong consistency, control, tactical awareness, and specialized technique.' },
+  { value: 'competitive', label: 'Competitive', description: 'Regularly plays tournaments or high-level organized games.' },
+];
+const styles: Array<{ value: PlayingStyle; label: string }> = [
+  { value: 'casual', label: 'Casual' }, { value: 'competitive', label: 'Competitive' }, { value: 'training_focused', label: 'Training-focused' }, { value: 'mixed', label: 'Mixed / no preference' },
+];
+const blankProfile: Omit<Profile, 'userId' | 'avatarUrl'> = { displayName: '', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', skillLevel: 'beginner', bio: '', styles: ['mixed'], preferredGameDurationMinutes: 90, minimumNoticeMinutes: 120, activeForMatchmaking: true };
+
+function Home() { return <main className="shell"><p className="eyebrow">Bora Jogar</p><h1>Beach volleyball, easier to organize.</h1><p className="lead">Find compatible players, coordinate schedules, and get on court.</p><div className="actions"><Link className="button" to="/login">Get started</Link><Link className="text-link" to="/games">Explore games</Link></div><section className="card"><h2>Play with people who fit your schedule.</h2><p>Set your level, style, preferred places, and availability. Bora Jogar handles the coordination.</p></section></main>; }
+function Login() { const [params] = useSearchParams(); const invitation = params.get('invite'); const error = params.get('error'); const url = new URL('/api/v1/auth/google', window.location.origin); if (invitation) url.searchParams.set('invitation', invitation); return <main className="shell"><Link className="text-link" to="/">← Home</Link><p className="eyebrow">Private beta</p><h1>Sign in to play.</h1><p className="lead">Invite-only while we build the first local community.</p>{error && <p className="error" role="alert">{error}</p>}<a className="button" href={url.toString()}>Continue with Google</a><p className="hint">{invitation ? 'Invitation code ready.' : 'Open an invitation link to create an account.'}</p></main>; }
+function Invite() { const { code } = useParams(); return <Navigate replace to={`/login?invite=${encodeURIComponent(code ?? '')}`} />; }
+
+function Onboarding() {
+  const saved = localStorage.getItem('borajogar_onboarding'); const initial = saved ? JSON.parse(saved) as { step: number; profile: typeof blankProfile } : { step: 0, profile: blankProfile };
+  const [step, setStep] = useState(initial.step); const [profile, setProfile] = useState(initial.profile); const [error, setError] = useState(''); const total = 9;
+  useEffect(() => { localStorage.setItem('borajogar_onboarding', JSON.stringify({ step, profile })); }, [step, profile]);
+  const update = <K extends keyof typeof profile>(key: K, value: (typeof profile)[K]) => setProfile(current => ({ ...current, [key]: value }));
+  const next = async () => { setError(''); if (step === 1 && profile.displayName.trim().length < 2) { setError('Choose a name with at least 2 characters.'); return; } if (step === 2 && !profile.skillLevel) { setError('Choose a skill level.'); return; } if (step === 3 && profile.styles.length === 0) { setError('Choose at least one style.'); return; } try { await profileApi.saveProgress(Math.min(step + 1, 8), [...Array.from({ length: step + 1 }, (_, i) => i)]); } catch { /* Auth/API may be unavailable during local shell use; local progress remains. */ } if (step < total - 1) setStep(step + 1); else { try { await profileApi.update(profile); await profileApi.complete(); localStorage.removeItem('borajogar_onboarding'); } catch { setError('Could not save profile. Check connection and try again.'); return; } setStep(total); } };
+  if (step === total) return <main className="shell"><p className="eyebrow">Ready</p><h1>Profile complete.</h1><p className="lead">You can now discover games and receive compatible proposals.</p><Link className="button" to="/profile">View profile</Link></main>;
+  return <main className="shell onboarding"><p className="eyebrow">Step {step + 1} of {total}</p><progress value={step + 1} max={total} /><h1>{['Welcome to Bora Jogar','Your name','Your playing level','Your playing style','Time zone','Preferred locations','Weekly availability','Notifications','Review'][step]}</h1><p className="lead">{step === 0 && 'Find compatible beach volleyball players without endless group messages.'}{step === 1 && 'Use the name other players should see.'}{step === 2 && 'Pick the description that feels closest today.'}{step === 3 && 'Choose one or more. This helps matching, but never blocks a good game.'}{step === 4 && `We found ${profile.timeZone}. Games display in your local time.`}{step === 5 && 'Next, choose courts or areas where you like to play.'}{step === 6 && 'Next, tell us when you usually have time.'}{step === 7 && 'We will explain game proposals and reminders when notifications are available.'}{step === 8 && 'Check your basics before joining the community.'}</p>{step === 1 && <label>Display name<input value={profile.displayName} onChange={e => update('displayName', e.target.value)} autoFocus /></label>}{step === 2 && <div className="choice-list">{skills.map(skill => <button className={profile.skillLevel === skill.value ? 'choice selected' : 'choice'} key={skill.value} onClick={() => update('skillLevel', skill.value)}><strong>{skill.label}</strong><span>{skill.description}</span></button>)}</div>}{step === 3 && <div className="checks">{styles.map(style => <label key={style.value}><input type="checkbox" checked={profile.styles.includes(style.value)} onChange={e => update('styles', e.target.checked ? [...profile.styles, style.value] : profile.styles.filter(item => item !== style.value))} />{style.label}</label>)}</div>}{step === 4 && <label>Time zone<input value={profile.timeZone} onChange={e => update('timeZone', e.target.value)} /></label>}{step === 8 && <section className="card summary"><p><strong>{profile.displayName || 'Your name'}</strong></p><p>{skills.find(skill => skill.value === profile.skillLevel)?.label}</p><p>{profile.styles.map(style => styles.find(item => item.value === style)?.label).join(', ')}</p><p>{profile.timeZone}</p></section>}{error && <p className="error" role="alert">{error}</p>}<div className="actions"><button className="button" onClick={next}>{step === total - 1 ? 'Finish onboarding' : step === 0 ? 'Let’s go' : 'Continue'}</button>{step > 0 && <button className="text-button" onClick={() => setStep(step - 1)}>Back</button>}</div></main>;
 }
 
-function Login() {
-  const [searchParams] = useSearchParams();
-  const invitation = searchParams.get('invite');
-  const error = searchParams.get('error');
-  const googleURL = new URL('/api/v1/auth/google', window.location.origin);
-  if (invitation) googleURL.searchParams.set('invitation', invitation);
-  return (
-    <main className="shell">
-      <Link className="text-link" to="/">
-        ← Home
-      </Link>
-      <p className="eyebrow">Private beta</p>
-      <h1>Sign in to play.</h1>
-      <p className="lead">Bora Jogar is invite-only while we build the first local community.</p>
-      {error ? (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      ) : null}
-      <a className="button" href={googleURL.toString()}>
-        Continue with Google
-      </a>
-      {invitation ? (
-        <p className="hint">Invitation code ready.</p>
-      ) : (
-        <p className="hint">Open an invitation link to create an account.</p>
-      )}
-    </main>
-  );
-}
-
-function Invite() {
-  const { code } = useParams();
-  return <Navigate replace to={`/login?invite=${encodeURIComponent(code ?? '')}`} />;
-}
-
-function Placeholder({ title }: { title: string }) {
-  return (
-    <main className="shell">
-      <Link className="text-link" to="/">
-        ← Home
-      </Link>
-      <h1>{title}</h1>
-      <p className="lead">This feature arrives in a later milestone.</p>
-    </main>
-  );
-}
-
-export function App() {
-  return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/invite/:code" element={<Invite />} />
-      <Route path="/games" element={<Placeholder title="Games" />} />
-      <Route path="*" element={<Placeholder title="Page not found" />} />
-    </Routes>
-  );
-}
+function ProfilePage() { const [profile, setProfile] = useState<Profile | null>(null); const [editing, setEditing] = useState(false); const [error, setError] = useState(''); useEffect(() => { profileApi.get().then(setProfile).catch(() => setError('Sign in to view your profile.')); }, []); if (error) return <main className="shell"><p className="error">{error}</p><Link to="/login">Sign in</Link></main>; if (!profile) return <main className="shell"><p>Loading profile…</p></main>; const save = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); try { const form = new FormData(event.currentTarget); const updated = await profileApi.update({ displayName: String(form.get('displayName')), timeZone: String(form.get('timeZone')), skillLevel: String(form.get('skillLevel')) as SkillLevel, bio: String(form.get('bio')), styles: Array.from(form.getAll('styles')).map(String) as PlayingStyle[], preferredGameDurationMinutes: Number(form.get('duration')) as 60 | 90 | 120, minimumNoticeMinutes: Number(form.get('notice')), activeForMatchmaking: form.get('active') === 'on' }); setProfile(updated); setEditing(false); } catch { setError('Could not save profile. Check the fields and try again.'); } }; return <main className="shell"><Link className="text-link" to="/">← Home</Link><p className="eyebrow">Your profile</p><h1>{profile.displayName}</h1>{editing ? <form className="card" onSubmit={save}><label>Display name<input name="displayName" defaultValue={profile.displayName} required minLength={2} /></label><label>Skill level<select name="skillLevel" defaultValue={profile.skillLevel}>{skills.map(skill => <option key={skill.value} value={skill.value}>{skill.label}</option>)}</select></label><fieldset><legend>Playing styles</legend>{styles.map(style => <label className="checks" key={style.value}><span><input name="styles" type="checkbox" value={style.value} defaultChecked={profile.styles.includes(style.value)} /> {style.label}</span></label>)}</fieldset><label>Bio<textarea name="bio" defaultValue={profile.bio} maxLength={280} /></label><label>Time zone<input name="timeZone" defaultValue={profile.timeZone} required /></label><label>Preferred duration<select name="duration" defaultValue={profile.preferredGameDurationMinutes}><option value="60">60 minutes</option><option value="90">90 minutes</option><option value="120">120 minutes</option></select></label><label>Minimum notice (minutes)<input name="notice" type="number" min="0" max="10080" defaultValue={profile.minimumNoticeMinutes} /></label><label className="checks"><span><input name="active" type="checkbox" defaultChecked={profile.activeForMatchmaking} /> Available for matchmaking</span></label><button className="button" type="submit">Save changes</button></form> : <section className="card"><p className="lead">{skills.find(skill => skill.value === profile.skillLevel)?.label} · {profile.timeZone}</p><p>{profile.bio || 'Add a short bio to help players get to know you.'}</p><p>{profile.styles.map(style => styles.find(item => item.value === style)?.label).join(', ')}</p><p>{profile.activeForMatchmaking ? 'Available for matchmaking' : 'Matchmaking paused'}</p><button className="button" onClick={() => setEditing(true)}>Edit profile</button></section>}{error && <p className="error" role="alert">{error}</p>}</main>; }
+function Placeholder({ title }: { title: string }) { return <main className="shell"><Link className="text-link" to="/">← Home</Link><h1>{title}</h1><p className="lead">This feature arrives in a later milestone.</p></main>; }
+export function App() { return <Routes><Route path="/" element={<Home />} /><Route path="/login" element={<Login />} /><Route path="/invite/:code" element={<Invite />} /><Route path="/onboarding" element={<Onboarding />} /><Route path="/profile" element={<ProfilePage />} /><Route path="/games" element={<Placeholder title="Games" />} /><Route path="*" element={<Placeholder title="Page not found" />} /></Routes>; }

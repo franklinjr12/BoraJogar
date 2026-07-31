@@ -977,6 +977,8 @@ Do not use arbitrary sleeps to wait for asynchronous behavior.
 
 Use controllable clocks and explicit synchronization.
 
+Every new feature or significant commit added MUST have test coverage, either adding new tests or updating existing ones.
+
 ## 10.2 Test pyramid
 
 Use the appropriate test level.

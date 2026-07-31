@@ -54,6 +54,24 @@ h2 {
   font-weight: 750;
   text-decoration: none;
 }
+button { font: inherit; cursor: pointer; }
+.text-button { border: 0; background: transparent; color: #0b6b68; font-weight: 700; padding: .85rem 0; }
+label { display: grid; gap: .45rem; margin: 1.25rem 0; font-weight: 700; }
+input { border: 1px solid #b8d0c9; border-radius: .7rem; padding: .85rem; font: inherit; color: inherit; background: white; }
+select, textarea { border: 1px solid #b8d0c9; border-radius: .7rem; padding: .85rem; font: inherit; color: inherit; background: white; }
+textarea { min-height: 7rem; resize: vertical; }
+fieldset { border: 0; padding: 0; }
+legend { font-weight: 700; }
+progress { width: 100%; accent-color: #0b6b68; }
+.onboarding h1 { font-size: clamp(2.1rem, 8vw, 4rem); }
+.choice-list { display: grid; gap: .75rem; }
+.choice { display: grid; gap: .3rem; border: 1px solid #d5e5df; border-radius: 1rem; padding: 1rem; text-align: left; color: #173b3b; background: white; }
+.choice span { color: #476566; line-height: 1.45; }
+.choice.selected { border: 2px solid #0b6b68; background: #edf8f4; }
+.checks { display: grid; gap: .6rem; }
+.checks label { display: flex; align-items: center; margin: 0; font-weight: 600; }
+.checks input { width: 1.2rem; height: 1.2rem; }
+.summary { line-height: 1.5; }
 .button:focus-visible,
 .text-link:focus-visible {
   outline: 3px solid #edac55;

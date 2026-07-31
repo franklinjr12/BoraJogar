@@ -48,6 +48,12 @@ func (h Handler) RequireAdmin(next http.Handler) http.Handler {
 
 type userKey struct{}
 
+// UserFromContext returns authenticated user placed by RequireAuth.
+func UserFromContext(ctx context.Context) (User, bool) {
+	u, ok := ctx.Value(userKey{}).(User)
+	return u, ok
+}
+
 func (h Handler) now() time.Time {
 	if h.Now != nil {
 		return h.Now()
@@ -132,7 +138,7 @@ func (h Handler) upsertUser(ctx context.Context, profile GoogleProfile, invitati
 	defer tx.Rollback(ctx)
 	var user User
 	var avatar *string
-	err = tx.QueryRow(ctx, `SELECT id, display_name, email, avatar_url, time_zone, onboarding_completed, is_admin FROM users WHERE google_subject = $1`, profile.Subject).Scan(&user.ID, &user.DisplayName, &user.Email, &avatar, &user.TimeZone, &user.OnboardingComplete, &user.IsAdmin)
+	err = tx.QueryRow(ctx, `SELECT id, display_name, email, avatar_url, time_zone, onboarding_completed, is_admin FROM users WHERE google_subject = $1 AND status = 'active' AND deleted_at IS NULL`, profile.Subject).Scan(&user.ID, &user.DisplayName, &user.Email, &avatar, &user.TimeZone, &user.OnboardingComplete, &user.IsAdmin)
 	if err == nil {
 		_, err = tx.Exec(ctx, `UPDATE users SET email = $1, display_name = $2, avatar_url = $3, updated_at = now() WHERE id = $4`, profile.Email, profile.Name, nullable(profile.AvatarURL), user.ID)
 		if err != nil {
@@ -202,7 +208,7 @@ func (h Handler) userFromRequest(r *http.Request) (User, bool) {
 	}
 	var user User
 	var avatar *string
-	err = h.DB.QueryRow(r.Context(), `SELECT u.id, u.display_name, u.email, u.avatar_url, u.time_zone, u.onboarding_completed, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > now()`, hash(cookie.Value)).Scan(&user.ID, &user.DisplayName, &user.Email, &avatar, &user.TimeZone, &user.OnboardingComplete, &user.IsAdmin)
+	err = h.DB.QueryRow(r.Context(), `SELECT u.id, u.display_name, u.email, u.avatar_url, u.time_zone, u.onboarding_completed, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > now() AND u.status = 'active' AND u.deleted_at IS NULL`, hash(cookie.Value)).Scan(&user.ID, &user.DisplayName, &user.Email, &avatar, &user.TimeZone, &user.OnboardingComplete, &user.IsAdmin)
 	if err != nil {
 		return User{}, false
 	}
