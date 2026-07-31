@@ -71,6 +71,13 @@ h2 {
   box-shadow: 0 1rem 3rem #173b3b0d;
   line-height: 1.6;
 }
+.error {
+  color: #a52424;
+  font-weight: 700;
+}
+.hint {
+  color: #476566;
+}
 @media (max-width: 480px) {
   .shell {
     padding-top: 8vh;

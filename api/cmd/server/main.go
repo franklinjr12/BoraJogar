@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/borajogar/borajogar/api/internal/auth"
 	"github.com/borajogar/borajogar/api/internal/platform/config"
 	"github.com/borajogar/borajogar/api/internal/platform/database"
 	"github.com/borajogar/borajogar/api/internal/platform/httpserver"
@@ -33,7 +34,9 @@ func main() {
 	}
 	defer db.Close()
 
-	server := &http.Server{Addr: cfg.Address(), Handler: httpserver.New(logger, db), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
+	google := auth.GoogleHTTPClient{Client: http.DefaultClient, ClientID: cfg.GoogleClientID, ClientSecret: cfg.GoogleClientSecret}
+	authHandler := auth.Handler{DB: db, Google: google, RedirectURL: cfg.GoogleRedirectURL, SecureCookies: cfg.Environment == "production", AdminEmails: cfg.AdminEmails}
+	server := &http.Server{Addr: cfg.Address(), Handler: httpserver.New(logger, db, authHandler), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
 	go func() {
 		logger.Info("server started", "addr", server.Addr)
 		if serveErr := server.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {

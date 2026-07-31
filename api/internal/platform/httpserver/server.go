@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/borajogar/borajogar/api/internal/auth"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -17,8 +18,11 @@ type key string
 
 const requestIDKey key = "request_id"
 
-func New(logger *slog.Logger, db *pgxpool.Pool) http.Handler {
+func New(logger *slog.Logger, db *pgxpool.Pool, authHandlers ...auth.Handler) http.Handler {
 	mux := http.NewServeMux()
+	for _, authHandler := range authHandlers {
+		authHandler.Register(mux)
+	}
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})

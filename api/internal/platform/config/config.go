@@ -9,9 +9,9 @@ import (
 )
 
 type Config struct {
-	Environment, BaseURL, DatabaseURL string
-	Port                              int
-	SessionSecret                     string
+	Environment, BaseURL, DatabaseURL, GoogleClientID, GoogleClientSecret, GoogleRedirectURL, AdminEmails string
+	Port                                                                                                  int
+	SessionSecret                                                                                         string
 }
 
 func Load() (Config, error) {
@@ -20,7 +20,7 @@ func Load() (Config, error) {
 	if err != nil || port < 1 || port > 65535 {
 		return Config{}, errors.New("APP_PORT must be a valid TCP port")
 	}
-	cfg := Config{Environment: value("APP_ENV", "development"), BaseURL: value("APP_BASE_URL", "http://localhost:5173"), DatabaseURL: value("DATABASE_URL", ""), Port: port, SessionSecret: value("SESSION_SECRET", "")}
+	cfg := Config{Environment: value("APP_ENV", "development"), BaseURL: value("APP_BASE_URL", "http://localhost:5173"), DatabaseURL: value("DATABASE_URL", ""), GoogleClientID: value("GOOGLE_CLIENT_ID", ""), GoogleClientSecret: value("GOOGLE_CLIENT_SECRET", ""), GoogleRedirectURL: value("GOOGLE_REDIRECT_URL", "http://localhost:8080/api/v1/auth/google/callback"), AdminEmails: value("ADMIN_EMAILS", ""), Port: port, SessionSecret: value("SESSION_SECRET", "")}
 	for key, field := range map[string]string{"DATABASE_URL": cfg.DatabaseURL, "SESSION_SECRET": cfg.SessionSecret} {
 		if strings.TrimSpace(field) == "" {
 			return Config{}, fmt.Errorf("%s is required", key)

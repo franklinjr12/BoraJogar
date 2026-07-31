@@ -1,0 +1,39 @@
+package auth
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestGenerateInvitationCodeIsURLSafeAndHashOnly(t *testing.T) {
+	code, codeHash, err := GenerateInvitationCode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(code) < 30 || strings.ContainsAny(code, "+/=") {
+		t.Fatalf("code is not URL-safe: %q", code)
+	}
+	if codeHash == code || len(codeHash) != 64 {
+		t.Fatalf("hash = %q", codeHash)
+	}
+}
+
+func TestGoogleAuthorizationURLContainsStateAndRedirect(t *testing.T) {
+	client := GoogleHTTPClient{ClientID: "client-id", ClientSecret: "secret"}
+	value := client.AuthorizationURL("state-value", "http://localhost/callback")
+	for _, expected := range []string{"state=state-value", "client_id=client-id", "redirect_uri=http%3A%2F%2Flocalhost%2Fcallback"} {
+		if !strings.Contains(value, expected) {
+			t.Fatalf("URL %q missing %q", value, expected)
+		}
+	}
+}
+
+func TestAdminEmailMatchingIsCaseInsensitive(t *testing.T) {
+	h := Handler{AdminEmails: "owner@example.com, other@example.com"}
+	if !h.isAdminEmail("OWNER@example.com") {
+		t.Fatal("expected admin email")
+	}
+	if h.isAdminEmail("player@example.com") {
+		t.Fatal("unexpected admin email")
+	}
+}
