@@ -5,12 +5,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 
 function renderApp(path: string) {
-  return render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter initialEntries={[path]}>
+        <App />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
 
 describe('onboarding', () => {
   afterEach(cleanup);
-  beforeEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
 
   it('validates display name before advancing', async () => {
     renderApp('/onboarding');
@@ -32,29 +41,75 @@ describe('onboarding', () => {
   });
 
   it('sends profile and completion requests after final step', async () => {
-    const fetchMock = vi.spyOn(window, 'fetch').mockImplementation(async () => new Response('{}', { status: 200 }));
-    localStorage.setItem('borajogar_onboarding', JSON.stringify({ step: 8, profile: { displayName: 'Ana', timeZone: 'UTC', skillLevel: 'beginner', styles: ['mixed'], bio: '', preferredGameDurationMinutes: 90, minimumNoticeMinutes: 120, activeForMatchmaking: true } }));
+    const fetchMock = vi
+      .spyOn(window, 'fetch')
+      .mockImplementation(async () => new Response('{}', { status: 200 }));
+    localStorage.setItem(
+      'borajogar_onboarding',
+      JSON.stringify({
+        step: 8,
+        profile: {
+          displayName: 'Ana',
+          timeZone: 'UTC',
+          skillLevel: 'beginner',
+          styles: ['mixed'],
+          bio: '',
+          preferredGameDurationMinutes: 90,
+          minimumNoticeMinutes: 120,
+          activeForMatchmaking: true,
+        },
+      }),
+    );
     renderApp('/onboarding');
     fireEvent.click(screen.getByRole('button', { name: /finish onboarding/i }));
-    await waitFor(() => expect(screen.getByRole('heading', { name: /profile complete/i })).toBeInTheDocument());
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/me/profile', expect.objectContaining({ method: 'PUT' }));
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/me/onboarding/complete', expect.objectContaining({ method: 'POST' }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /profile complete/i })).toBeInTheDocument(),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/me/profile',
+      expect.objectContaining({ method: 'PUT' }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/me/onboarding/complete',
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 });
 
 describe('profile editing', () => {
   afterEach(cleanup);
-  beforeEach(() => { vi.restoreAllMocks(); });
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('loads and saves profile edits', async () => {
-    const profile = { userId: 'user-1', displayName: 'Ana', timeZone: 'UTC', skillLevel: 'beginner', bio: '', styles: ['mixed'], preferredGameDurationMinutes: 90, minimumNoticeMinutes: 120, activeForMatchmaking: true };
-    const fetchMock = vi.spyOn(window, 'fetch').mockImplementation(async (_input, init) => init?.method === 'PUT' ? new Response(JSON.stringify({ ...profile, displayName: 'Bia' }), { status: 200 }) : new Response(JSON.stringify(profile), { status: 200 }));
+    const profile = {
+      userId: 'user-1',
+      displayName: 'Ana',
+      timeZone: 'UTC',
+      skillLevel: 'beginner',
+      bio: '',
+      styles: ['mixed'],
+      preferredGameDurationMinutes: 90,
+      minimumNoticeMinutes: 120,
+      activeForMatchmaking: true,
+    };
+    const fetchMock = vi
+      .spyOn(window, 'fetch')
+      .mockImplementation(async (_input, init) =>
+        init?.method === 'PUT'
+          ? new Response(JSON.stringify({ ...profile, displayName: 'Bia' }), { status: 200 })
+          : new Response(JSON.stringify(profile), { status: 200 }),
+      );
     renderApp('/profile');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Ana' })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /edit profile/i }));
     fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'Bia' } });
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Bia' })).toBeInTheDocument());
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/me/profile', expect.objectContaining({ method: 'PUT' }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/me/profile',
+      expect.objectContaining({ method: 'PUT' }),
+    );
   });
 });
