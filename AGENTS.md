@@ -1576,3 +1576,7 @@ Every coding task MUST end with this sequence before the agent reports completio
 5. Do not claim completion when changed backend code has no corresponding test file or when coverage was not checked.
 
 Test coverage is a required deliverable, not a final optional cleanup step. Re-open changed code after tests pass and verify new branches are covered.
+
+## 23.2 Seed data update
+
+After every creation or update of tables also update the seed file `api\cmd\tools\seed-local\seed.sql` so that the app is easily testable locally.

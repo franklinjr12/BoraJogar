@@ -36,7 +36,9 @@ go -C api run ./cmd/tools/send-test-email
 
 ## Commands
 
-`make dev`, `make dev-web`, `make dev-api`, `make dev-worker`, `make test`, `make test-integration`, `make lint`, `make typecheck`, `make generate`, `make migrate`, `make migrate-down`, `make db-reset`, and `make build` cover common development operations.
+`make dev`, `make dev-web`, `make dev-api`, `make dev-worker`, `make test`, `make test-integration`, `make lint`, `make typecheck`, `make generate`, `make migrate`, `make migrate-down`, `make seed`, `make db-reset`, and `make build` cover common development operations.
+
+After migrations, run `make seed` to load repeatable local users, profiles, venues, availability, games, invitations, and waitlists. Seed accounts use `@borajogar.local` addresses; the seed does not create real Google sessions.
 
 Use `make generate` after changing SQL. Generated sqlc output lives in `api/generated/` and must not be edited manually.
 

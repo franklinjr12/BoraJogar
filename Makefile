@@ -50,6 +50,9 @@ migrate:
 migrate-down:
 	go -C api run github.com/pressly/goose/v3/cmd/goose@v3.24.3 -dir migrations postgres "$(DATABASE_URL)" down
 
+seed:
+	go -C api run ./cmd/tools/seed-local
+
 db-reset:
 	docker compose down -v && docker compose up -d database && make migrate
 
