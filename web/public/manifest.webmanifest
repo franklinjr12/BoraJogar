@@ -1,0 +1,18 @@
+{
+  "name": "Bora Jogar — Beach volleyball",
+  "short_name": "Bora Jogar",
+  "description": "Organize beach volleyball games with compatible players.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#0b6b68",
+  "background_color": "#f4f8f5",
+  "icons": [
+    {
+      "src": "/icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

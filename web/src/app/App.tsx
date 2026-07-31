@@ -7,6 +7,7 @@ import { CreateGamePage, GameDetailsPage, GamesPage } from '../features/games/Ga
 import { CalendarPage } from '../features/games/CalendarPage';
 import { DashboardPage } from '../features/games/DashboardPage';
 import { NotificationsPage } from '../features/notifications/NotificationsPage';
+import { AppShell } from '../platform/AppShell';
 
 const skills: Array<{ value: SkillLevel; label: string; description: string }> = [
   {
@@ -163,6 +164,7 @@ function Onboarding() {
       try {
         await profileApi.update(profile);
         await profileApi.complete();
+        localStorage.setItem('borajogar_install_prompt_ready', 'true');
         localStorage.removeItem('borajogar_onboarding');
       } catch {
         setError('Could not save profile. Check connection and try again.');
@@ -455,21 +457,23 @@ function Placeholder({ title }: { title: string }) {
 }
 export function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/invite/:code" element={<Invite />} />
-      <Route path="/onboarding" element={<Onboarding />} />
-      <Route path="/profile" element={<ProfilePage />} />
-      <Route path="/notifications" element={<NotificationsPage />} />
-      <Route path="/locations" element={<LocationsPage />} />
-      <Route path="/availability" element={<AvailabilityPage />} />
-      <Route path="/dashboard" element={<DashboardPage />} />
-      <Route path="/calendar" element={<CalendarPage />} />
-      <Route path="/games" element={<GamesPage />} />
-      <Route path="/games/new" element={<CreateGamePage />} />
-      <Route path="/games/:id" element={<GameDetailsPage />} />
-      <Route path="*" element={<Placeholder title="Page not found" />} />
-    </Routes>
+    <AppShell>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/invite/:code" element={<Invite />} />
+        <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/locations" element={<LocationsPage />} />
+        <Route path="/availability" element={<AvailabilityPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/games" element={<GamesPage />} />
+        <Route path="/games/new" element={<CreateGamePage />} />
+        <Route path="/games/:id" element={<GameDetailsPage />} />
+        <Route path="*" element={<Placeholder title="Page not found" />} />
+      </Routes>
+    </AppShell>
   );
 }

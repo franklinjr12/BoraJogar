@@ -11,6 +11,55 @@ body {
   margin: 0;
   min-width: 320px;
 }
+.mobile-nav {
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #d5e5df;
+  background: #f4f8f5f2;
+  backdrop-filter: blur(12px);
+}
+.mobile-nav a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.7rem;
+  padding: 0.6rem 0.75rem;
+  color: #476566;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.mobile-nav a[aria-current='page'] {
+  color: #0b6b68;
+  background: #dcefe9;
+}
+.offline-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  padding: 0.65rem 1rem;
+  color: #5d3a00;
+  background: #fff1cf;
+}
+.offline-banner .text-button {
+  padding: 0.25rem;
+  color: #5d3a00;
+  text-decoration: underline;
+}
+.install-prompt {
+  position: fixed;
+  z-index: 20;
+  right: 1rem;
+  bottom: 1rem;
+  width: min(100% - 2rem, 24rem);
+}
 .shell {
   width: min(100% - 2rem, 760px);
   margin: 0 auto;
@@ -57,6 +106,10 @@ h2 {
 button {
   font: inherit;
   cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 .text-button {
   border: 0;
@@ -146,7 +199,14 @@ progress {
   line-height: 1.5;
 }
 .button:focus-visible,
-.text-link:focus-visible {
+.text-link:focus-visible,
+.text-button:focus-visible,
+.choice:focus-visible,
+.view-button:focus-visible,
+.mobile-nav a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
   outline: 3px solid #edac55;
   outline-offset: 4px;
 }
@@ -247,6 +307,17 @@ progress {
   }
 }
 @media (max-width: 480px) {
+  .mobile-nav {
+    justify-content: space-between;
+    gap: 0;
+    padding-inline: 0.25rem;
+  }
+  .mobile-nav a {
+    flex: 1;
+    justify-content: center;
+    padding-inline: 0.25rem;
+    font-size: 0.75rem;
+  }
   .shell {
     padding-top: 8vh;
   }
