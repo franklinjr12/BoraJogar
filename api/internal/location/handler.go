@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/borajogar/borajogar/api/internal/auth"
+	"github.com/borajogar/borajogar/api/internal/platform/audit"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -449,6 +450,15 @@ func (h Handler) adminSuggestionAction(w http.ResponseWriter, r *http.Request) {
 	}
 	if tag.RowsAffected() == 0 {
 		writeError(w, 404, "venue_suggestion_not_found", "Venue suggestion not found.")
+		return
+	}
+	actor, _ := auth.UserFromContext(r.Context())
+	action := audit.VenueRejected
+	if parts[1] == "approve" {
+		action = audit.VenueApproved
+	}
+	if err := audit.Record(r.Context(), h.DB, actor.ID, action, "venue", id, nil); err != nil {
+		http.Error(w, "venue suggestions unavailable", 500)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

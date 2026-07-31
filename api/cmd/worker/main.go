@@ -25,6 +25,7 @@ func main() {
 		logger.Error("invalid configuration", "error", err)
 		os.Exit(1)
 	}
+	logger = logger.With("environment", cfg.Environment)
 	db, err := database.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("database connection failed", "error", err)

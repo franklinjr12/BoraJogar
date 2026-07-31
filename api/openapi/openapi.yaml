@@ -3,6 +3,10 @@ info:
   title: Bora Jogar API
   version: 0.1.0
 paths:
+  /health/live:
+    get: { summary: Liveness check, responses: { '200': { description: Process is alive } } }
+  /health/ready:
+    get: { summary: Readiness check, responses: { '200': { description: Dependencies are ready }, '503': { description: Dependencies are unavailable } } }
   /api/v1/auth/google:
     get:
       summary: Start Google OAuth login
@@ -212,6 +216,8 @@ paths:
     post: { summary: Request account deletion, security: [{ cookieAuth: [] }], responses: { '204': { description: Account deleted and sessions revoked } } }
   /api/v1/admin/dashboard:
     get: { summary: Private beta dashboard, security: [{ cookieAuth: [] }], responses: { '200': { description: Dashboard }, '403': { $ref: '#/components/responses/Forbidden' } } }
+  /api/v1/admin/metrics:
+    get: { summary: Request metrics, security: [{ cookieAuth: [] }], responses: { '200': { description: HTTP request metrics }, '403': { $ref: '#/components/responses/Forbidden' } } }
   /api/v1/admin/users:
     get: { summary: Search users, security: [{ cookieAuth: [] }], parameters: [{ in: query, name: q, schema: { type: string } }], responses: { '200': { description: Users }, '403': { $ref: '#/components/responses/Forbidden' } } }
   /api/v1/admin/matchmaking/runs:

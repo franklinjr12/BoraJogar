@@ -17,6 +17,7 @@ import (
 	"github.com/borajogar/borajogar/api/internal/location"
 	"github.com/borajogar/borajogar/api/internal/moderation"
 	"github.com/borajogar/borajogar/api/internal/notification"
+	"github.com/borajogar/borajogar/api/internal/platform/metrics"
 	"github.com/borajogar/borajogar/api/internal/profile"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,6 +28,10 @@ type key string
 const requestIDKey key = "request_id"
 
 func New(logger *slog.Logger, db *pgxpool.Pool, authHandlers ...auth.Handler) http.Handler {
+	return NewWithMetrics(logger, db, &metrics.Metrics{}, authHandlers...)
+}
+
+func NewWithMetrics(logger *slog.Logger, db *pgxpool.Pool, requestMetrics *metrics.Metrics, authHandlers ...auth.Handler) http.Handler {
 	mux := http.NewServeMux()
 	for _, authHandler := range authHandlers {
 		authHandler.Register(mux)
@@ -38,19 +43,24 @@ func New(logger *slog.Logger, db *pgxpool.Pool, authHandlers ...auth.Handler) ht
 		publisher := notification.Service{DB: db}
 		attendance.Handler{DB: db, Notifications: publisher}.Register(mux, authHandler.RequireAuth, authHandler.RequireAdmin)
 		moderation.Handler{DB: db, Notifications: publisher}.Register(mux, authHandler.RequireAuth, authHandler.RequireAdmin)
-		admin.Handler{DB: db}.Register(mux, authHandler.RequireAdmin)
+		admin.Handler{DB: db, Metrics: requestMetrics}.Register(mux, authHandler.RequireAdmin)
 	}
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
-		if err := db.Ping(r.Context()); err != nil {
+		if db == nil || db.Ping(r.Context()) != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
+			return
+		}
+		var migrationsReady bool
+		if err := db.QueryRow(r.Context(), `SELECT COALESCE(MAX(version_id), 0) >= 11 FROM goose_db_version WHERE is_applied`).Scan(&migrationsReady); err != nil || !migrationsReady {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
-	return secureHeaders(recoverer(logger, requestLogger(logger, requestID(mux))))
+	return secureHeaders(recoverer(logger, requestLogger(logger, requestMetrics, requestID(mux))))
 }
 
 func secureHeaders(next http.Handler) http.Handler {
@@ -102,12 +112,17 @@ func (w *requestIDWriter) Write(body []byte) (int, error) {
 	}
 	return w.ResponseWriter.Write(body)
 }
-func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
+func requestLogger(logger *slog.Logger, requestMetrics *metrics.Metrics, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		rw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rw, r)
-		logger.Info("http request", "request_id", requestIDValue(r.Context()), "method", r.Method, "path", r.URL.Path, "status", rw.status, "duration_ms", time.Since(started).Milliseconds())
+		requestMetrics.Observe(rw.status, time.Since(started))
+		attrs := []any{"request_id", requestIDValue(r.Context()), "method", r.Method, "route", r.URL.Path, "status", rw.status, "duration_ms", time.Since(started).Milliseconds()}
+		if user, ok := auth.UserFromContext(r.Context()); ok {
+			attrs = append(attrs, "user_id", user.ID)
+		}
+		logger.Info("http request", attrs...)
 	})
 }
 func recoverer(logger *slog.Logger, next http.Handler) http.Handler {
@@ -138,7 +153,7 @@ func (w *statusWriter) WriteHeader(status int) {
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
 }
-func writeJSON(w http.ResponseWriter, status int, body map[string]string) {
+func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(body); err != nil {

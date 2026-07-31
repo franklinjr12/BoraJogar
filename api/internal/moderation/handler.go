@@ -7,6 +7,7 @@ import (
 	"github.com/borajogar/borajogar/api/internal/attendance"
 	"github.com/borajogar/borajogar/api/internal/auth"
 	"github.com/borajogar/borajogar/api/internal/notification"
+	"github.com/borajogar/borajogar/api/internal/platform/audit"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"net/http"
@@ -219,6 +220,11 @@ func (h Handler) reviewReport(w http.ResponseWriter, r *http.Request) {
 	}
 	if tag.RowsAffected() == 0 {
 		fail(w, 404, "report_not_found", "Report not found.")
+		return
+	}
+	actor, _ := auth.UserFromContext(r.Context())
+	if err := audit.Record(r.Context(), h.DB, actor.ID, audit.ReportResolved, "report", id, map[string]string{"status": in.Status}); err != nil {
+		http.Error(w, "reports unavailable", 500)
 		return
 	}
 	w.WriteHeader(204)

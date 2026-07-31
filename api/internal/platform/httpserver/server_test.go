@@ -48,3 +48,21 @@ func TestMissingRouteDoesNotPanic(t *testing.T) {
 		t.Fatalf("status = %d", res.Code)
 	}
 }
+
+func TestLiveHealthDoesNotRequireDatabase(t *testing.T) {
+	server := New(slog.Default(), nil)
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/health/live", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d", res.Code)
+	}
+}
+
+func TestReadyHealthFailsWithoutDatabase(t *testing.T) {
+	server := New(slog.Default(), nil)
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
+	if res.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d", res.Code)
+	}
+}

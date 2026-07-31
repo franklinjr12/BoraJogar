@@ -1,5 +1,7 @@
 BEGIN;
 
+DELETE FROM audit_events WHERE id = 'b1000000-0000-0000-0000-000000000001';
+
 -- Fixture IDs are intentionally stable. Remove only rows owned by this seed.
 DELETE FROM reports WHERE id = 'a1000000-0000-0000-0000-000000000001';
 DELETE FROM user_blocks WHERE blocker_user_id IN ('10000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002') AND blocked_user_id = '10000000-0000-0000-0000-000000000004';
@@ -154,5 +156,8 @@ INSERT INTO user_blocks (blocker_user_id, blocked_user_id) VALUES
 
 INSERT INTO reports (id, reporter_user_id, reported_user_id, game_id, category, description, status)
 VALUES ('a1000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000004', '60000000-0000-0000-0000-000000000002', 'other', 'Fixture report for moderation review.', 'open');
+
+INSERT INTO audit_events (id, actor_user_id, action, target_type, target_id, details, created_at)
+VALUES ('b1000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'venue_approved', 'venue', '20000000-0000-0000-0000-000000000101', '{}'::jsonb, '2026-07-30 12:00:00+00');
 
 COMMIT;

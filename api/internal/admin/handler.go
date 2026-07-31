@@ -6,19 +6,44 @@ import (
 	"strings"
 	"time"
 
+	"github.com/borajogar/borajogar/api/internal/auth"
+	"github.com/borajogar/borajogar/api/internal/platform/audit"
+	"github.com/borajogar/borajogar/api/internal/platform/metrics"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Handler struct{ DB *pgxpool.Pool }
+type Handler struct {
+	DB      *pgxpool.Pool
+	Metrics *metrics.Metrics
+}
 
 func (h Handler) Register(mux *http.ServeMux, requireAdmin func(http.Handler) http.Handler) {
 	mux.Handle("/api/v1/admin/dashboard", requireAdmin(http.HandlerFunc(h.dashboard)))
+	mux.Handle("/api/v1/admin/metrics", requireAdmin(http.HandlerFunc(h.metrics)))
 	mux.Handle("/api/v1/admin/users", requireAdmin(http.HandlerFunc(h.users)))
 	mux.Handle("/api/v1/admin/users/", requireAdmin(http.HandlerFunc(h.userAction)))
 	mux.Handle("/api/v1/admin/matchmaking/runs", requireAdmin(http.HandlerFunc(h.runs)))
 	mux.Handle("/api/v1/admin/venues", requireAdmin(http.HandlerFunc(h.venueCollection)))
 	mux.Handle("/api/v1/admin/venues/", requireAdmin(http.HandlerFunc(h.venues)))
+}
+
+func (h Handler) metrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var out struct {
+		metrics.Snapshot
+		ActiveUsers, ProposalCreations, ProposalAcceptances, ConfirmedGames, NotificationFailures, FailedJobs int
+	}
+	err := h.DB.QueryRow(r.Context(), `SELECT (SELECT count(*) FROM sessions WHERE expires_at > now()), (SELECT count(*) FROM match_proposals), (SELECT count(*) FROM proposal_participants WHERE response_status='accepted'), (SELECT count(*) FROM games WHERE status='scheduled'), (SELECT count(*) FROM notification_deliveries WHERE status='failed')`).Scan(&out.ActiveUsers, &out.ProposalCreations, &out.ProposalAcceptances, &out.ConfirmedGames, &out.NotificationFailures)
+	if err != nil {
+		http.Error(w, "metrics unavailable", http.StatusInternalServerError)
+		return
+	}
+	out.Snapshot = h.Metrics.Snapshot()
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h Handler) venueCollection(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +150,14 @@ func (h Handler) userAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 404, "user_not_found", "User not found.")
 		return
 	}
+	actor, _ := auth.UserFromContext(r.Context())
+	action := map[string]string{"disable": audit.UserDisabled, "enable": audit.UserReEnabled}[parts[1]]
+	if action != "" {
+		if err := audit.Record(r.Context(), h.DB, actor.ID, action, "user", id, nil); err != nil {
+			http.Error(w, "user action unavailable", 500)
+			return
+		}
+	}
 	w.WriteHeader(204)
 }
 func (h Handler) runs(w http.ResponseWriter, r *http.Request) {
@@ -173,6 +206,11 @@ func (h Handler) venues(w http.ResponseWriter, r *http.Request) {
 		}
 		if tag.RowsAffected() == 0 {
 			writeError(w, 404, "venue_not_found", "Venue not found.")
+			return
+		}
+		actor, _ := auth.UserFromContext(r.Context())
+		if err := audit.Record(r.Context(), h.DB, actor.ID, audit.VenueRejected, "venue", id, map[string]string{"operation": "disable"}); err != nil {
+			http.Error(w, "venue unavailable", 500)
 			return
 		}
 		w.WriteHeader(204)

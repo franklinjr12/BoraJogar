@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/borajogar/borajogar/api/internal/platform/audit"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -274,6 +275,10 @@ func (h Handler) adminInvitations(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to create invitation", http.StatusInternalServerError)
 			return
 		}
+		if err := audit.Record(r.Context(), h.DB, admin.ID, audit.InvitationCreated, "invitation", id, nil); err != nil {
+			http.Error(w, "failed to create invitation", http.StatusInternalServerError)
+			return
+		}
 		writeJSON(w, http.StatusCreated, map[string]any{"id": id, "code": code})
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -291,13 +296,19 @@ func (h Handler) adminInvitationAction(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	admin, _ := UserFromContext(r.Context())
 	_, err = h.DB.Exec(r.Context(), `UPDATE invitations SET disabled_at = now() WHERE id = $1`, id)
 	if err != nil {
 		http.Error(w, "failed to disable invitation", http.StatusInternalServerError)
 		return
 	}
+	if err := audit.Record(r.Context(), h.DB, admin.ID, audit.InvitationDisabled, "invitation", id, nil); err != nil {
+		http.Error(w, "failed to disable invitation", http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
 func (h Handler) authError(w http.ResponseWriter, r *http.Request, message string) {
 	target := url.URL{Path: "/login", RawQuery: url.Values{"error": {message}}.Encode()}
 	http.Redirect(w, r, target.String(), http.StatusFound)
