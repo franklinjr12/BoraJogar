@@ -180,6 +180,39 @@ paths:
       summary: Mark all notifications as read
       security: [{ cookieAuth: [] }]
       responses: { '204': { description: Marked as read } }
+  /api/v1/games/{gameId}/attendance:
+    get:
+      summary: View private game attendance
+      security: [{ cookieAuth: [] }]
+      parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Attendance }, '403': { $ref: '#/components/responses/Forbidden' } }
+    put:
+      summary: Record player attendance
+      security: [{ cookieAuth: [] }]
+      parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttendanceInput' } } } }
+      responses: { '204': { description: Recorded }, '403': { $ref: '#/components/responses/Forbidden' }, '422': { $ref: '#/components/responses/ValidationError' } }
+  /api/v1/me/reliability:
+    get: { summary: Get private reliability summary, security: [{ cookieAuth: [] }], responses: { '200': { $ref: '#/components/responses/Reliability' } } }
+  /api/v1/users/{userId}/block:
+    post: { summary: Privately block user, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: userId, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Blocked }, '404': { description: User unavailable } } }
+    delete: { summary: Remove private block, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: userId, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Unblocked } } }
+  /api/v1/me/blocked-users:
+    get: { summary: List private blocks, security: [{ cookieAuth: [] }], responses: { '200': { description: Blocked users } } }
+  /api/v1/reports:
+    post: { summary: File safety report, security: [{ cookieAuth: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ReportInput' } } } }, responses: { '201': { description: Report filed }, '422': { $ref: '#/components/responses/ValidationError' } } }
+  /api/v1/reports/{reportId}:
+    get: { summary: View own report, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: reportId, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Report }, '404': { description: Report unavailable } } }
+  /api/v1/me/delete:
+    post: { summary: Request account deletion, security: [{ cookieAuth: [] }], responses: { '204': { description: Account deleted and sessions revoked } } }
+  /api/v1/admin/dashboard:
+    get: { summary: Private beta dashboard, security: [{ cookieAuth: [] }], responses: { '200': { description: Dashboard }, '403': { $ref: '#/components/responses/Forbidden' } } }
+  /api/v1/admin/users:
+    get: { summary: Search users, security: [{ cookieAuth: [] }], parameters: [{ in: query, name: q, schema: { type: string } }], responses: { '200': { description: Users }, '403': { $ref: '#/components/responses/Forbidden' } } }
+  /api/v1/admin/matchmaking/runs:
+    get: { summary: Inspect matchmaking runs, security: [{ cookieAuth: [] }], responses: { '200': { description: Runs }, '403': { $ref: '#/components/responses/Forbidden' } } }
+  /api/v1/admin/reports:
+    get: { summary: Review reports, security: [{ cookieAuth: [] }], responses: { '200': { description: Reports }, '403': { $ref: '#/components/responses/Forbidden' } } }
 components:
   securitySchemes:
     cookieAuth: { type: apiKey, in: cookie, name: borajogar_session }
@@ -279,6 +312,31 @@ components:
     GameCancellation:
       type: object
       properties: { reason: { type: string, maxLength: 500, nullable: true } }
+    AttendanceInput:
+      type: object
+      required: [userId, status]
+      properties:
+        userId: { type: string, format: uuid }
+        status: { type: string, enum: [unknown, attended, no_show] }
+    ReportInput:
+      type: object
+      required: [category, description]
+      properties:
+        reportedUserId: { type: string, format: uuid, nullable: true }
+        gameId: { type: string, format: uuid, nullable: true }
+        category: { type: string, enum: [harassment, unsafe_behavior, repeated_no_show, false_profile, inappropriate_content, other] }
+        description: { type: string, minLength: 1, maxLength: 2000 }
+        blockReportedUser: { type: boolean }
+    Reliability:
+      type: object
+      properties:
+        gamesConfirmed: { type: integer }
+        gamesAttended: { type: integer }
+        earlyCancellations: { type: integer }
+        lateCancellations: { type: integer }
+        noShows: { type: integer }
+        sufficientHistory: { type: boolean }
+        matchmakingValue: { type: number, format: double }
     Notification:
       type: object
       required: [id, userId, type, title, body, payload, createdAt]
@@ -298,6 +356,7 @@ components:
     CurrentUser: { description: Current authenticated user }
     Profile: { description: Player profile }
     PublicProfile: { description: Limited player profile }
+    Reliability: { description: Private reliability summary, content: { application/json: { schema: { $ref: '#/components/schemas/Reliability' } } } }
     OnboardingProgress: { description: Onboarding progress }
     Notifications:
       description: Notification page

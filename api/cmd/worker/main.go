@@ -8,8 +8,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/borajogar/borajogar/api/internal/attendance"
 	"github.com/borajogar/borajogar/api/internal/auth"
 	"github.com/borajogar/borajogar/api/internal/availability"
+	"github.com/borajogar/borajogar/api/internal/notification"
 	"github.com/borajogar/borajogar/api/internal/platform/config"
 	"github.com/borajogar/borajogar/api/internal/platform/database"
 )
@@ -39,6 +41,17 @@ func main() {
 		logger.Info("expired sessions cleaned", "deleted", deleted)
 	}
 	cleanup()
+	completeGames := func() {
+		completed, completeErr := attendance.CompleteFinishedGames(ctx, db, notification.Service{DB: db}, time.Now().UTC(), 15*time.Minute)
+		if completeErr != nil {
+			logger.Error("finished game completion failed", "error", completeErr)
+			return
+		}
+		if completed > 0 {
+			logger.Info("finished games completed", "count", completed)
+		}
+	}
+	completeGames()
 	if err := availability.ExpandFuture(ctx, db, time.Now().UTC()); err != nil {
 		logger.Error("availability expansion failed", "error", err)
 	}
@@ -50,6 +63,7 @@ func main() {
 			return
 		case <-ticker.C:
 			cleanup()
+			completeGames()
 			if err := availability.ExpandFuture(ctx, db, time.Now().UTC()); err != nil {
 				logger.Error("availability expansion failed", "error", err)
 			}

@@ -371,9 +371,9 @@ func (h Handler) join(w http.ResponseWriter, r *http.Request, id, userID uuid.UU
 	var starts time.Time
 	var ends time.Time
 	var cap int
-	var min, max, status string
+	var min, max, status, visibility string
 	var creator uuid.UUID
-	if err = tx.QueryRow(r.Context(), `SELECT starts_at,ends_at,capacity,minimum_skill_level,maximum_skill_level,status,created_by_user_id FROM games WHERE id=$1 FOR UPDATE`, id).Scan(&starts, &ends, &cap, &min, &max, &status, &creator); errors.Is(err, pgx.ErrNoRows) {
+	if err = tx.QueryRow(r.Context(), `SELECT starts_at,ends_at,capacity,minimum_skill_level,maximum_skill_level,status,created_by_user_id,visibility FROM games WHERE id=$1 FOR UPDATE`, id).Scan(&starts, &ends, &cap, &min, &max, &status, &creator, &visibility); errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, 404, "game_not_found", "Game not found.")
 		return
 	} else if err != nil {
@@ -383,6 +383,17 @@ func (h Handler) join(w http.ResponseWriter, r *http.Request, id, userID uuid.UU
 	if status != "scheduled" || !starts.After(h.now()) {
 		writeError(w, 409, "game_not_joinable", "Game is not open for joining.")
 		return
+	}
+	if visibility != "public" {
+		var blocked bool
+		if err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM game_players gp JOIN user_blocks ub ON (ub.blocker_user_id=gp.user_id AND ub.blocked_user_id=$2) OR (ub.blocker_user_id=$2 AND ub.blocked_user_id=gp.user_id WHERE gp.game_id=$1 AND gp.status='confirmed')`, id, userID).Scan(&blocked); err != nil {
+			http.Error(w, "game unavailable", 500)
+			return
+		}
+		if blocked {
+			writeError(w, 403, "blocked_user", "You cannot join this game.")
+			return
+		}
 	}
 	var skill string
 	if err = tx.QueryRow(r.Context(), `SELECT skill_level FROM player_profiles WHERE user_id=$1`, userID).Scan(&skill); err != nil {
@@ -518,7 +529,7 @@ func (h Handler) leave(w http.ResponseWriter, r *http.Request, id, userID uuid.U
 		writeError(w, 409, "not_confirmed", "You are not confirmed in this game.")
 		return
 	}
-	if _, err = tx.Exec(r.Context(), `UPDATE game_players SET status='cancelled',cancelled_at=now() WHERE game_id=$1 AND user_id=$2`, id, userID); err != nil {
+	if _, err = tx.Exec(r.Context(), `UPDATE game_players gp SET status='cancelled',cancelled_at=now(),cancellation_type=CASE WHEN g.starts_at <= now() THEN 'no_show' WHEN g.starts_at-now() < interval '6 hours' THEN 'late' ELSE 'early' END,cancellation_threshold_minutes=360 FROM games g WHERE gp.game_id=g.id AND gp.game_id=$1 AND gp.user_id=$2`, id, userID); err != nil {
 		http.Error(w, "game unavailable", 500)
 		return
 	}
@@ -590,7 +601,7 @@ func (h Handler) cancel(w http.ResponseWriter, r *http.Request, id, userID uuid.
 		writeError(w, 422, "invalid_cancellation", "Cancellation input is invalid.")
 		return
 	}
-	tag, err := h.DB.Exec(r.Context(), `UPDATE games SET status='cancelled',cancelled_at=now(),cancellation_reason=$1,updated_at=now() WHERE id=$2 AND status='scheduled' AND (created_by_user_id=$3 OR EXISTS (SELECT 1 FROM users WHERE id=$3 AND is_admin=true))`, nullableString(in.Reason), id, userID)
+	tag, err := h.DB.Exec(r.Context(), `UPDATE games SET status='cancelled',cancelled_at=now(),cancellation_threshold_minutes=360,cancellation_reason=$1,updated_at=now() WHERE id=$2 AND status='scheduled' AND (created_by_user_id=$3 OR EXISTS (SELECT 1 FROM users WHERE id=$3 AND is_admin=true))`, nullableString(in.Reason), id, userID)
 	if err != nil {
 		http.Error(w, "game unavailable", 500)
 		return

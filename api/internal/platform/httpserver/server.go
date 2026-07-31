@@ -9,10 +9,13 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/borajogar/borajogar/api/internal/admin"
+	"github.com/borajogar/borajogar/api/internal/attendance"
 	"github.com/borajogar/borajogar/api/internal/auth"
 	"github.com/borajogar/borajogar/api/internal/availability"
 	"github.com/borajogar/borajogar/api/internal/game"
 	"github.com/borajogar/borajogar/api/internal/location"
+	"github.com/borajogar/borajogar/api/internal/moderation"
 	"github.com/borajogar/borajogar/api/internal/notification"
 	"github.com/borajogar/borajogar/api/internal/profile"
 	"github.com/google/uuid"
@@ -32,6 +35,10 @@ func New(logger *slog.Logger, db *pgxpool.Pool, authHandlers ...auth.Handler) ht
 		availability.Handler{DB: db}.Register(mux, authHandler.RequireAuth)
 		game.Handler{DB: db}.Register(mux, authHandler.RequireAuth)
 		notification.Service{DB: db}.Register(mux, authHandler.RequireAuth)
+		publisher := notification.Service{DB: db}
+		attendance.Handler{DB: db, Notifications: publisher}.Register(mux, authHandler.RequireAuth, authHandler.RequireAdmin)
+		moderation.Handler{DB: db, Notifications: publisher}.Register(mux, authHandler.RequireAuth, authHandler.RequireAdmin)
+		admin.Handler{DB: db}.Register(mux, authHandler.RequireAdmin)
 	}
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -43,7 +50,19 @@ func New(logger *slog.Logger, db *pgxpool.Pool, authHandlers ...auth.Handler) ht
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
-	return recoverer(logger, requestLogger(logger, requestID(mux)))
+	return secureHeaders(recoverer(logger, requestLogger(logger, requestID(mux))))
+}
+
+func secureHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "same-origin")
+		if r.Body != nil && r.Method != http.MethodGet && r.Method != http.MethodHead {
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func requestID(next http.Handler) http.Handler {

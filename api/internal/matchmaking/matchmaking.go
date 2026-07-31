@@ -23,6 +23,15 @@ type Player struct {
 	OnboardingCompleted  bool
 	ActiveForMatchmaking bool
 	SkillRank            int
+	BlockedUserIDs       map[uuid.UUID]bool
+}
+
+// Compatible rejects hard safety filters before scoring.
+func Compatible(a, b Player) bool {
+	if !a.Active || !b.Active || !a.OnboardingCompleted || !b.OnboardingCompleted || !a.ActiveForMatchmaking || !b.ActiveForMatchmaking {
+		return false
+	}
+	return !a.BlockedUserIDs[b.ID] && !b.BlockedUserIDs[a.ID]
 }
 
 type CandidateSlot struct {
@@ -58,6 +67,16 @@ func GenerateCandidateSlots(occurrences []Occurrence, players map[uuid.UUID]Play
 			if !candidate.Before(occurrence.StartsAt) && !end.After(occurrence.EndsAt) {
 				if starts[candidate] == nil {
 					starts[candidate] = map[uuid.UUID]bool{}
+				}
+				compatible := true
+				for existing := range starts[candidate] {
+					if !Compatible(player, players[existing]) {
+						compatible = false
+						break
+					}
+				}
+				if !compatible {
+					continue
 				}
 				starts[candidate][occurrence.UserID] = true
 			}
