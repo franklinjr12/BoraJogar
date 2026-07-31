@@ -1579,4 +1579,4 @@ Test coverage is a required deliverable, not a final optional cleanup step. Re-o
 
 ## 23.2 Seed data update
 
-After every creation or update of tables also update the seed file `api\cmd\tools\seed-local\seed.sql` so that the app is easily testable locally.
+After every creation or update of tables (including migrations, indexes, constraints, and relationship tables), MUST update `api\cmd\tools\seed-local\seed.sql` in same change. Seed MUST include cleanup for owned fixture rows plus representative inserts satisfying new schema/relationships. Verify seed ordering respects foreign keys and run it against migrated local DB when practical. Never leave migration and seed changes for later.

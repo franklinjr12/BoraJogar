@@ -44,7 +44,7 @@ Use `make generate` after changing SQL. Generated sqlc output lives in `api/gene
 
 ## Configuration
 
-Copy `.env.example` to `.env`. Server startup requires `APP_PORT`, `DATABASE_URL`, and a `SESSION_SECRET` with at least 32 characters. Development service defaults are documented in `.env.example`.
+Copy `.env.example` to `.env`. Server startup requires `APP_PORT`, `DATABASE_URL`, and a `SESSION_SECRET` with at least 32 characters. Matchmaking defaults (`MATCH_*`) control lookahead, slot generation, notice, proposal limits, and scoring windows; keep them explicit per environment.
 
 ## Database reset and migration rollback
 

@@ -1,6 +1,9 @@
 BEGIN;
 
 -- Fixture IDs are intentionally stable. Remove only rows owned by this seed.
+DELETE FROM proposal_participants WHERE proposal_id IN ('90000000-0000-0000-0000-000000000001');
+DELETE FROM match_proposals WHERE id IN ('90000000-0000-0000-0000-000000000001');
+DELETE FROM matchmaking_runs WHERE id IN ('80000000-0000-0000-0000-000000000001');
 DELETE FROM game_waitlist WHERE game_id IN ('60000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000002', '60000000-0000-0000-0000-000000000003');
 DELETE FROM game_invitations WHERE game_id IN ('60000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000002', '60000000-0000-0000-0000-000000000003');
 DELETE FROM game_players WHERE game_id IN ('60000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000002', '60000000-0000-0000-0000-000000000003');
@@ -111,5 +114,18 @@ INSERT INTO game_invitations (id, game_id, invited_user_id, invited_email, invit
 INSERT INTO game_waitlist (game_id, user_id, position) VALUES
  ('60000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000004', 1),
  ('60000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000003', 1);
+
+INSERT INTO matchmaking_runs (id, started_at, completed_at, status, candidate_slot_count, proposal_count, configuration_snapshot)
+VALUES ('80000000-0000-0000-0000-000000000001', '2026-07-30 12:00:00+00', '2026-07-30 12:00:05+00', 'completed', 4, 1,
+        '{"lookaheadDays":14,"durationMinutes":90,"playerCount":3,"slotIncrementMinutes":30,"maxSkillDifference":1,"minimumNoticeMinutes":720}'::jsonb);
+
+INSERT INTO match_proposals (id, matchmaking_run_id, starts_at, ends_at, venue_id, required_player_count, status, expires_at, score_summary)
+VALUES ('90000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000001', '2026-08-08 12:00:00+00', '2026-08-08 13:30:00+00', '20000000-0000-0000-0000-000000000101', 3, 'pending', '2026-08-08 20:00:00+00',
+        '{"total":275,"timeOverlap":90,"venuePreference":80,"distance":70,"skillBalance":35,"reliability":0}'::jsonb);
+
+INSERT INTO proposal_participants (proposal_id, user_id, response_status) VALUES
+ ('90000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'pending'),
+ ('90000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 'pending'),
+ ('90000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000003', 'pending');
 
 COMMIT;
