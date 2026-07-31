@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, Route, Routes, useParams, useSearchParams } from 'react-router-dom';
-import { profileApi, type PlayingStyle, type Profile, type SkillLevel } from '../api/client';
+import { authApi, profileApi, type PlayingStyle, type Profile, type SkillLevel } from '../api/client';
 import { LocationsPage } from '../features/locations/LocationsPage';
 import { AvailabilityPage } from '../features/availability/AvailabilityPage';
 import { CreateGamePage, GameDetailsPage, GamesPage } from '../features/games/GamesPage';
@@ -95,27 +95,97 @@ function Login() {
   const [params] = useSearchParams();
   const invitation = params.get('invite');
   const error = params.get('error');
+  const [mode, setMode] = useState<'signup' | 'login'>('signup');
+  const [formError, setFormError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const url = new URL('/api/v1/auth/google', window.location.origin);
   if (invitation) url.searchParams.set('invitation', invitation);
+  const submitEmail = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setFormError('');
+    setSubmitting(true);
+    const form = new FormData(event.currentTarget);
+    try {
+      const result =
+        mode === 'signup'
+          ? await authApi.emailSignup({
+              email: String(form.get('email')),
+              password: String(form.get('password')),
+              displayName: String(form.get('displayName')),
+            })
+          : await authApi.emailLogin({
+              email: String(form.get('email')),
+              password: String(form.get('password')),
+            });
+      window.location.assign(result.redirectTo);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Could not sign in.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
   return (
     <main className="shell">
       <Link className="text-link" to="/">
-        ← Home
+        Home
       </Link>
-      <p className="eyebrow">Private beta</p>
+      <p className="eyebrow">Player access</p>
       <h1>Sign in to play.</h1>
-      <p className="lead">Invite-only while we build the first local community.</p>
+      <p className="lead">Use email and password, or continue with Google.</p>
       {error && (
         <p className="error" role="alert">
           {error}
         </p>
       )}
+      {formError && (
+        <p className="error" role="alert">
+          {formError}
+        </p>
+      )}
+      <div className="actions">
+        <button
+          className={mode === 'signup' ? 'button' : 'text-button'}
+          type="button"
+          onClick={() => setMode('signup')}
+        >
+          Create account
+        </button>
+        <button
+          className={mode === 'login' ? 'button' : 'text-button'}
+          type="button"
+          onClick={() => setMode('login')}
+        >
+          Sign in
+        </button>
+      </div>
+      <form className="card" onSubmit={submitEmail}>
+        {mode === 'signup' && (
+          <label>
+            Display name
+            <input name="displayName" autoComplete="name" />
+          </label>
+        )}
+        <label>
+          Email
+          <input name="email" type="email" autoComplete="email" required />
+        </label>
+        <label>
+          Password
+          <input
+            name="password"
+            type="password"
+            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+            required
+          />
+        </label>
+        <button className="button" type="submit" disabled={submitting}>
+          {submitting ? 'Working...' : mode === 'signup' ? 'Create account' : 'Sign in'}
+        </button>
+      </form>
       <a className="button" href={url.toString()}>
         Continue with Google
       </a>
-      <p className="hint">
-        {invitation ? 'Invitation code ready.' : 'Open an invitation link to create an account.'}
-      </p>
+      {invitation && <p className="hint">Invitation code ready for Google sign-in.</p>}
     </main>
   );
 }

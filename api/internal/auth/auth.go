@@ -23,6 +23,8 @@ const sessionCookie = "borajogar_session"
 const stateCookie = "borajogar_oauth_state"
 
 var ErrInvalidInvitation = errors.New("invalid invitation")
+var ErrDuplicateEmail = errors.New("duplicate email")
+var ErrInvalidCredentials = errors.New("invalid credentials")
 
 type User struct {
 	ID                 uuid.UUID

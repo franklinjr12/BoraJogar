@@ -19,6 +19,21 @@ paths:
     get:
       summary: Complete Google OAuth login
       responses: { '302': { description: Redirect to application } }
+  /api/v1/auth/email/signup:
+    post:
+      summary: Create an account with email and password
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EmailSignupInput' } } } }
+      responses:
+        '200': { $ref: '#/components/responses/AuthResult' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/auth/email/login:
+    post:
+      summary: Sign in with email and password
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EmailLoginInput' } } } }
+      responses:
+        '200': { $ref: '#/components/responses/AuthResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/v1/auth/logout:
     post:
       summary: End current session
@@ -228,6 +243,24 @@ components:
   securitySchemes:
     cookieAuth: { type: apiKey, in: cookie, name: borajogar_session }
   schemas:
+    EmailSignupInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string }
+        password: { type: string }
+        displayName: { type: string, nullable: true }
+    EmailLoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string }
+        password: { type: string }
+    AuthResult:
+      type: object
+      required: [redirectTo]
+      properties:
+        redirectTo: { type: string }
     ProfileInput:
       type: object
       required: [displayName, timeZone, skillLevel, styles, preferredGameDurationMinutes, minimumNoticeMinutes]
@@ -411,6 +444,8 @@ components:
   responses:
     Unauthorized: { description: Authentication required, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
     Forbidden: { description: Administrator access required, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+    Conflict: { description: Request conflicts with existing state, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+    AuthResult: { description: Authenticated session and redirect target, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResult' } } } }
     CurrentUser: { description: Current authenticated user }
     Profile: { description: Player profile }
     PublicProfile: { description: Limited player profile }

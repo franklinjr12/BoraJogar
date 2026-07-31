@@ -14,7 +14,9 @@ import (
 	"github.com/borajogar/borajogar/api/internal/platform/audit"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Handler struct {
@@ -70,10 +72,57 @@ func (h Handler) now() time.Time {
 func (h Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/auth/google", h.startGoogle)
 	mux.HandleFunc("GET /api/v1/auth/google/callback", h.googleCallback)
+	mux.HandleFunc("POST /api/v1/auth/email/signup", h.emailSignup)
+	mux.HandleFunc("POST /api/v1/auth/email/login", h.emailLogin)
 	mux.HandleFunc("POST /api/v1/auth/logout", h.logout)
 	mux.HandleFunc("GET /api/v1/me", h.currentUser)
 	mux.Handle("/api/v1/admin/invitations", h.RequireAdmin(http.HandlerFunc(h.adminInvitations)))
 	mux.Handle("/api/v1/admin/invitations/", h.RequireAdmin(http.HandlerFunc(h.adminInvitationAction)))
+}
+
+type emailAuthInput struct {
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+	DisplayName string `json:"displayName"`
+}
+
+func (h Handler) emailSignup(w http.ResponseWriter, r *http.Request) {
+	var input emailAuthInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Sign-up details are invalid.")
+		return
+	}
+	user, err := h.createEmailUser(r.Context(), input)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrDuplicateEmail):
+			writeError(w, http.StatusConflict, "email_already_registered", "Email is already registered.")
+		case errors.Is(err, ErrInvalidCredentials):
+			writeError(w, http.StatusUnprocessableEntity, "invalid_credentials", "Email and password are required.")
+		default:
+			http.Error(w, "authentication unavailable", http.StatusInternalServerError)
+		}
+		return
+	}
+	h.startSession(w, r, user)
+}
+
+func (h Handler) emailLogin(w http.ResponseWriter, r *http.Request) {
+	var input emailAuthInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Login details are invalid.")
+		return
+	}
+	user, err := h.authenticateEmailUser(r.Context(), input.Email, input.Password)
+	if err != nil {
+		if errors.Is(err, ErrInvalidCredentials) {
+			writeError(w, http.StatusUnauthorized, "invalid_credentials", "Email or password is incorrect.")
+			return
+		}
+		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
+		return
+	}
+	h.startSession(w, r, user)
 }
 
 func (h Handler) startGoogle(w http.ResponseWriter, r *http.Request) {
@@ -128,12 +177,8 @@ func (h Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: stateCookie, Value: "", Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	http.SetCookie(w, &http.Cookie{Name: "borajogar_invitation", Value: "", Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: -1})
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: 60 * 60 * 24 * 30})
-	redirect := "/home"
-	if !user.OnboardingComplete {
-		redirect = "/onboarding"
-	}
-	http.Redirect(w, r, redirect, http.StatusFound)
+	h.setSessionCookie(w, token)
+	http.Redirect(w, r, postAuthRedirect(user), http.StatusFound)
 }
 
 func (h Handler) upsertUser(ctx context.Context, profile GoogleProfile, invitationCode string) (User, error) {
@@ -174,6 +219,77 @@ func (h Handler) upsertUser(ctx context.Context, profile GoogleProfile, invitati
 		return User{}, err
 	}
 	return user, tx.Commit(ctx)
+}
+
+func (h Handler) createEmailUser(ctx context.Context, input emailAuthInput) (User, error) {
+	email := strings.ToLower(strings.TrimSpace(input.Email))
+	password := input.Password
+	displayName := strings.TrimSpace(input.DisplayName)
+	if email == "" || password == "" {
+		return User{}, ErrInvalidCredentials
+	}
+	if displayName == "" {
+		displayName = strings.Split(email, "@")[0]
+	}
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return User{}, err
+	}
+	user := User{ID: uuid.New(), Email: email, DisplayName: displayName, TimeZone: "UTC", IsAdmin: h.isAdminEmail(email)}
+	err = h.DB.QueryRow(ctx, `INSERT INTO users (id, google_subject, email, display_name, password_hash, is_admin) VALUES ($1, NULL, $2, $3, $4, $5) RETURNING id, display_name, email, avatar_url, time_zone, onboarding_completed, is_admin`, user.ID, user.Email, user.DisplayName, string(passwordHash), user.IsAdmin).Scan(&user.ID, &user.DisplayName, &user.Email, &user.AvatarURL, &user.TimeZone, &user.OnboardingComplete, &user.IsAdmin)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return User{}, ErrDuplicateEmail
+		}
+		return User{}, err
+	}
+	return user, nil
+}
+
+func (h Handler) authenticateEmailUser(ctx context.Context, email, password string) (User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" || password == "" {
+		return User{}, ErrInvalidCredentials
+	}
+	var user User
+	var passwordHash string
+	err := h.DB.QueryRow(ctx, `SELECT id, display_name, email, avatar_url, time_zone, onboarding_completed, is_admin, password_hash FROM users WHERE lower(email) = lower($1) AND password_hash IS NOT NULL AND status = 'active' AND deleted_at IS NULL`, email).Scan(&user.ID, &user.DisplayName, &user.Email, &user.AvatarURL, &user.TimeZone, &user.OnboardingComplete, &user.IsAdmin, &passwordHash)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrInvalidCredentials
+		}
+		return User{}, err
+	}
+	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) != nil {
+		return User{}, ErrInvalidCredentials
+	}
+	return user, nil
+}
+
+func (h Handler) startSession(w http.ResponseWriter, r *http.Request, user User) {
+	token, err := randomToken()
+	if err != nil {
+		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
+		return
+	}
+	if err := h.createSession(r.Context(), token, user.ID, r); err != nil {
+		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
+		return
+	}
+	h.setSessionCookie(w, token)
+	writeJSON(w, http.StatusOK, map[string]string{"redirectTo": postAuthRedirect(user)})
+}
+
+func (h Handler) setSessionCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: 60 * 60 * 24 * 30})
+}
+
+func postAuthRedirect(user User) string {
+	if !user.OnboardingComplete {
+		return "/onboarding"
+	}
+	return "/dashboard"
 }
 
 func nullable(value string) *string {

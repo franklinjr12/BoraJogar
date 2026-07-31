@@ -46,6 +46,8 @@ npm --prefix web exec playwright install chromium
 
 After migrations, run `make seed` to load repeatable local users, profiles, venues, availability, games, invitations, and waitlists. Seed accounts use `@borajogar.local` addresses; the seed does not create real Google sessions.
 
+For local multi-user browser testing without Google OAuth, open `/login` in separate browser profiles and create email/password accounts. To test seeded users directly after `make seed`, set the `borajogar_session` cookie to `seed-session-ana`, `seed-session-bruno`, or `seed-session-carla`.
+
 `make test-e2e` resets `borajogar_e2e`, applies migrations, runs the shared local seed, then starts the real Go API and Vite web app. Seeded browser sessions use `borajogar_session=seed-session-ana` and `borajogar_session=seed-session-carla`.
 
 Use `make generate` after changing SQL. Generated sqlc output lives in `api/generated/` and must not be edited manually.

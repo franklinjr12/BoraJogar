@@ -153,6 +153,10 @@ export interface ApiErrorPayload {
   fields: Record<string, string>;
 }
 
+export interface AuthResult {
+  redirectTo: string;
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -225,6 +229,19 @@ export const profileApi = {
       body: JSON.stringify({ currentStep, completedSteps }),
     }),
   complete: () => request<void>('/api/v1/me/onboarding/complete', { method: 'POST' }),
+};
+
+export const authApi = {
+  emailSignup: (input: { email: string; password: string; displayName?: string }) =>
+    request<AuthResult>('/api/v1/auth/email/signup', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  emailLogin: (input: { email: string; password: string }) =>
+    request<AuthResult>('/api/v1/auth/email/login', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 };
 
 export const userApi = {
