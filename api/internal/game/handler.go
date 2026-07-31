@@ -28,6 +28,9 @@ type gameSummary struct {
 	EndsAt            time.Time `json:"endsAt"`
 	VenueID           string    `json:"venueId"`
 	VenueName         string    `json:"venueName"`
+	AddressLabel      *string   `json:"addressLabel,omitempty"`
+	Latitude          float64   `json:"latitude"`
+	Longitude         float64   `json:"longitude"`
 	Capacity          int       `json:"capacity"`
 	ConfirmedPlayers  int       `json:"confirmedPlayers"`
 	OpenSlots         int       `json:"openSlots"`
@@ -35,6 +38,8 @@ type gameSummary struct {
 	MaximumSkillLevel string    `json:"maximumSkillLevel"`
 	Visibility        string    `json:"visibility"`
 	Status            string    `json:"status"`
+	CurrentUserStatus string    `json:"currentUserStatus,omitempty"`
+	CurrentUserRole   string    `json:"currentUserRole,omitempty"`
 }
 type gameDetails struct {
 	gameSummary
@@ -91,6 +96,10 @@ func (h Handler) gameByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(parts[0])
 	if err != nil {
 		writeError(w, 404, "game_not_found", "Game not found.")
+		return
+	}
+	if len(parts) > 1 && parts[1] == "calendar.ics" && r.Method == http.MethodGet {
+		h.calendar(w, r, id, u.ID)
 		return
 	}
 	if len(parts) > 1 && r.Method != http.MethodPost && r.Method != http.MethodDelete {
@@ -232,7 +241,11 @@ func nullableString(v *string) *string {
 }
 
 func (h Handler) list(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
-	rows, err := h.DB.Query(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.status='scheduled' AND g.ends_at > now() AND (g.visibility='public' OR g.created_by_user_id=$1 OR EXISTS (SELECT 1 FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1 AND gp.status='confirmed')) ORDER BY g.starts_at`, userID)
+	statusClause := "g.status = 'scheduled'"
+	if r.URL.Query().Get("includeCancelled") == "true" {
+		statusClause = "g.status IN ('scheduled', 'cancelled')"
+	}
+	rows, err := h.DB.Query(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),''),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE `+statusClause+` AND g.ends_at > now() AND (g.visibility='public' OR g.created_by_user_id=$1 OR EXISTS (SELECT 1 FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1 AND gp.status='confirmed')) ORDER BY g.starts_at`, userID)
 	if err != nil {
 		http.Error(w, "game unavailable", 500)
 		return
@@ -241,7 +254,7 @@ func (h Handler) list(w http.ResponseWriter, r *http.Request, userID uuid.UUID) 
 	out := []gameSummary{}
 	for rows.Next() {
 		var x gameSummary
-		if err = rows.Scan(&x.ID, &x.Title, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.Capacity, &x.ConfirmedPlayers, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status); err != nil {
+		if err = rows.Scan(&x.ID, &x.Title, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.CurrentUserStatus, &x.CurrentUserRole); err != nil {
 			http.Error(w, "game unavailable", 500)
 			return
 		}
@@ -249,6 +262,29 @@ func (h Handler) list(w http.ResponseWriter, r *http.Request, userID uuid.UUID) 
 		out = append(out, x)
 	}
 	writeJSON(w, 200, out)
+}
+
+func (h Handler) calendar(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
+	x, err := h.readDetails(r, id, userID)
+	if errors.Is(err, ErrNotFound) || (err == nil && !h.canAccessCalendar(r, x)) {
+		writeError(w, http.StatusNotFound, "game_not_found", "Game not found.")
+		return
+	}
+	if err != nil {
+		http.Error(w, "game unavailable", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="borajogar-`+x.ID+`.ics"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(buildICS(x, r)))
+}
+
+func (h Handler) canAccessCalendar(r *http.Request, x gameDetails) bool {
+	if x.Visibility == "public" || x.IsMember || x.CurrentUserRole == "organizer" {
+		return true
+	}
+	return x.Visibility == "link-only" && r.URL.Query().Get("access") != "" && hashToken(r.URL.Query().Get("access")) == x.shareTokenHash
 }
 func (h Handler) details(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
 	x, err := h.readDetails(r, id, userID)
@@ -275,7 +311,7 @@ func (h Handler) details(w http.ResponseWriter, r *http.Request, id, userID uuid
 }
 func (h Handler) readDetails(r *http.Request, id, userID uuid.UUID) (gameDetails, error) {
 	var x gameDetails
-	err := h.DB.QueryRow(r.Context(), `SELECT g.id,g.title,g.description,g.starts_at,g.ends_at,g.venue_id,v.name,g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE(g.share_token_hash,'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.id=$1`, id).Scan(&x.ID, &x.Title, &x.Description, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.Capacity, &x.ConfirmedPlayers, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.shareTokenHash)
+	err := h.DB.QueryRow(r.Context(), `SELECT g.id,g.title,g.description,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE(g.share_token_hash,'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.id=$1`, id).Scan(&x.ID, &x.Title, &x.Description, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.shareTokenHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return x, ErrNotFound
 	}

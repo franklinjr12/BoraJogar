@@ -90,6 +90,7 @@ progress { width: 100%; accent-color: #0b6b68; }
   line-height: 1.6;
 }
 .game-list { display: grid; gap: 1rem; }
+.dashboard-section { margin-top: 2rem; }
 .game-card { color: inherit; text-decoration: none; }
 .game-card h2 { color: #102f31; }
 .error {
@@ -99,6 +100,19 @@ progress { width: 100%; accent-color: #0b6b68; }
 .hint {
   color: #476566;
 }
+.calendar-toolbar { display: flex; justify-content: space-between; align-items: end; gap: 1rem; margin: 1rem 0 2rem; }
+.calendar-toolbar [role="group"] { display: flex; gap: .5rem; }
+.view-button { border: 1px solid #b8d0c9; border-radius: .7rem; padding: .65rem .9rem; color: #173b3b; background: white; }
+.view-button.selected { border-color: #0b6b68; color: white; background: #0b6b68; }
+.filter-label { min-width: 11rem; margin: 0; }
+.calendar-list, .month-grid { display: grid; gap: 1rem; }
+.calendar-card h2 { margin-bottom: .5rem; }
+.calendar-card h2 a { color: #102f31; }
+.calendar-card p { margin: .4rem 0; }
+.calendar-card.compact { border-top: 1px solid #dbe4df; padding: .8rem 0; }
+.calendar-card.compact:first-of-type { border-top: 0; }
+.calendar-links { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+@media (max-width: 480px) { .calendar-toolbar { align-items: stretch; flex-direction: column; } .filter-label { min-width: 0; } }
 @media (max-width: 480px) {
   .shell {
     padding-top: 8vh;

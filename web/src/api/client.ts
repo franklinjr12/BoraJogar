@@ -27,7 +27,7 @@ export interface AvailabilityException { id: string; date: string; type: 'unavai
 export interface AvailabilityOccurrence { startsAt: string; endsAt: string; sourceType: string; sourceId: string; }
 export type GameSkillLevel = SkillLevel;
 export type GameVisibility = 'public' | 'link-only' | 'private';
-export interface Game { id: string; title?: string; description?: string; startsAt: string; endsAt: string; venueId: string; venueName: string; capacity: number; confirmedPlayers: number; openSlots: number; minimumSkillLevel: GameSkillLevel; maximumSkillLevel: GameSkillLevel; visibility: GameVisibility; status: 'scheduled' | 'cancelled' | 'completed'; organizer?: { id: string; displayName: string }; players?: Array<{ id: string; displayName: string; role?: string }>; waitlist?: Array<{ id: string; displayName: string }>; isMember?: boolean; currentUserStatus?: string; currentUserRole?: string; shareUrl?: string; }
+export interface Game { id: string; title?: string; description?: string; startsAt: string; endsAt: string; venueId: string; venueName: string; addressLabel?: string; latitude: number; longitude: number; capacity: number; confirmedPlayers: number; openSlots: number; minimumSkillLevel: GameSkillLevel; maximumSkillLevel: GameSkillLevel; visibility: GameVisibility; status: 'scheduled' | 'cancelled' | 'completed'; organizer?: { id: string; displayName: string }; players?: Array<{ id: string; displayName: string; role?: string }>; waitlist?: Array<{ id: string; displayName: string }>; isMember?: boolean; currentUserStatus?: string; currentUserRole?: string; shareUrl?: string; }
 export interface GameInput { startsAt: string; durationMinutes: 60 | 90 | 120; venueId: string; capacity: number; minimumSkillLevel: GameSkillLevel; maximumSkillLevel: GameSkillLevel; visibility: GameVisibility; title?: string; description?: string; }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -68,9 +68,10 @@ export const availabilityApi = {
 };
 
 export const gameApi = {
-  list: () => request<Game[]>('/api/v1/games'),
+  list: (includeCancelled = false) => request<Game[]>(`/api/v1/games${includeCancelled ? '?includeCancelled=true' : ''}`),
   get: (id: string, access?: string) => request<Game>(`/api/v1/games/${id}${access ? `?access=${encodeURIComponent(access)}` : ''}`),
   create: (input: GameInput) => request<Game>('/api/v1/games', { method: 'POST', body: JSON.stringify(input) }),
   join: (id: string) => request<{ result: 'confirmed' | 'waitlisted' }>(`/api/v1/games/${id}/join`, { method: 'POST' }),
   leave: (id: string) => request<{ result: string }>(`/api/v1/games/${id}/leave`, { method: 'POST' }),
+  calendarURL: (id: string, access?: string) => `/api/v1/games/${id}/calendar.ics${access ? `?access=${encodeURIComponent(access)}` : ''}`,
 };

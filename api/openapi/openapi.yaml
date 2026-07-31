@@ -148,6 +148,12 @@ paths:
       parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/GameUpdate' } } } }
       responses: { '200': { description: Updated game }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /api/v1/games/{gameId}/calendar.ics:
+    get:
+      summary: Export game as iCalendar event
+      security: [{ cookieAuth: [] }]
+      parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }, { in: query, name: access, schema: { type: string } }]
+      responses: { '200': { description: iCalendar event, content: { text/calendar: { schema: { type: string } } } }, '404': { description: Game unavailable } }
   /api/v1/games/{gameId}/join:
     post: { summary: Join game or waitlist, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Join result }, '409': { description: Join rejected } } }
   /api/v1/games/{gameId}/leave:
