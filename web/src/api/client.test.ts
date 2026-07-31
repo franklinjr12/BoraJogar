@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { gameApi, locationApi, notificationApi } from './client';
+import { gameApi, locationApi, notificationApi, userApi } from './client';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -57,5 +57,24 @@ describe('typed API client', () => {
       status: 503,
       code: 'http_503',
     });
+  });
+
+  it('uses specific user routes for profiles and blocking', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await userApi.block('user/1');
+    await userApi.unblock('user/1');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/users/user%2F1/block',
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/users/user%2F1/block',
+      expect.objectContaining({ method: 'DELETE', credentials: 'include' }),
+    );
   });
 });

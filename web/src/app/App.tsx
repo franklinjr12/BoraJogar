@@ -308,7 +308,7 @@ function ProfilePage() {
   useEffect(() => {
     profileApi
       .get()
-      .then(setProfile)
+      .then((nextProfile) => setProfile(nextProfile))
       .catch(() => setError('Sign in to view your profile.'));
   }, []);
   if (error)

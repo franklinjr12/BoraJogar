@@ -90,7 +90,7 @@ func (h Handler) Register(mux *http.ServeMux, requireAuth func(http.Handler) htt
 	mux.Handle("/api/v1/me/profile", requireAuth(http.HandlerFunc(h.profile)))
 	mux.Handle("/api/v1/me/onboarding", requireAuth(http.HandlerFunc(h.onboarding)))
 	mux.Handle("/api/v1/me/onboarding/complete", requireAuth(http.HandlerFunc(h.completeOnboarding)))
-	mux.Handle("/api/v1/users/", requireAuth(http.HandlerFunc(h.publicProfile)))
+	mux.Handle("/api/v1/users/{userId}/public-profile", requireAuth(http.HandlerFunc(h.publicProfile)))
 }
 
 func user(r *http.Request) (auth.User, bool) { return auth.UserFromContext(r.Context()) }

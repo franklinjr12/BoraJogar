@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestLoadRejectsMissingSecrets(t *testing.T) {
 	t.Setenv("APP_PORT", "8080")
@@ -10,6 +14,30 @@ func TestLoadRejectsMissingSecrets(t *testing.T) {
 		t.Fatal("expected invalid session secret")
 	}
 }
+
+func TestLoadUsesParentDotEnvWhenWorkingDirectoryFileIsMissing(t *testing.T) {
+	root := t.TempDir()
+	child := filepath.Join(root, "api")
+	if err := os.Mkdir(child, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("APP_BASE_URL=http://fallback.test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(child)
+	t.Setenv("APP_PORT", "8080")
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("SESSION_SECRET", "12345678901234567890123456789012")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BaseURL != "http://fallback.test" {
+		t.Fatalf("base URL = %q, want fallback value", cfg.BaseURL)
+	}
+}
+
 func TestLoad(t *testing.T) {
 	t.Setenv("APP_PORT", "8080")
 	t.Setenv("DATABASE_URL", "postgres://example")

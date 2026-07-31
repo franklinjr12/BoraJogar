@@ -123,6 +123,23 @@ export interface NotificationPage {
   pageSize: number;
 }
 
+export interface PublicProfile {
+  userId: string;
+  displayName: string;
+  avatarUrl?: string;
+  skillLevel: SkillLevel;
+  bio?: string;
+  styles: PlayingStyle[];
+  completedGames: number;
+  playedTogether: boolean;
+}
+
+export interface BlockedUser {
+  userId: string;
+  displayName: string;
+  createdAt: string;
+}
+
 export interface Page<T> {
   items: T[];
   page: number;
@@ -164,11 +181,19 @@ function isErrorResponse(value: unknown): value is ErrorResponse {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  const response = await fetch(path, {
-    credentials: 'include',
-    ...init,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15000);
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      credentials: 'include',
+      ...init,
+      headers,
+      signal: init?.signal ?? controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
   if (response.status === 204) return undefined as T;
   const body: unknown = await response.json().catch(() => undefined);
   if (!response.ok) {
@@ -187,7 +212,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const profileApi = {
-  get: () => request<Profile>('/api/v1/me/profile'),
+  get: async () => {
+    const profile = await request<Profile | undefined>('/api/v1/me/profile');
+    if (!profile) throw new Error('Profile response was empty.');
+    return profile;
+  },
   update: (profile: Omit<Profile, 'userId' | 'avatarUrl'>) =>
     request<Profile>('/api/v1/me/profile', { method: 'PUT', body: JSON.stringify(profile) }),
   saveProgress: (currentStep: number, completedSteps: number[]) =>
@@ -196,6 +225,16 @@ export const profileApi = {
       body: JSON.stringify({ currentStep, completedSteps }),
     }),
   complete: () => request<void>('/api/v1/me/onboarding/complete', { method: 'POST' }),
+};
+
+export const userApi = {
+  publicProfile: (userId: string) =>
+    request<PublicProfile>(`/api/v1/users/${encodeURIComponent(userId)}/public-profile`),
+  blockedUsers: () => request<BlockedUser[]>('/api/v1/me/blocked-users'),
+  block: (userId: string) =>
+    request<void>(`/api/v1/users/${encodeURIComponent(userId)}/block`, { method: 'POST' }),
+  unblock: (userId: string) =>
+    request<void>(`/api/v1/users/${encodeURIComponent(userId)}/block`, { method: 'DELETE' }),
 };
 
 export const locationApi = {
@@ -223,7 +262,10 @@ export const locationApi = {
 };
 
 export const availabilityApi = {
-  rules: () => request<AvailabilityRule[]>('/api/v1/me/availability/rules'),
+  rules: async () => {
+    const rules = await request<AvailabilityRule[] | undefined>('/api/v1/me/availability/rules');
+    return Array.isArray(rules) ? rules : [];
+  },
   createRule: (input: Omit<AvailabilityRule, 'id'>) =>
     request<AvailabilityRule>('/api/v1/me/availability/rules', {
       method: 'POST',

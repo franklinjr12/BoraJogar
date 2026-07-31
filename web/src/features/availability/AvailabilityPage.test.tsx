@@ -54,4 +54,23 @@ describe('AvailabilityPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/could not save/i);
     expect(screen.getByLabelText(/preferred area/i)).toHaveValue('');
   });
+
+  it('treats empty rules response as no recurring intervals', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url.includes('availability/rules')
+            ? new Response(null, { status: 204 })
+            : new Response(JSON.stringify([]), { status: 200 }),
+        ),
+      ),
+    );
+    render(
+      <MemoryRouter>
+        <AvailabilityPage />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/no recurring intervals yet/i)).toBeInTheDocument();
+  });
 });

@@ -112,4 +112,10 @@ describe('profile editing', () => {
       expect.objectContaining({ method: 'PUT' }),
     );
   });
+
+  it('does not stay loading when profile response is empty', async () => {
+    vi.spyOn(window, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    renderApp('/profile');
+    expect(await screen.findByText(/sign in to view your profile/i)).toBeInTheDocument();
+  });
 });

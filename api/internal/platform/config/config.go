@@ -18,7 +18,9 @@ type Config struct {
 }
 
 func Load() (Config, error) {
-	loadDotEnv(".env")
+	if !loadDotEnv(".env") {
+		loadDotEnv("../.env")
+	}
 	port, err := strconv.Atoi(value("APP_PORT", ""))
 	if err != nil || port < 1 || port > 65535 {
 		return Config{}, errors.New("APP_PORT must be a valid TCP port")
@@ -54,10 +56,10 @@ func intValue(key string, fallback int) int {
 	return v
 }
 
-func loadDotEnv(path string) {
+func loadDotEnv(path string) bool {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return
+		return false
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
@@ -73,4 +75,5 @@ func loadDotEnv(path string) {
 			_ = os.Setenv(key, strings.Trim(value, "\"'"))
 		}
 	}
+	return true
 }

@@ -21,8 +21,8 @@ export function AvailabilityPage() {
         availabilityApi.rules(),
         locationApi.preferredAreas(),
       ]);
-      setRules(nextRules);
-      setAreas(nextAreas.filter((area) => area.active));
+      setRules(Array.isArray(nextRules) ? nextRules : []);
+      setAreas(Array.isArray(nextAreas) ? nextAreas.filter((area) => area.active) : []);
     } catch {
       setError('Sign in to manage availability.');
     } finally {

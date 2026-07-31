@@ -28,7 +28,7 @@ func (h Handler) now() time.Time {
 	return time.Now().UTC()
 }
 func (h Handler) Register(mux *http.ServeMux, requireAuth, requireAdmin func(http.Handler) http.Handler) {
-	mux.Handle("/api/v1/users/", requireAuth(http.HandlerFunc(h.userRoutes)))
+	mux.Handle("/api/v1/users/{userId}/block", requireAuth(http.HandlerFunc(h.userRoutes)))
 	mux.Handle("/api/v1/me/blocked-users", requireAuth(http.HandlerFunc(h.blocks)))
 	mux.Handle("/api/v1/me/delete", requireAuth(http.HandlerFunc(h.deleteAccount)))
 	mux.Handle("/api/v1/reports", requireAuth(http.HandlerFunc(h.createReport)))
