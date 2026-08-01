@@ -7,6 +7,7 @@ export interface VenueDraft {
   city: string;
   addressLabel: string;
   point: { latitude: number; longitude: number };
+  addressConfirmed: boolean;
 }
 
 export function blankVenueDraft(): VenueDraft {
@@ -15,11 +16,17 @@ export function blankVenueDraft(): VenueDraft {
     city: 'S\u00e3o Paulo',
     addressLabel: '',
     point: defaultVenuePoint,
+    addressConfirmed: false,
   };
 }
 
 export function venueDraftReady(draft: VenueDraft) {
-  return draft.name.trim().length >= 2 && draft.city.trim().length > 0;
+  return (
+    draft.name.trim().length >= 2 &&
+    draft.city.trim().length > 0 &&
+    draft.addressLabel.trim().length >= 4 &&
+    draft.addressConfirmed
+  );
 }
 
 export function createVenueFromDraft(draft: VenueDraft) {

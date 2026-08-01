@@ -38,13 +38,7 @@ function MapPanel({
       map.current = null;
     };
   }, [center.latitude, center.longitude, onSelect, styleUrl]);
-  if (!styleUrl)
-    return (
-      <div className="map-fallback" role="img" aria-label="Map unavailable">
-        <strong>Map style not configured</strong>
-        <span>Use venue list or enter an area manually.</span>
-      </div>
-    );
+  if (!styleUrl) return null;
   return <div ref={node} className="map-panel" aria-label="Location map" />;
 }
 
@@ -80,6 +74,7 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
   const [venueDraft, setVenueDraft] = useState<VenueDraft>(blankVenueDraft());
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const mapStyleConfigured = Boolean(import.meta.env.VITE_MAP_STYLE_URL);
 
   useEffect(() => {
     Promise.all([locationApi.venues(), locationApi.favoriteVenues(), locationApi.preferredAreas()])
@@ -153,16 +148,34 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
   return (
     <>
       <p className="eyebrow">Where you play</p>
-      {!compact && <h1>Venues and preferred areas</h1>}
-      <p className="lead">Choose courts or broad areas. Current location is optional.</p>
+      {!compact && <h1>Where do you play?</h1>}
+      <p className="lead">Add courts you use often, then save broader areas for matchmaking.</p>
       <section className="location-grid">
-        <div>
-          <MapPanel center={point} onSelect={selectPoint} />
-          <button className="text-button" type="button" onClick={useCurrentLocation}>
-            Use my current location
-          </button>
+        <div className="location-setup-column">
+          <div className="card area-form">
+            <h2>Create court/location</h2>
+            <VenueForm
+              draft={venueDraft}
+              onChange={setVenueDraft}
+              onCreated={(created) => {
+                setVenues((current) => [...current, created]);
+                setFavorites((current) => new Set(current).add(created.id));
+                void locationApi.favoriteVenue(created.id).catch(() => undefined);
+              }}
+            />
+          </div>
           <div className="card area-form">
             <h2>Preferred area</h2>
+            {mapStyleConfigured ? (
+              <MapPanel center={point} onSelect={selectPoint} />
+            ) : (
+              <p className="map-inline-hint">
+                Map unavailable. Current location still works if browser permission is allowed.
+              </p>
+            )}
+            <button className="text-button" type="button" onClick={useCurrentLocation}>
+              Use my current location
+            </button>
             <label>
               Area name
               <input
@@ -191,23 +204,11 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
               Save preferred area
             </button>
           </div>
-          <div className="card area-form">
-            <h2>Create court/location</h2>
-            <VenueForm
-              draft={venueDraft}
-              onChange={setVenueDraft}
-              onCreated={(created) => {
-                setVenues((current) => [...current, created]);
-                setFavorites((current) => new Set(current).add(created.id));
-                void locationApi.favoriteVenue(created.id).catch(() => undefined);
-              }}
-            />
-          </div>
         </div>
-        <div className="card">
+        <div className="card location-summary">
           <h2>Available venues</h2>
           {loading && <p role="status">Loading venues...</p>}
-          {!loading && venues.length === 0 && <p>No venues found. Create one to host a game.</p>}
+          {!loading && venues.length === 0 && <p>No courts saved yet. Add one to host a game.</p>}
           <div className="venue-list">
             {venues.map((venue) => (
               <article className="venue" key={venue.id}>

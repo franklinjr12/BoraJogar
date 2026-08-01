@@ -79,11 +79,32 @@ describe('CreateGamePage', () => {
       visibility: 'link-only',
       status: 'scheduled',
     };
-    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-      if (url.includes('/api/v1/me/venues')) {
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes('geocoding-api.open-meteo.com')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              results: [
+                {
+                  id: 123,
+                  name: 'Sao Paulo',
+                  admin1: 'Sao Paulo',
+                  country: 'Brasil',
+                  latitude: -23.5,
+                  longitude: -46.6,
+                  timezone: 'America/Sao_Paulo',
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (requestUrl.includes('/api/v1/me/venues')) {
         return Promise.resolve(new Response(JSON.stringify(createdVenue), { status: 201 }));
       }
-      if (url.includes('/api/v1/games') && init?.method === 'POST') {
+      if (requestUrl.includes('/api/v1/games') && init?.method === 'POST') {
         return Promise.resolve(new Response(JSON.stringify(createdGame), { status: 201 }));
       }
       return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
@@ -98,7 +119,16 @@ describe('CreateGamePage', () => {
     expect(await screen.findByRole('heading', { name: /set up a game/i })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: '2026-08-01' } });
     fireEvent.change(screen.getByLabelText(/start time/i), { target: { value: '09:00' } });
-    fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: 'Nova Quadra' } });
+    fireEvent.change(screen.getByLabelText(/personalized name/i), {
+      target: { value: 'Nova Quadra' },
+    });
+    fireEvent.change(screen.getByLabelText(/court address/i), {
+      target: { value: 'Rua das Areias, 10' },
+    });
+    fireEvent.change(screen.getByLabelText(/city search/i), {
+      target: { value: 'Sao Paulo' },
+    });
+    fireEvent.click(await screen.findByRole('option', { name: /sao paulo/i }));
     fireEvent.click(screen.getByRole('button', { name: /^create game$/i }));
 
     await waitFor(() =>

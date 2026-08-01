@@ -28,7 +28,7 @@ describe('locations page', () => {
     vi.restoreAllMocks();
   });
 
-  it('loads venues, shows manual map fallback, and saves preferred area', async () => {
+  it('loads venues, hides large map fallback, and saves preferred area', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     fetchMock
       .mockResolvedValueOnce(response([venue]))
@@ -52,7 +52,10 @@ describe('locations page', () => {
     );
 
     expect(await screen.findByRole('heading', { name: 'Praia Central' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: /map unavailable/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /where do you play/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/personalized name/i)).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /map unavailable/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/map unavailable/i)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Area name'), { target: { value: 'Centro' } });
     fireEvent.click(screen.getByRole('button', { name: /save preferred area/i }));
     expect(await screen.findByText(/preferred area saved/i)).toBeInTheDocument();
@@ -94,6 +97,21 @@ describe('locations page', () => {
       .mockResolvedValueOnce(response([]))
       .mockResolvedValueOnce(response([]))
       .mockResolvedValueOnce(
+        response({
+          results: [
+            {
+              id: 123,
+              name: 'Sao Paulo',
+              admin1: 'Sao Paulo',
+              country: 'Brasil',
+              latitude: -23.5,
+              longitude: -46.6,
+              timezone: 'America/Sao_Paulo',
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
             id: 'venue-2',
@@ -116,15 +134,27 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/create one to host a game/i)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: 'Nova Quadra' } });
+    expect(await screen.findByText(/no courts saved yet/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/personalized name/i), {
+      target: { value: 'Nova Quadra' },
+    });
+    fireEvent.change(screen.getByLabelText(/court address/i), {
+      target: { value: 'Rua das Areias, 10' },
+    });
+    fireEvent.change(screen.getByLabelText(/city search/i), {
+      target: { value: 'Sao Paulo' },
+    });
+    fireEvent.click(await screen.findByRole('option', { name: /sao paulo/i }));
     fireEvent.click(screen.getByRole('button', { name: /^create location$/i }));
     expect(await screen.findByText(/ready for games/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/latitude/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/longitude/i)).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/me/venues',
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"city":"Sao Paulo"'),
+      }),
     );
   });
 });

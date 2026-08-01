@@ -331,6 +331,14 @@ textarea:focus-visible {
   gap: 1rem;
   align-items: start;
 }
+.location-setup-column {
+  display: grid;
+  gap: 1rem;
+}
+.location-summary {
+  position: sticky;
+  top: 5rem;
+}
 .map-panel,
 .map-fallback {
   min-height: 20rem;
@@ -348,7 +356,34 @@ textarea:focus-visible {
   color: #38534d;
 }
 .area-form {
-  margin-top: 1rem;
+  margin-top: 0;
+}
+.map-inline-hint {
+  border: 1px solid #d5e5df;
+  border-radius: 0.7rem;
+  padding: 0.8rem;
+  color: #476566;
+  background: #f4f8f5;
+}
+.place-results {
+  display: grid;
+  gap: 0.5rem;
+}
+.place-result {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  border: 1px solid #d5e5df;
+  border-radius: 0.7rem;
+  padding: 0.8rem;
+  text-align: left;
+  color: #173b3b;
+  background: white;
+}
+.place-result span {
+  color: #5c706b;
+  font-size: 0.9rem;
+  line-height: 1.35;
 }
 .inline-panel {
   border-top: 1px solid #dbe4df;
@@ -409,5 +444,8 @@ textarea:focus-visible {
 @media (max-width: 760px) {
   .location-grid {
     grid-template-columns: 1fr;
+  }
+  .location-summary {
+    position: static;
   }
 }
