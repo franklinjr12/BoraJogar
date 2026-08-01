@@ -157,7 +157,9 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
                 {dayRules.map((rule) => (
                   <div className="availability-row" key={rule.id}>
                     <span>
-                      <strong>{rule.start && rule.end ? `${rule.start}-${rule.end}` : 'Time not set'}</strong>
+                      <strong>
+                        {rule.start && rule.end ? `${rule.start}-${rule.end}` : 'Time not set'}
+                      </strong>
                       {rule.preferredAreaIds.length > 0 && (
                         <small>{rule.preferredAreaIds.map(areaLabel).join(', ')}</small>
                       )}

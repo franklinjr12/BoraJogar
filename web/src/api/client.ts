@@ -242,7 +242,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }
 
 function normalizeAvailabilityRule(value: unknown): AvailabilityRule | undefined {
@@ -358,7 +360,9 @@ export const availabilityApi = {
   rules: async () => {
     const rules = await request<unknown[] | undefined>('/api/v1/me/availability/rules');
     return Array.isArray(rules)
-      ? rules.map(normalizeAvailabilityRule).filter((rule): rule is AvailabilityRule => Boolean(rule))
+      ? rules
+          .map(normalizeAvailabilityRule)
+          .filter((rule): rule is AvailabilityRule => Boolean(rule))
       : [];
   },
   createRule: (input: Omit<AvailabilityRule, 'id'>) =>
