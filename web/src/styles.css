@@ -398,6 +398,14 @@ textarea:focus-visible {
   align-items: center;
   padding: 0.25rem 0;
 }
+.availability-row span {
+  display: grid;
+  gap: 0.15rem;
+}
+.availability-row small {
+  color: #5c706b;
+  font-size: 0.9rem;
+}
 @media (max-width: 760px) {
   .location-grid {
     grid-template-columns: 1fr;

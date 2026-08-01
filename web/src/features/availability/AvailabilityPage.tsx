@@ -48,7 +48,8 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
   const create = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     try {
       await availabilityApi.createRule({
         weekday: Number(form.get('weekday')),
@@ -60,7 +61,7 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
         venueIds: [],
         preferredAreaIds: [String(form.get('area'))],
       });
-      event.currentTarget.reset();
+      formElement.reset();
       await load();
     } catch (err) {
       setError(
@@ -78,6 +79,7 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
       setError('Could not remove interval.');
     }
   };
+  const areaLabel = (id: string) => areas.find((area) => area.id === id)?.label ?? 'Preferred area';
   if (loading)
     return (
       <section>
@@ -155,7 +157,10 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
                 {dayRules.map((rule) => (
                   <div className="availability-row" key={rule.id}>
                     <span>
-                      {rule.start}-{rule.end}
+                      <strong>{rule.start && rule.end ? `${rule.start}-${rule.end}` : 'Time not set'}</strong>
+                      {rule.preferredAreaIds.length > 0 && (
+                        <small>{rule.preferredAreaIds.map(areaLabel).join(', ')}</small>
+                      )}
                     </span>
                     <button className="text-button" onClick={() => void remove(rule.id)}>
                       Remove

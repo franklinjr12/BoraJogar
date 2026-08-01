@@ -68,6 +68,46 @@ describe('AvailabilityPage', () => {
     expect(screen.getByLabelText(/preferred area/i)).toHaveValue('');
   });
 
+  it('adds saved interval to weekly summary after successful save', async () => {
+    const rule = {
+      id: 'rule-1',
+      weekday: 6,
+      Start: '07:00',
+      End: '09:00',
+      Timezone: 'America/Sao_Paulo',
+      ValidFrom: '2026-08-01',
+      active: true,
+      venueIds: [],
+      preferredAreaIds: ['area-1'],
+    };
+    let saved = false;
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        saved = true;
+        return Promise.resolve(new Response(JSON.stringify(rule), { status: 200 }));
+      }
+      const body = url.includes('preferred-areas')
+        ? [{ id: 'area-1', label: 'Near home', active: true }]
+        : saved
+          ? [rule]
+          : [];
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MemoryRouter>
+        <AvailabilityPage />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('heading', { name: /weekly availability/i });
+    fireEvent.change(screen.getByLabelText(/preferred area/i), { target: { value: 'area-1' } });
+    fireEvent.submit(screen.getByRole('button', { name: /add interval/i }).closest('form')!);
+
+    expect(await screen.findByText('07:00-09:00')).toBeInTheDocument();
+    expect(screen.getAllByText('Near home')).toHaveLength(2);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('treats empty rules response as no recurring intervals', async () => {
     vi.stubGlobal(
       'fetch',

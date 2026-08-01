@@ -51,6 +51,23 @@ export interface AvailabilityRule {
   venueIds: string[];
   preferredAreaIds: string[];
 }
+interface AvailabilityRuleWire {
+  id?: unknown;
+  weekday?: unknown;
+  start?: unknown;
+  Start?: unknown;
+  end?: unknown;
+  End?: unknown;
+  timezone?: unknown;
+  Timezone?: unknown;
+  validFrom?: unknown;
+  ValidFrom?: unknown;
+  validUntil?: unknown;
+  ValidUntil?: unknown;
+  active?: unknown;
+  venueIds?: unknown;
+  preferredAreaIds?: unknown;
+}
 export interface AvailabilityException {
   id: string;
   date: string;
@@ -224,6 +241,42 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function normalizeAvailabilityRule(value: unknown): AvailabilityRule | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const rule = value as AvailabilityRuleWire;
+  const start = rule.start ?? rule.Start;
+  const end = rule.end ?? rule.End;
+  const timezone = rule.timezone ?? rule.Timezone;
+  const validFrom = rule.validFrom ?? rule.ValidFrom;
+  if (
+    typeof rule.id !== 'string' ||
+    typeof rule.weekday !== 'number' ||
+    typeof start !== 'string' ||
+    typeof end !== 'string' ||
+    typeof timezone !== 'string' ||
+    typeof validFrom !== 'string'
+  ) {
+    return undefined;
+  }
+  const validUntil = rule.validUntil ?? rule.ValidUntil;
+  return {
+    id: rule.id,
+    weekday: rule.weekday,
+    start,
+    end,
+    timezone,
+    validFrom,
+    ...(typeof validUntil === 'string' ? { validUntil } : {}),
+    active: typeof rule.active === 'boolean' ? rule.active : true,
+    venueIds: asStringArray(rule.venueIds),
+    preferredAreaIds: asStringArray(rule.preferredAreaIds),
+  };
+}
+
 export const profileApi = {
   get: async () => {
     const profile = await request<Profile | undefined>('/api/v1/me/profile');
@@ -303,8 +356,10 @@ export const locationApi = {
 
 export const availabilityApi = {
   rules: async () => {
-    const rules = await request<AvailabilityRule[] | undefined>('/api/v1/me/availability/rules');
-    return Array.isArray(rules) ? rules : [];
+    const rules = await request<unknown[] | undefined>('/api/v1/me/availability/rules');
+    return Array.isArray(rules)
+      ? rules.map(normalizeAvailabilityRule).filter((rule): rule is AvailabilityRule => Boolean(rule))
+      : [];
   },
   createRule: (input: Omit<AvailabilityRule, 'id'>) =>
     request<AvailabilityRule>('/api/v1/me/availability/rules', {

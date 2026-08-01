@@ -19,28 +19,48 @@ var errAvailabilityLocationUnavailable = errors.New("availability location unava
 
 type Handler struct{ DB *pgxpool.Pool }
 type ruleInput struct {
-	Weekday                         int `json:"weekday"`
-	Start, End, Timezone, ValidFrom string
-	ValidUntil                      *string  `json:"validUntil"`
-	Active                          *bool    `json:"active"`
-	VenueIDs                        []string `json:"venueIds"`
-	AreaIDs                         []string `json:"preferredAreaIds"`
+	Weekday    int      `json:"weekday"`
+	Start      string   `json:"start"`
+	End        string   `json:"end"`
+	Timezone   string   `json:"timezone"`
+	ValidFrom  string   `json:"validFrom"`
+	ValidUntil *string  `json:"validUntil"`
+	Active     *bool    `json:"active"`
+	VenueIDs   []string `json:"venueIds"`
+	AreaIDs    []string `json:"preferredAreaIds"`
 }
-type exceptionInput struct{ Date, Type, Start, End, Timezone string }
+type exceptionInput struct {
+	Date     string `json:"date"`
+	Type     string `json:"type"`
+	Start    string `json:"start"`
+	End      string `json:"end"`
+	Timezone string `json:"timezone"`
+}
 type ruleResponse struct {
-	ID                              string `json:"id"`
-	Weekday                         int    `json:"weekday"`
-	Start, End, Timezone, ValidFrom string
-	ValidUntil                      *string  `json:"validUntil,omitempty"`
-	Active                          bool     `json:"active"`
-	VenueIDs                        []string `json:"venueIds"`
-	AreaIDs                         []string `json:"preferredAreaIds"`
+	ID         string   `json:"id"`
+	Weekday    int      `json:"weekday"`
+	Start      string   `json:"start"`
+	End        string   `json:"end"`
+	Timezone   string   `json:"timezone"`
+	ValidFrom  string   `json:"validFrom"`
+	ValidUntil *string  `json:"validUntil,omitempty"`
+	Active     bool     `json:"active"`
+	VenueIDs   []string `json:"venueIds"`
+	AreaIDs    []string `json:"preferredAreaIds"`
 }
-type exceptionResponse struct{ ID, Date, Type, Start, End, Timezone string }
+type exceptionResponse struct {
+	ID       string `json:"id"`
+	Date     string `json:"date"`
+	Type     string `json:"type"`
+	Start    string `json:"start"`
+	End      string `json:"end"`
+	Timezone string `json:"timezone"`
+}
 type calendarItem struct {
-	StartsAt             time.Time `json:"startsAt"`
-	EndsAt               time.Time `json:"endsAt"`
-	SourceType, SourceID string
+	StartsAt   time.Time `json:"startsAt"`
+	EndsAt     time.Time `json:"endsAt"`
+	SourceType string    `json:"sourceType"`
+	SourceID   string    `json:"sourceId"`
 }
 
 func (h Handler) Register(mux *http.ServeMux, requireAuth func(http.Handler) http.Handler) {

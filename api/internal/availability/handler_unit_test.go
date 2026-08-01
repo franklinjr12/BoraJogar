@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/borajogar/borajogar/api/internal/auth"
 	"github.com/google/uuid"
@@ -58,5 +59,44 @@ func TestCalendarRejectsInvalidRangeWithoutDatabase(t *testing.T) {
 	h.calendar(w, r, u.ID)
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d", w.Code)
+	}
+}
+
+func TestAvailabilityResponsesUseOpenAPIJSONKeys(t *testing.T) {
+	ruleBody, err := json.Marshal(ruleResponse{
+		ID: "rule-1", Weekday: 6, Start: "07:00", End: "09:00", Timezone: "America/Sao_Paulo", ValidFrom: "2026-08-01", Active: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"start"`, `"end"`, `"timezone"`, `"validFrom"`} {
+		if !strings.Contains(string(ruleBody), key) {
+			t.Fatalf("rule response missing %s: %s", key, ruleBody)
+		}
+	}
+	for _, key := range []string{`"Start"`, `"End"`, `"Timezone"`, `"ValidFrom"`} {
+		if strings.Contains(string(ruleBody), key) {
+			t.Fatalf("rule response includes non-contract key %s: %s", key, ruleBody)
+		}
+	}
+
+	exceptionBody, err := json.Marshal(exceptionResponse{ID: "exception-1", Date: "2026-08-01", Type: "available_interval", Start: "07:00", End: "09:00", Timezone: "America/Sao_Paulo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"date"`, `"type"`, `"start"`, `"end"`, `"timezone"`} {
+		if !strings.Contains(string(exceptionBody), key) {
+			t.Fatalf("exception response missing %s: %s", key, exceptionBody)
+		}
+	}
+
+	calendarBody, err := json.Marshal(calendarItem{StartsAt: time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC), EndsAt: time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC), SourceType: "rule", SourceID: "rule-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"startsAt"`, `"endsAt"`, `"sourceType"`, `"sourceId"`} {
+		if !strings.Contains(string(calendarBody), key) {
+			t.Fatalf("calendar response missing %s: %s", key, calendarBody)
+		}
 	}
 }
