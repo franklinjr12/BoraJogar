@@ -17,6 +17,9 @@ ci-local:
 dev-web:
 	npm --prefix web run dev
 
+dev-web-mobile:
+	npm --prefix web run dev -- --host 0.0.0.0
+
 dev-api:
 	if not exist api\bin mkdir api\bin
 	go -C api build -o bin\server.exe ./cmd/server

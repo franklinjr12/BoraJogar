@@ -1,7 +1,55 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LocationsPage } from './LocationsPage';
+
+type MockMapEvent = { lngLat: { lat: number; lng: number } };
+type MockMapHandler = (event?: MockMapEvent) => void;
+
+interface MockMapInstance {
+  handlers: Record<string, MockMapHandler>;
+  remove: ReturnType<typeof vi.fn>;
+  setCenter: ReturnType<typeof vi.fn>;
+}
+
+const maplibreMock = vi.hoisted(() => {
+  const instances: MockMapInstance[] = [];
+  class MockMap implements MockMapInstance {
+    handlers: Record<string, MockMapHandler> = {};
+    remove = vi.fn();
+    setCenter = vi.fn();
+
+    constructor() {
+      instances.push(this);
+    }
+
+    addControl() {
+      return undefined;
+    }
+
+    on(event: string, handler: MockMapHandler) {
+      this.handlers[event] = handler;
+      return this;
+    }
+
+    getCenter() {
+      return { lat: -25.429, lng: -49.274 };
+    }
+  }
+
+  return {
+    instances,
+    Map: MockMap,
+    NavigationControl: vi.fn(),
+  };
+});
+
+vi.mock('maplibre-gl', () => ({
+  default: {
+    Map: maplibreMock.Map,
+    NavigationControl: maplibreMock.NavigationControl,
+  },
+}));
 
 const venue = {
   id: 'venue-1',
@@ -24,10 +72,16 @@ function response(value: unknown) {
 }
 
 describe('locations page', () => {
+  beforeEach(() => {
+    maplibreMock.instances.length = 0;
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+  });
+
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('starts list-first and hides coordinates', async () => {
@@ -128,6 +182,7 @@ describe('locations page', () => {
     expect(geolocation.getCurrentPosition).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
     fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
+    expect(await screen.findByText(/area set from your device location/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '7 km' }));
     fireEvent.click(screen.getByRole('button', { name: /save area/i }));
 
@@ -140,6 +195,151 @@ describe('locations page', () => {
         }),
       ),
     );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/me/preferred-areas',
+      expect.objectContaining({
+        body: expect.stringContaining('"latitude":-25.429'),
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/me/preferred-areas',
+      expect.objectContaining({
+        body: expect.stringContaining('"longitude":-49.274'),
+      }),
+    );
+  });
+
+  it('explains insecure local phone access without requesting location', async () => {
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false });
+    const geolocation = {
+      getCurrentPosition: vi.fn(),
+    };
+    vi.stubGlobal('navigator', { ...navigator, geolocation });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('favorite-venues') || url.includes('preferred-areas'))
+          return Promise.resolve(response([]));
+        return Promise.resolve(response([venue]));
+      }),
+    );
+    render(
+      <MemoryRouter>
+        <LocationsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/choose where you could play/i);
+    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
+    fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
+
+    expect(await screen.findByText(/location requires https/i)).toBeInTheDocument();
+    expect(geolocation.getCurrentPosition).not.toHaveBeenCalled();
+  });
+
+  it('shows browser-settings guidance when location permission is blocked', async () => {
+    const geolocation = {
+      getCurrentPosition: vi.fn((_success: PositionCallback, error: PositionErrorCallback) =>
+        error({
+          code: 1,
+          message: 'denied',
+          PERMISSION_DENIED: 1,
+          POSITION_UNAVAILABLE: 2,
+          TIMEOUT: 3,
+        } as GeolocationPositionError),
+      ),
+    };
+    vi.stubGlobal('navigator', { ...navigator, geolocation });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('favorite-venues') || url.includes('preferred-areas'))
+          return Promise.resolve(response([]));
+        return Promise.resolve(response([venue]));
+      }),
+    );
+    render(
+      <MemoryRouter>
+        <LocationsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/choose where you could play/i);
+    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
+    fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
+
+    expect(await screen.findByText(/enable it in browser settings/i)).toBeInTheDocument();
+  });
+
+  it('keeps search fallback available when geolocation is missing', async () => {
+    vi.stubGlobal('navigator', { ...navigator, geolocation: undefined });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('favorite-venues') || url.includes('preferred-areas'))
+          return Promise.resolve(response([]));
+        return Promise.resolve(response([venue]));
+      }),
+    );
+    render(
+      <MemoryRouter>
+        <LocationsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/choose where you could play/i);
+    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
+    fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
+    fireEvent.click(screen.getByRole('button', { name: /search for a neighborhood or address/i }));
+
+    expect(await screen.findByText(/browser location is unavailable/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/neighborhood or address search/i)).toBeInTheDocument();
+  });
+
+  it('renders the dev map fallback when no map style URL is configured', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('favorite-venues') || url.includes('preferred-areas'))
+          return Promise.resolve(response([]));
+        return Promise.resolve(response([venue]));
+      }),
+    );
+    render(
+      <MemoryRouter>
+        <LocationsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/choose where you could play/i);
+    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
+
+    expect(screen.getByLabelText(/area selection map/i)).toBeInTheDocument();
+    expect(screen.queryByText(/map unavailable/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the map fallback message when map loading fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('favorite-venues') || url.includes('preferred-areas'))
+          return Promise.resolve(response([]));
+        return Promise.resolve(response([venue]));
+      }),
+    );
+    render(
+      <MemoryRouter>
+        <LocationsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/choose where you could play/i);
+    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
+    await waitFor(() => expect(maplibreMock.instances.length).toBeGreaterThan(0));
+
+    maplibreMock.instances[0]?.handlers.error?.();
+
+    expect(await screen.findByText(/map unavailable/i)).toBeInTheDocument();
   });
 
   it('searches for an area and saves the selected result', async () => {

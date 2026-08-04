@@ -28,6 +28,26 @@ API readiness check: <http://localhost:8080/health/ready>
 
 Mailpit inbox: <http://localhost:8025>
 
+### Local phone testing with location
+
+Phone browsers require HTTPS before they show the location permission prompt for a LAN URL. For mobile testing, create a locally trusted certificate for your computer LAN IP, set `DEV_HTTPS_KEY` and `DEV_HTTPS_CERT`, then run:
+
+```powershell
+make dev-web-mobile
+```
+
+Open `https://<LAN-IP>:5173` on the phone. Example with mkcert:
+
+```powershell
+mkcert -install
+mkcert <LAN-IP>
+$env:DEV_HTTPS_KEY=(Resolve-Path ".\<LAN-IP>-key.pem")
+$env:DEV_HTTPS_CERT=(Resolve-Path ".\<LAN-IP>.pem")
+make dev-web-mobile
+```
+
+Set `VITE_MAP_STYLE_URL` when testing a production map style. Local dev falls back to OpenStreetMap tiles when this value is empty.
+
 Send development email:
 
 ```powershell

@@ -2,9 +2,20 @@ import { useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Link } from 'react-router-dom';
 import { locationApi, type PreferredArea, type Venue } from '../../api/client';
+import { requestBrowserLocation, type LocationMessages } from './browserLocation';
+import { resolveMapStyle } from './mapStyle';
 import { searchPlaces, type PlaceSearchResult } from './placeSearch';
 
 const defaultCenter = { latitude: -25.4284, longitude: -49.2733 };
+const locationMessages: LocationMessages = {
+  unavailable: 'Browser location is unavailable. Search or choose on the map.',
+  insecure:
+    'Location requires HTTPS on phone browsers. Use local HTTPS, then try again, or search/choose on the map.',
+  denied: 'Location permission is blocked. Enable it in browser settings, then try again.',
+  positionUnavailable: 'Could not find your device location. Search or choose on the map.',
+  timeout: 'Finding your location timed out. Search or choose on the map.',
+  unknown: 'Could not use your current location. Search or choose on the map.',
+};
 const radiusOptions = [
   { meters: 2000, label: '2 km', hint: 'Very close' },
   { meters: 4000, label: '4 km', hint: 'Nearby' },
@@ -27,34 +38,55 @@ function MapPanel({
   onSelect: (latitude: number, longitude: number) => void;
 }) {
   const node = useRef<HTMLDivElement>(null);
-  const map = useRef<{ remove: () => void } | null>(null);
-  const styleUrl = import.meta.env.VITE_MAP_STYLE_URL as string | undefined;
+  const map = useRef<import('maplibre-gl').Map | null>(null);
+  const initialCenter = useRef(center);
+  const onSelectRef = useRef(onSelect);
+  const style = resolveMapStyle(import.meta.env);
+  const [mapFailed, setMapFailed] = useState(false);
+
   useEffect(() => {
-    if (!node.current || !styleUrl) return;
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
+
+  useEffect(() => {
+    if (!node.current || !style) return;
     let disposed = false;
     void import('maplibre-gl').then(({ default: maplibregl }) => {
       if (disposed || !node.current) return;
       const instance = new maplibregl.Map({
         container: node.current,
-        style: styleUrl,
-        center: [center.longitude, center.latitude],
+        style,
+        center: [initialCenter.current.longitude, initialCenter.current.latitude],
         zoom: 12,
       });
       instance.addControl(new maplibregl.NavigationControl(), 'top-right');
       instance.on('moveend', () => {
         const next = instance.getCenter();
-        onSelect(next.lat, next.lng);
+        onSelectRef.current(next.lat, next.lng);
       });
-      instance.on('click', (event) => onSelect(event.lngLat.lat, event.lngLat.lng));
+      instance.on('click', (event) => onSelectRef.current(event.lngLat.lat, event.lngLat.lng));
+      instance.on('error', () => {
+        if (disposed) return;
+        instance.remove();
+        map.current = null;
+        setMapFailed(true);
+      });
       map.current = instance;
+    }).catch(() => {
+      if (!disposed) setMapFailed(true);
     });
     return () => {
       disposed = true;
       map.current?.remove();
       map.current = null;
     };
-  }, [center.latitude, center.longitude, onSelect, styleUrl]);
-  if (!styleUrl)
+  }, [style]);
+
+  useEffect(() => {
+    map.current?.setCenter([center.longitude, center.latitude]);
+  }, [center.latitude, center.longitude]);
+
+  if (!style || mapFailed)
     return <p className="map-inline-hint">Map unavailable. Search or use current location.</p>;
   return (
     <div className="map-shell">
@@ -188,22 +220,20 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
       .includes(search.toLowerCase()),
   );
 
-  const useCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setMessage('Browser location is unavailable. Choose an area on the map.');
+  const useCurrentLocation = async () => {
+    const result = await requestBrowserLocation(locationMessages);
+    if (!result.ok) {
+      setMessage(result.message);
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const rounded = roundPoint({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-        setPoint(rounded);
-        setLabel('Near my area');
-      },
-      () => setMessage('Location permission denied. Search or choose on the map.'),
-    );
+
+    const rounded = roundPoint({
+      latitude: result.latitude,
+      longitude: result.longitude,
+    });
+    setPoint(rounded);
+    setLabel('Near my area');
+    setMessage('Area set from your device location.');
   };
 
   const openAreaSearch = () => {
