@@ -41,28 +41,30 @@ function MapPicker({
   useEffect(() => {
     if (!node.current || !style) return;
     let disposed = false;
-    void import('maplibre-gl').then(({ default: maplibregl }) => {
-      if (disposed || !node.current) return;
-      const instance = new maplibregl.Map({
-        container: node.current,
-        style,
-        center: [initialPoint.current.longitude, initialPoint.current.latitude],
-        zoom: 11,
+    void import('maplibre-gl')
+      .then(({ default: maplibregl }) => {
+        if (disposed || !node.current) return;
+        const instance = new maplibregl.Map({
+          container: node.current,
+          style,
+          center: [initialPoint.current.longitude, initialPoint.current.latitude],
+          zoom: 11,
+        });
+        instance.addControl(new maplibregl.NavigationControl(), 'top-right');
+        instance.on('click', (event) =>
+          onSelectRef.current({ latitude: event.lngLat.lat, longitude: event.lngLat.lng }),
+        );
+        instance.on('error', () => {
+          if (disposed) return;
+          instance.remove();
+          map.current = null;
+          setMapFailed(true);
+        });
+        map.current = instance;
+      })
+      .catch(() => {
+        if (!disposed) setMapFailed(true);
       });
-      instance.addControl(new maplibregl.NavigationControl(), 'top-right');
-      instance.on('click', (event) =>
-        onSelectRef.current({ latitude: event.lngLat.lat, longitude: event.lngLat.lng }),
-      );
-      instance.on('error', () => {
-        if (disposed) return;
-        instance.remove();
-        map.current = null;
-        setMapFailed(true);
-      });
-      map.current = instance;
-    }).catch(() => {
-      if (!disposed) setMapFailed(true);
-    });
     return () => {
       disposed = true;
       map.current?.remove();

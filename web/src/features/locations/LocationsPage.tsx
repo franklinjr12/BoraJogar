@@ -51,30 +51,32 @@ function MapPanel({
   useEffect(() => {
     if (!node.current || !style) return;
     let disposed = false;
-    void import('maplibre-gl').then(({ default: maplibregl }) => {
-      if (disposed || !node.current) return;
-      const instance = new maplibregl.Map({
-        container: node.current,
-        style,
-        center: [initialCenter.current.longitude, initialCenter.current.latitude],
-        zoom: 12,
+    void import('maplibre-gl')
+      .then(({ default: maplibregl }) => {
+        if (disposed || !node.current) return;
+        const instance = new maplibregl.Map({
+          container: node.current,
+          style,
+          center: [initialCenter.current.longitude, initialCenter.current.latitude],
+          zoom: 12,
+        });
+        instance.addControl(new maplibregl.NavigationControl(), 'top-right');
+        instance.on('moveend', () => {
+          const next = instance.getCenter();
+          onSelectRef.current(next.lat, next.lng);
+        });
+        instance.on('click', (event) => onSelectRef.current(event.lngLat.lat, event.lngLat.lng));
+        instance.on('error', () => {
+          if (disposed) return;
+          instance.remove();
+          map.current = null;
+          setMapFailed(true);
+        });
+        map.current = instance;
+      })
+      .catch(() => {
+        if (!disposed) setMapFailed(true);
       });
-      instance.addControl(new maplibregl.NavigationControl(), 'top-right');
-      instance.on('moveend', () => {
-        const next = instance.getCenter();
-        onSelectRef.current(next.lat, next.lng);
-      });
-      instance.on('click', (event) => onSelectRef.current(event.lngLat.lat, event.lngLat.lng));
-      instance.on('error', () => {
-        if (disposed) return;
-        instance.remove();
-        map.current = null;
-        setMapFailed(true);
-      });
-      map.current = instance;
-    }).catch(() => {
-      if (!disposed) setMapFailed(true);
-    });
     return () => {
       disposed = true;
       map.current?.remove();
