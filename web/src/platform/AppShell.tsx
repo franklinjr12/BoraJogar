@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { GameAlertPrompt } from '../features/notifications/GameAlertPrompt';
 import { InstallPrompt } from './InstallPrompt';
 import { OfflineStatus } from './OfflineStatus';
 
@@ -23,6 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {localStorage.getItem('borajogar_role') === 'admin' && <NavLink to="/admin">Admin</NavLink>}
       </nav>
       {children}
+      <GameAlertPrompt />
       <InstallPrompt />
     </>
   );

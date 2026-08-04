@@ -18,10 +18,14 @@ dev-web:
 	npm --prefix web run dev
 
 dev-api:
-	go -C api run ./cmd/server
+	if not exist api\bin mkdir api\bin
+	go -C api build -o bin\server.exe ./cmd/server
+	cd api && bin\server.exe
 
 dev-worker:
-	go -C api run ./cmd/worker
+	if not exist api\bin mkdir api\bin
+	go -C api build -o bin\worker.exe ./cmd/worker
+	cd api && bin\worker.exe
 
 send-test-email:
 	go -C api run ./cmd/tools/send-test-email

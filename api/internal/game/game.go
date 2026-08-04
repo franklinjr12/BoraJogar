@@ -30,8 +30,11 @@ type CreateInput struct {
 
 func ValidateCreate(in CreateInput, now time.Time) (time.Time, time.Time, error) {
 	starts, err := time.Parse(time.RFC3339, in.StartsAt)
-	if err != nil || !starts.After(now) {
-		return time.Time{}, time.Time{}, errors.Join(ErrInvalidGame, errors.New("startsAt must be in the future and use RFC3339"))
+	if err != nil {
+		return time.Time{}, time.Time{}, errors.Join(ErrInvalidGame, errors.New("startsAt must use RFC3339"))
+	}
+	if !starts.After(now) {
+		return time.Time{}, time.Time{}, errors.Join(ErrInvalidGame, errors.New("startsAt must be in the future"))
 	}
 	ends := time.Time{}
 	if in.EndsAt != "" {

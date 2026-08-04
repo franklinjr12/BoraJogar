@@ -1,13 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   gameApi,
   locationApi,
   ApiError,
   type Game,
   type GameInput,
+  type GamePreview,
   type GameSkillLevel,
   type GameVisibility,
+  type PreferredArea,
 } from '../../api/client';
 import { VenueForm } from '../locations/VenueForm';
 import {
@@ -16,6 +18,7 @@ import {
   venueDraftReady,
   type VenueDraft,
 } from '../locations/venueDraft';
+import { markGameAlertPromptReady } from '../notifications/gameAlertPromptState';
 
 const levels: GameSkillLevel[] = [
   'learning',
@@ -28,6 +31,15 @@ const label = (value: string) =>
   value.replace('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 const localDate = (value: string) =>
   new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+const minimumStartLeadMs = 15 * 60 * 1000;
+
+function todayInputValue() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 export function GamesPage() {
   const [games, setGames] = useState<Game[]>([]);
@@ -79,34 +91,75 @@ export function GamesPage() {
 export function CreateGamePage() {
   const navigate = useNavigate();
   const [error, setError] = useState('');
+  const [selectedDate, setSelectedDate] = useState('');
   const [venues, setVenues] = useState<Array<{ id: string; name: string }>>([]);
-  const [venueId, setVenueId] = useState('');
+  const [areas, setAreas] = useState<PreferredArea[]>([]);
+  const [locationChoice, setLocationChoice] = useState('');
   const [venueDraft, setVenueDraft] = useState<VenueDraft>(blankVenueDraft());
   useEffect(() => {
-    locationApi
-      .venues()
-      .then((items) => {
-        const nextVenues = items.map(({ id, name }) => ({ id, name }));
+    Promise.all([locationApi.favoriteVenues(), locationApi.venues(), locationApi.preferredAreas()])
+      .then(([favoriteVenues, availableVenues, preferredAreas]) => {
+        const seenVenueIds = new Set<string>();
+        const nextVenues = [...favoriteVenues, ...availableVenues]
+          .filter((venue) => {
+            if (seenVenueIds.has(venue.id)) return false;
+            seenVenueIds.add(venue.id);
+            return true;
+          })
+          .map(({ id, name }) => ({ id, name }));
+        const nextAreas = preferredAreas.filter((area) => area.active);
         setVenues(nextVenues);
+        setAreas(nextAreas);
+        if (favoriteVenues.length > 0) setLocationChoice(`venue:${favoriteVenues[0]!.id}`);
+        else if (nextAreas.length > 0) setLocationChoice(`area:${nextAreas[0]!.id}`);
+        else if (nextVenues.length > 0) setLocationChoice(`venue:${nextVenues[0]!.id}`);
       })
-      .catch(() => setVenues([]));
+      .catch(() => {
+        setVenues([]);
+        setAreas([]);
+      });
   }, []);
+
+  const selectedArea = locationChoice.startsWith('area:')
+    ? areas.find((area) => `area:${area.id}` === locationChoice)
+    : undefined;
+
+  const createVenueFromArea = async (area: PreferredArea) =>
+    locationApi.createVenue({
+      name: area.label.trim().length >= 2 ? area.label.trim() : 'Game location',
+      city: 'S\u00e3o Paulo',
+      latitude: area.latitude,
+      longitude: area.longitude,
+      lightingStatus: 'unknown',
+      surfaceType: 'sand',
+      accessType: 'unknown',
+    });
+
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
     const form = new FormData(event.currentTarget);
     const starts = `${String(form.get('date'))}T${String(form.get('time'))}:00`;
-    let gameVenueId = venueId;
+    const startsAt = new Date(starts);
+    if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() <= Date.now() + minimumStartLeadMs) {
+      setError('Choose a start time at least 15 minutes from now.');
+      return;
+    }
+    let gameVenueId = locationChoice.startsWith('venue:')
+      ? locationChoice.replace('venue:', '')
+      : '';
     if (!gameVenueId) {
-      if (!venueDraftReady(venueDraft)) {
+      if (!selectedArea && !venueDraftReady(venueDraft)) {
         setError('Enter location name and city, or choose a saved location.');
         return;
       }
       try {
-        const created = await createVenueFromDraft(venueDraft);
+        const created = selectedArea
+          ? await createVenueFromArea(selectedArea)
+          : await createVenueFromDraft(venueDraft);
         gameVenueId = created.id;
         setVenues((current) => [...current, { id: created.id, name: created.name }]);
-        setVenueId(created.id);
+        setLocationChoice(`venue:${created.id}`);
         setVenueDraft(blankVenueDraft());
       } catch (cause: unknown) {
         setError(
@@ -118,7 +171,7 @@ export function CreateGamePage() {
       }
     }
     const input: GameInput = {
-      startsAt: new Date(starts).toISOString(),
+      startsAt: startsAt.toISOString(),
       durationMinutes: Number(form.get('duration')) as 60 | 90 | 120,
       venueId: gameVenueId,
       capacity: Number(form.get('capacity')),
@@ -130,6 +183,7 @@ export function CreateGamePage() {
     };
     try {
       const game = await gameApi.create(input);
+      markGameAlertPromptReady();
       navigate(`/games/${game.id}`);
     } catch (cause: unknown) {
       if (cause instanceof ApiError && cause.status === 409) {
@@ -149,7 +203,14 @@ export function CreateGamePage() {
       <form className="card" onSubmit={save}>
         <label>
           Date
-          <input name="date" type="date" required />
+          <input
+            name="date"
+            type="date"
+            min={todayInputValue()}
+            value={selectedDate}
+            onChange={(event) => setSelectedDate(event.target.value)}
+            required
+          />
         </label>
         <label>
           Start time
@@ -169,18 +230,38 @@ export function CreateGamePage() {
             Venue
             <select
               name="venueId"
-              value={venueId}
-              onChange={(event) => setVenueId(event.target.value)}
+              value={locationChoice}
+              onChange={(event) => setLocationChoice(event.target.value)}
             >
-              <option value="">Create a new location</option>
-              {venues.map((venue) => (
-                <option key={venue.id} value={venue.id}>
-                  {venue.name}
-                </option>
-              ))}
+              <option value="">Create a new court</option>
+              {venues.length > 0 && (
+                <optgroup label="Courts">
+                  {venues.map((venue) => (
+                    <option key={venue.id} value={`venue:${venue.id}`}>
+                      {venue.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {areas.length > 0 && (
+                <optgroup label="Saved areas">
+                  {areas.map((area) => (
+                    <option key={area.id} value={`area:${area.id}`}>
+                      {area.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </label>
-          <VenueForm draft={venueDraft} onChange={setVenueDraft} />
+          {selectedArea ? (
+            <p className="hint">
+              This game will use {selectedArea.label}. You can choose a saved court or create a new
+              court instead.
+            </p>
+          ) : (
+            <VenueForm draft={venueDraft} onChange={setVenueDraft} />
+          )}
         </section>
         <label>
           Capacity
@@ -236,14 +317,24 @@ export function CreateGamePage() {
 export function GameDetailsPage() {
   const { id = '' } = useParams();
   const [params] = useSearchParams();
+  const currentLocation = useLocation();
   const [game, setGame] = useState<Game | null>(null);
+  const [preview, setPreview] = useState<GamePreview | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     gameApi
       .get(id, params.get('access') ?? undefined)
       .then(setGame)
-      .catch(() => setError('Game unavailable or access link expired.'));
+      .catch(() =>
+        gameApi
+          .preview(id, params.get('access') ?? undefined)
+          .then((nextPreview) => {
+            setPreview(nextPreview);
+            setError('');
+          })
+          .catch(() => setError('Game unavailable or access link expired.')),
+      );
   }, [id, params]);
   if (error)
     return (
@@ -256,6 +347,39 @@ export function GameDetailsPage() {
         </p>
       </main>
     );
+  if (!game && preview)
+    return (
+      <main className="shell">
+        <Link className="text-link" to="/games">
+          &lt;- Games
+        </Link>
+        <p className="eyebrow">Game invitation</p>
+        <h1>{preview.title || 'Beach volleyball game'}</h1>
+        <section className="card">
+          <p className="lead">{localDate(preview.startsAt)}</p>
+          <p>
+            <strong>{preview.venueName}</strong>
+            {preview.addressLabel ? ` - ${preview.addressLabel}` : ''}
+          </p>
+          <p>
+            {preview.openSlots} open {preview.openSlots === 1 ? 'slot' : 'slots'} -{' '}
+            {label(preview.minimumSkillLevel)}-{label(preview.maximumSkillLevel)}
+          </p>
+          <Link
+            className="button"
+            to={`/login?returnTo=${encodeURIComponent(`${currentLocation.pathname}${currentLocation.search}`)}`}
+            onClick={() =>
+              localStorage.setItem(
+                'borajogar_return_to',
+                `${currentLocation.pathname}${currentLocation.search}`,
+              )
+            }
+          >
+            Sign in to join
+          </Link>
+        </section>
+      </main>
+    );
   if (!game)
     return (
       <main className="shell">
@@ -266,6 +390,7 @@ export function GameDetailsPage() {
     setBusy(true);
     try {
       await fn();
+      markGameAlertPromptReady();
       const refreshed = await gameApi.get(id, params.get('access') ?? undefined);
       setGame(refreshed);
     } catch {

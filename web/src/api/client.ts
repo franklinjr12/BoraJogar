@@ -182,6 +182,49 @@ export interface CurrentUser {
   onboardingComplete: boolean;
   isAdmin: boolean;
 }
+export interface OnboardingReadiness {
+  profile: boolean;
+  location: boolean;
+  availability: boolean;
+  profileCount: number;
+  favoriteVenueCount: number;
+  preferredAreaCount: number;
+  availabilityCount: number;
+  canComplete: boolean;
+  missing: string[];
+}
+export interface AvailabilitySummary {
+  id: string;
+  weekday: number;
+  start: string;
+  end: string;
+  labels: string[];
+}
+export type GamePreview = Pick<
+  Game,
+  | 'id'
+  | 'title'
+  | 'startsAt'
+  | 'endsAt'
+  | 'venueName'
+  | 'addressLabel'
+  | 'latitude'
+  | 'longitude'
+  | 'capacity'
+  | 'confirmedPlayers'
+  | 'openSlots'
+  | 'minimumSkillLevel'
+  | 'maximumSkillLevel'
+  | 'visibility'
+  | 'status'
+>;
+export interface Dashboard {
+  displayName: string;
+  readiness: OnboardingReadiness;
+  nextGame?: Game;
+  openGames: Game[];
+  availabilitySummary: AvailabilitySummary[];
+}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -292,17 +335,24 @@ export const profileApi = {
       method: 'PUT',
       body: JSON.stringify({ currentStep, completedSteps }),
     }),
+  readiness: () => request<OnboardingReadiness>('/api/v1/me/onboarding/readiness'),
   complete: () => request<void>('/api/v1/me/onboarding/complete', { method: 'POST' }),
 };
 
 export const authApi = {
   currentUser: () => request<CurrentUser>('/api/v1/me'),
-  emailSignup: (input: { email: string; password: string; displayName?: string }) =>
+  logout: () => request<void>('/api/v1/auth/logout', { method: 'POST' }),
+  emailSignup: (input: {
+    email: string;
+    password: string;
+    displayName?: string;
+    returnTo?: string;
+  }) =>
     request<AuthResult>('/api/v1/auth/email/signup', {
       method: 'POST',
       body: JSON.stringify(input),
     }),
-  emailLogin: (input: { email: string; password: string }) =>
+  emailLogin: (input: { email: string; password: string; returnTo?: string }) =>
     request<AuthResult>('/api/v1/auth/email/login', {
       method: 'POST',
       body: JSON.stringify(input),
@@ -392,6 +442,10 @@ export const gameApi = {
   },
   get: (id: string, access?: string) =>
     request<Game>(`/api/v1/games/${id}${access ? `?access=${encodeURIComponent(access)}` : ''}`),
+  preview: (id: string, access?: string) =>
+    request<GamePreview>(
+      `/api/v1/games/${id}/preview${access ? `?access=${encodeURIComponent(access)}` : ''}`,
+    ),
   create: (input: GameInput) =>
     request<Game>('/api/v1/games', { method: 'POST', body: JSON.stringify(input) }),
   join: (id: string) =>
@@ -400,6 +454,10 @@ export const gameApi = {
     request<{ result: string }>(`/api/v1/games/${id}/leave`, { method: 'POST' }),
   calendarURL: (id: string, access?: string) =>
     `/api/v1/games/${id}/calendar.ics${access ? `?access=${encodeURIComponent(access)}` : ''}`,
+};
+
+export const dashboardApi = {
+  get: () => request<Dashboard>('/api/v1/me/dashboard'),
 };
 
 export const notificationApi = {

@@ -1,6 +1,7 @@
 package game
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -30,9 +31,20 @@ func TestValidateCreateRejectsPastAndInvalidVisibility(t *testing.T) {
 	if err == nil {
 		t.Fatal("past game accepted")
 	}
+	if !strings.Contains(err.Error(), "startsAt must be in the future") || strings.Contains(err.Error(), "RFC3339") {
+		t.Fatalf("past error = %v", err)
+	}
 	_, _, err = ValidateCreate(CreateInput{StartsAt: "2026-07-31T12:00:00Z", DurationMinutes: 90, VenueID: "venue", Capacity: 4, MinimumSkillLevel: "beginner", MaximumSkillLevel: "advanced", Visibility: "secret"}, now)
 	if err == nil {
 		t.Fatal("invalid visibility accepted")
+	}
+}
+
+func TestValidateCreateSeparatesMalformedStartFromPastStart(t *testing.T) {
+	now := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	_, _, err := ValidateCreate(CreateInput{StartsAt: "tomorrow", DurationMinutes: 90, VenueID: "venue", Capacity: 4, MinimumSkillLevel: "beginner", MaximumSkillLevel: "advanced", Visibility: "public"}, now)
+	if err == nil || !strings.Contains(err.Error(), "startsAt must use RFC3339") {
+		t.Fatalf("malformed error = %v", err)
 	}
 }
 

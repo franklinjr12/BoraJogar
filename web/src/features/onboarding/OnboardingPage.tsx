@@ -1,0 +1,276 @@
+import { useEffect, useState, type FormEvent } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  authApi,
+  profileApi,
+  type OnboardingReadiness,
+  type PlayingStyle,
+  type SkillLevel,
+} from '../../api/client';
+import { AvailabilityEditor } from '../availability/AvailabilityPage';
+import { LocationSetup } from '../locations/LocationsPage';
+import { blankProfile, skills, styles } from './options';
+
+type OnboardingGoal = 'find_people' | 'create_game' | 'join_game';
+type OnboardingStep = 0 | 1 | 2;
+type OnboardingDraft = { step: OnboardingStep; profile: typeof blankProfile };
+
+function storedGoal(): OnboardingGoal {
+  const value = localStorage.getItem('borajogar_onboarding_goal');
+  return value === 'create_game' || value === 'join_game' ? value : 'find_people';
+}
+
+function nextPathForGoal(goal: OnboardingGoal) {
+  if (goal === 'create_game') return '/games/new';
+  if (goal === 'join_game') return localStorage.getItem('borajogar_return_to') || '/games';
+  return '/dashboard';
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isStep(value: unknown): value is OnboardingStep {
+  return value === 0 || value === 1 || value === 2;
+}
+
+function isProfileDraft(value: unknown): value is typeof blankProfile {
+  if (!isObject(value)) return false;
+  return (
+    typeof value.displayName === 'string' &&
+    typeof value.timeZone === 'string' &&
+    typeof value.skillLevel === 'string' &&
+    typeof value.bio === 'string' &&
+    Array.isArray(value.styles) &&
+    value.styles.every((style) => typeof style === 'string') &&
+    typeof value.preferredGameDurationMinutes === 'number' &&
+    typeof value.minimumNoticeMinutes === 'number' &&
+    typeof value.activeForMatchmaking === 'boolean'
+  );
+}
+
+function storedDraft(): OnboardingDraft {
+  const saved = localStorage.getItem('borajogar_onboarding');
+  if (!saved) return { step: 0, profile: blankProfile };
+  try {
+    const parsed: unknown = JSON.parse(saved);
+    if (!isObject(parsed)) return { step: 0, profile: blankProfile };
+    return {
+      step: isStep(parsed.step) ? parsed.step : 0,
+      profile: isProfileDraft(parsed.profile) ? parsed.profile : blankProfile,
+    };
+  } catch {
+    return { step: 0, profile: blankProfile };
+  }
+}
+
+function stepForReadiness(readiness: OnboardingReadiness): OnboardingStep {
+  if (!readiness.profile) return 0;
+  if (!readiness.location) return 1;
+  return 2;
+}
+
+function finishLabel(goal: OnboardingGoal) {
+  if (goal === 'create_game') return 'Create game';
+  if (goal === 'join_game') return 'Find games';
+  return 'Go to dashboard';
+}
+
+export function OnboardingPage() {
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const goal = (params.get('goal') as OnboardingGoal | null) ?? storedGoal();
+  const initial = storedDraft();
+  const [step, setStep] = useState(initial.step);
+  const [profile, setProfile] = useState(initial.profile);
+  const [readiness, setReadiness] = useState<OnboardingReadiness | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    localStorage.setItem('borajogar_onboarding_goal', goal);
+    authApi
+      .currentUser()
+      .then((user) =>
+        setProfile((current) => ({
+          ...current,
+          displayName: current.displayName.trim() ? current.displayName : user.displayName,
+          timeZone: current.timeZone || user.timeZone,
+        })),
+      )
+      .catch(() => undefined);
+    profileApi
+      .readiness()
+      .then((nextReadiness) => {
+        setReadiness(nextReadiness);
+        setStep(stepForReadiness(nextReadiness));
+      })
+      .catch(() => undefined);
+  }, [goal]);
+
+  useEffect(() => {
+    localStorage.setItem('borajogar_onboarding', JSON.stringify({ step, profile }));
+  }, [step, profile]);
+
+  const update = <K extends keyof typeof profile>(key: K, value: (typeof profile)[K]) =>
+    setProfile((current) => ({ ...current, [key]: value }));
+
+  const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError('');
+    if (profile.displayName.trim().length < 2) {
+      setError('Choose a name with at least 2 characters.');
+      return;
+    }
+    if (profile.styles.length === 0) update('styles', ['mixed']);
+    try {
+      await profileApi.update({
+        ...profile,
+        displayName: profile.displayName.trim(),
+        styles: profile.styles.length ? profile.styles : ['mixed'],
+      });
+      await profileApi.saveProgress(1, [0]);
+      const nextReadiness = await profileApi.readiness();
+      setReadiness(nextReadiness);
+      if (nextReadiness.canComplete) {
+        await profileApi.complete();
+        localStorage.setItem('borajogar_install_prompt_ready', 'true');
+        localStorage.removeItem('borajogar_onboarding');
+        navigate(nextPathForGoal(goal));
+        return;
+      }
+      setStep(stepForReadiness(nextReadiness));
+    } catch {
+      setError('Could not save profile. Check connection and try again.');
+    }
+  };
+
+  const continueFromLocations = async () => {
+    setError('');
+    const nextReadiness = await profileApi.readiness().catch(() => null);
+    setReadiness(nextReadiness);
+    if (!nextReadiness?.location) {
+      setError('Add one court or area before continuing.');
+      return;
+    }
+    await profileApi.saveProgress(2, [0, 1]).catch(() => undefined);
+    setStep(2);
+  };
+
+  const finish = async () => {
+    setError('');
+    const nextReadiness = await profileApi.readiness().catch(() => null);
+    setReadiness(nextReadiness);
+    if (!nextReadiness?.availability) {
+      setError('Add one usable time before continuing.');
+      return;
+    }
+    try {
+      await profileApi.complete();
+      localStorage.setItem('borajogar_install_prompt_ready', 'true');
+      localStorage.removeItem('borajogar_onboarding');
+      navigate(nextPathForGoal(goal));
+    } catch {
+      setError('Could not finish onboarding. Add one location and one available time.');
+    }
+  };
+
+  return (
+    <main className="shell onboarding">
+      <p className="eyebrow">Bora Jogar</p>
+      {step === 0 && (
+        <>
+          <h1>Tell us about your game.</h1>
+          <p className="lead">Only the basics for matching. Everything else can wait.</p>
+          <form className="card" onSubmit={saveProfile}>
+            <label>
+              Display name
+              <input
+                value={profile.displayName}
+                onChange={(event) => update('displayName', event.target.value)}
+                autoComplete="name"
+                required
+              />
+            </label>
+            <fieldset>
+              <legend>How would you describe your current level?</legend>
+              <div className="choice-list">
+                {skills.map((skill) => (
+                  <button
+                    className={profile.skillLevel === skill.value ? 'choice selected' : 'choice'}
+                    key={skill.value}
+                    type="button"
+                    onClick={() => update('skillLevel', skill.value as SkillLevel)}
+                  >
+                    <strong>{skill.label}</strong>
+                    <span>{skill.description}</span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <label>
+              Style preference
+              <select
+                value={profile.styles[0] ?? 'mixed'}
+                onChange={(event) => update('styles', [event.target.value as PlayingStyle])}
+              >
+                {styles.map((style) => (
+                  <option key={style.value} value={style.value}>
+                    {style.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {error && (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            )}
+            <button className="button" type="submit">
+              Continue
+            </button>
+          </form>
+        </>
+      )}
+      {step === 1 && (
+        <>
+          <LocationSetup compact />
+          <div className="actions">
+            <button className="button" onClick={continueFromLocations}>
+              Continue
+            </button>
+            <button className="text-button" onClick={() => setStep(0)}>
+              Back
+            </button>
+          </div>
+        </>
+      )}
+      {step === 2 && (
+        <>
+          <AvailabilityEditor compact />
+          <p className="hint">You can add more times later.</p>
+          <div className="actions">
+            <button className="button" onClick={finish}>
+              {finishLabel(goal)}
+            </button>
+            <button className="text-button" onClick={() => setStep(1)}>
+              Back
+            </button>
+          </div>
+        </>
+      )}
+      {readiness && !readiness.canComplete && step > 0 && (
+        <p className="hint">Missing: {readiness.missing.join(', ')}</p>
+      )}
+      {error && step > 0 && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      <p>
+        <Link className="text-link" to="/">
+          Home
+        </Link>
+      </p>
+    </main>
+  );
+}

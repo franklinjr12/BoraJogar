@@ -3,95 +3,102 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AvailabilityPage } from './AvailabilityPage';
 
+const area = {
+  id: 'area-1',
+  label: 'Near home',
+  latitude: -25.4,
+  longitude: -49.3,
+  radiusMeters: 4000,
+  priority: 0,
+  active: true,
+};
+const venue = {
+  id: 'venue-1',
+  name: 'Parque Barigui',
+  city: 'Curitiba',
+  latitude: -25.4,
+  longitude: -49.3,
+  lightingStatus: 'has_lighting',
+  surfaceType: 'sand',
+  accessType: 'public',
+  active: true,
+};
+
+function response(value: unknown) {
+  return new Response(JSON.stringify(value), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 describe('AvailabilityPage', () => {
   afterEach(cleanup);
   beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
-        const body = url.includes('preferred-areas')
-          ? [{ id: 'area-1', label: 'Near home', active: true }]
-          : [];
-        return Promise.resolve(
-          new Response(JSON.stringify(body), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        );
+        if (url.includes('preferred-areas')) return Promise.resolve(response([area]));
+        if (url.includes('favorite-venues')) return Promise.resolve(response([venue]));
+        return Promise.resolve(response([]));
       }),
     );
   });
 
-  it('shows weekly editor and location requirement', async () => {
+  it('starts with fast preset choices and saved-location default', async () => {
     render(
       <MemoryRouter>
         <AvailabilityPage />
       </MemoryRouter>,
     );
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: /weekly availability/i })).toBeInTheDocument(),
-    );
-    expect(screen.getByLabelText(/preferred area/i)).toHaveValue('');
-    expect(screen.getByRole('option', { name: 'Near home' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: /when would you most like to play next/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /this weekend/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/any of my saved locations/i)).toBeChecked();
   });
 
-  it('surfaces API save failure while preserving form', async () => {
-    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-      if (init?.method === 'POST') {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              error: {
-                code: 'availability_rule_conflict',
-                message: 'This interval overlaps an existing availability rule.',
-                fields: {},
-              },
-            }),
-            { status: 409, headers: { 'Content-Type': 'application/json' } },
-          ),
-        );
-      }
-      const body = url.includes('preferred-areas')
-        ? [{ id: 'area-1', label: 'Near home', active: true }]
-        : [];
-      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    render(
-      <MemoryRouter>
-        <AvailabilityPage />
-      </MemoryRouter>,
-    );
-    await screen.findByRole('heading', { name: /weekly availability/i });
-    fireEvent.submit(screen.getAllByRole('button', { name: /add interval/i })[0]!.closest('form')!);
-    expect(await screen.findByRole('alert')).toHaveTextContent(/overlaps an existing/i);
-    expect(screen.getByLabelText(/preferred area/i)).toHaveValue('');
-  });
-
-  it('adds saved interval to weekly summary after successful save', async () => {
-    const rule = {
-      id: 'rule-1',
-      weekday: 6,
-      Start: '07:00',
-      End: '09:00',
-      Timezone: 'America/Sao_Paulo',
-      ValidFrom: '2026-08-01',
-      active: true,
-      venueIds: [],
-      preferredAreaIds: ['area-1'],
-    };
+  it('creates a weekend availability rule for all saved locations', async () => {
     let saved = false;
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       if (init?.method === 'POST') {
         saved = true;
-        return Promise.resolve(new Response(JSON.stringify(rule), { status: 200 }));
+        return Promise.resolve(
+          response({
+            id: 'rule-1',
+            weekday: 6,
+            start: '09:00',
+            end: '13:00',
+            timezone: 'America/Sao_Paulo',
+            validFrom: '2026-08-02',
+            active: true,
+            venueIds: ['venue-1'],
+            preferredAreaIds: ['area-1'],
+          }),
+        );
       }
-      const body = url.includes('preferred-areas')
-        ? [{ id: 'area-1', label: 'Near home', active: true }]
-        : saved
-          ? [rule]
-          : [];
-      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+      if (url.includes('preferred-areas')) return Promise.resolve(response([area]));
+      if (url.includes('favorite-venues')) return Promise.resolve(response([venue]));
+      return Promise.resolve(
+        response(
+          saved
+            ? [
+                {
+                  id: 'rule-1',
+                  weekday: 6,
+                  start: '09:00',
+                  end: '13:00',
+                  timezone: 'America/Sao_Paulo',
+                  validFrom: '2026-08-02',
+                  active: true,
+                  venueIds: ['venue-1'],
+                  preferredAreaIds: ['area-1'],
+                },
+              ]
+            : [],
+        ),
+      );
     });
     vi.stubGlobal('fetch', fetchMock);
     render(
@@ -99,38 +106,29 @@ describe('AvailabilityPage', () => {
         <AvailabilityPage />
       </MemoryRouter>,
     );
-    await screen.findByRole('heading', { name: /weekly availability/i });
-    fireEvent.change(screen.getByLabelText(/preferred area/i), { target: { value: 'area-1' } });
-    fireEvent.submit(screen.getByRole('button', { name: /add interval/i }).closest('form')!);
-
-    expect(await screen.findByText('07:00-09:00')).toBeInTheDocument();
-    expect(screen.getAllByText('Near home')).toHaveLength(2);
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('treats empty rules response as no recurring intervals', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((url: string) =>
-        Promise.resolve(
-          url.includes('availability/rules')
-            ? new Response(null, { status: 204 })
-            : new Response(JSON.stringify([]), { status: 200 }),
-        ),
+    await screen.findByRole('button', { name: /this weekend/i });
+    fireEvent.submit(screen.getByRole('button', { name: /add available time/i }).closest('form')!);
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/me/availability/rules',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"weekday":6'),
+        }),
       ),
     );
-    render(
-      <MemoryRouter>
-        <AvailabilityPage />
-      </MemoryRouter>,
-    );
-    expect(await screen.findByText(/no recurring intervals yet/i)).toBeInTheDocument();
+    expect(localStorage.getItem('borajogar_game_alert_prompt_ready')).toBe('true');
+    expect(await screen.findByText('09:00-13:00')).toBeInTheDocument();
   });
 
-  it('points users to locations before adding availability without areas', async () => {
+  it('requires a saved location before saving availability', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))),
+      vi.fn((url: string) => {
+        if (url.includes('preferred-areas') || url.includes('favorite-venues'))
+          return Promise.resolve(response([]));
+        return Promise.resolve(response([]));
+      }),
     );
     render(
       <MemoryRouter>
@@ -138,11 +136,7 @@ describe('AvailabilityPage', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/add a preferred area first/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /create preferred area/i })).toHaveAttribute(
-      'href',
-      '/locations',
-    );
-    expect(screen.getByRole('button', { name: /add interval/i })).toBeDisabled();
+    expect(await screen.findByText(/add a playing location first/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add available time/i })).toBeDisabled();
   });
 });

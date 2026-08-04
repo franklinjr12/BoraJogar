@@ -37,3 +37,24 @@ func TestAdminEmailMatchingIsCaseInsensitive(t *testing.T) {
 		t.Fatal("unexpected admin email")
 	}
 }
+
+func TestSafeReturnToAllowsOnlyRelativeAppPaths(t *testing.T) {
+	if got := safeReturnTo("/games/abc?access=token"); got != "/games/abc?access=token" {
+		t.Fatalf("safe returnTo = %q", got)
+	}
+	for _, value := range []string{"https://evil.example/games/abc", "//evil.example", `\evil`, ""} {
+		if got := safeReturnTo(value); got != "" {
+			t.Fatalf("unsafe returnTo %q accepted as %q", value, got)
+		}
+	}
+}
+
+func TestPostAuthRedirectPreservesSafeReturnTo(t *testing.T) {
+	user := User{OnboardingComplete: false}
+	if got := postAuthRedirect(user, "/games/abc?access=token"); got != "/games/abc?access=token" {
+		t.Fatalf("redirect = %q", got)
+	}
+	if got := postAuthRedirect(user, "https://evil.example"); got != "/onboarding" {
+		t.Fatalf("fallback redirect = %q", got)
+	}
+}

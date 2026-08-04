@@ -19,6 +19,47 @@ async function signIn(page: Page, token: string) {
   ]);
 }
 
+function uniqueEmail(prefix: string) {
+  const project = test
+    .info()
+    .project.name.replace(/[^a-z0-9]+/gi, '-')
+    .toLowerCase();
+  return `${prefix}-${project}-${Date.now()}@example.com`;
+}
+
+async function signUpWithEmail(page: Page, displayName: string, email: string, returnTo: string) {
+  await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+  await page.getByLabel(/display name/i).fill(displayName);
+  await page.getByLabel(/email/i).fill(email);
+  await page.getByLabel(/password/i).fill('pw');
+  await page
+    .locator('form')
+    .getByRole('button', { name: /^create account$/i })
+    .click();
+}
+
+async function saveProfileStep(page: Page, displayName: string) {
+  await expect(page.getByRole('heading', { name: /tell us about your game/i })).toBeVisible();
+  await page.getByLabel(/display name/i).fill(displayName);
+  await page.getByRole('button', { name: /^continue$/i }).click();
+}
+
+async function saveAreaStep(page: Page, label: string) {
+  await expect(page.getByText('Playing locations', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /choose an area/i }).click();
+  await page.getByLabel(/^label$/i).fill(label);
+  await page.getByRole('button', { name: /save area/i }).click();
+  await expect(page.getByText(/area saved/i)).toBeVisible();
+  await page.getByRole('button', { name: /^continue$/i }).click();
+}
+
+async function saveAvailabilityStep(page: Page) {
+  await expect(page.getByText(/your schedule/i)).toBeVisible();
+  await page.getByRole('button', { name: /add available time/i }).click();
+  await expect(page.getByText(/available time saved/i)).toBeVisible();
+  await page.getByRole('button', { name: /use email only/i }).click();
+}
+
 function futureDate(daysFromNow: number) {
   const date = new Date();
   date.setDate(date.getDate() + daysFromNow);
@@ -64,6 +105,62 @@ test.describe('Bora Jogar real backend E2E', () => {
     await expect(page).toHaveURL(/\/games\/[0-9a-f-]+$/);
     await expect(page.getByRole('heading', { name: 'E2E Created From Browser' })).toBeVisible();
     await expect(page.getByText('E2E Praia Paulista')).toBeVisible();
+  });
+
+  test('new create-game user completes onboarding before game creation', async ({ page }) => {
+    const displayName = 'New Flow Player';
+    await page.goto('/');
+    await page.getByRole('link', { name: /get started/i }).click();
+    await page.getByRole('link', { name: /create a game/i }).click();
+    await signUpWithEmail(
+      page,
+      displayName,
+      uniqueEmail('new-flow'),
+      '/onboarding?goal=create_game',
+    );
+
+    await saveProfileStep(page, displayName);
+    await saveAreaStep(page, 'New flow area');
+    await saveAvailabilityStep(page);
+    await page.getByRole('button', { name: /^create game$/i }).click();
+
+    await expect(page).toHaveURL(/\/games\/new$/);
+    await expect(page.getByRole('heading', { name: /set up a game/i })).toBeVisible();
+    await expect(page.getByLabel(/venue/i)).toHaveValue(/area:/);
+    await expect(page.getByText(/this game will use new flow area/i)).toBeVisible();
+  });
+
+  test('returning incomplete user resumes setup and profile never asks to sign in', async ({
+    page,
+  }) => {
+    const displayName = 'Returning Flow Player';
+    await signUpWithEmail(page, displayName, uniqueEmail('returning-flow'), '/onboarding');
+    await saveProfileStep(page, displayName);
+
+    await page
+      .getByRole('main')
+      .getByRole('link', { name: /^home$/i })
+      .click();
+    await expect(page.getByRole('link', { name: /continue setup/i })).toBeVisible();
+    await page.evaluate(() =>
+      localStorage.setItem(
+        'borajogar_onboarding',
+        JSON.stringify({ step: 8, profile: { displayName: 'stale legacy state' } }),
+      ),
+    );
+
+    await page.getByRole('link', { name: /profile/i }).click();
+    await expect(page.getByRole('heading', { name: displayName })).toBeVisible();
+    await expect(page.getByText(/sign in to view your profile/i)).toHaveCount(0);
+
+    await page.goto('/');
+    await page.getByRole('link', { name: /continue setup/i }).click();
+    await saveAreaStep(page, 'Returning flow area');
+    await saveAvailabilityStep(page);
+    await page.getByRole('button', { name: /go to dashboard/i }).click();
+
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole('heading', { name: /good to see you, returning/i })).toBeVisible();
   });
 
   test('waitlists a player when a real backend game is full', async ({ page }) => {

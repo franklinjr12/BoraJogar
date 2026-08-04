@@ -14,6 +14,9 @@ paths:
         - in: query
           name: invitation
           schema: { type: string }
+        - in: query
+          name: returnTo
+          schema: { type: string }
       responses: { '302': { description: Redirect to Google } }
   /api/v1/auth/google/callback:
     get:
@@ -63,6 +66,16 @@ paths:
       responses: { '200': { $ref: '#/components/responses/OnboardingProgress' }, '422': { $ref: '#/components/responses/ValidationError' } }
   /api/v1/me/onboarding/complete:
     post: { summary: Complete onboarding, security: [{ cookieAuth: [] }], responses: { '204': { description: Completed }, '422': { $ref: '#/components/responses/ValidationError' } } }
+  /api/v1/me/onboarding/readiness:
+    get:
+      summary: Get minimum onboarding readiness
+      security: [{ cookieAuth: [] }]
+      responses: { '200': { description: Readiness, content: { application/json: { schema: { $ref: '#/components/schemas/OnboardingReadiness' } } } }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /api/v1/me/dashboard:
+    get:
+      summary: Get personalized dashboard
+      security: [{ cookieAuth: [] }]
+      responses: { '200': { description: Dashboard, content: { application/json: { schema: { $ref: '#/components/schemas/Dashboard' } } } }, '401': { $ref: '#/components/responses/Unauthorized' } }
   /api/v1/users/{userId}/public-profile:
     get:
       summary: Get limited profile for a relevant player
@@ -182,6 +195,11 @@ paths:
       security: [{ cookieAuth: [] }]
       parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }, { in: query, name: access, schema: { type: string } }]
       responses: { '200': { description: iCalendar event, content: { text/calendar: { schema: { type: string } } } }, '404': { description: Game unavailable } }
+  /api/v1/games/{gameId}/preview:
+    get:
+      summary: Get public or link-token game preview
+      parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }, { in: query, name: access, schema: { type: string } }]
+      responses: { '200': { description: Game preview, content: { application/json: { schema: { $ref: '#/components/schemas/GamePreview' } } } }, '404': { description: Game unavailable } }
   /api/v1/games/{gameId}/join:
     post: { summary: Join game or waitlist, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Join result }, '409': { description: Join rejected } } }
   /api/v1/games/{gameId}/leave:
@@ -256,12 +274,14 @@ components:
         email: { type: string }
         password: { type: string }
         displayName: { type: string, nullable: true }
+        returnTo: { type: string, nullable: true }
     EmailLoginInput:
       type: object
       required: [email, password]
       properties:
         email: { type: string }
         password: { type: string }
+        returnTo: { type: string, nullable: true }
     AuthResult:
       type: object
       required: [redirectTo]
@@ -296,6 +316,19 @@ components:
       properties:
         currentStep: { type: integer, minimum: 0, maximum: 8 }
         completedSteps: { type: array, items: { type: integer, minimum: 0, maximum: 8 } }
+    OnboardingReadiness:
+      type: object
+      required: [profile, location, availability, profileCount, favoriteVenueCount, preferredAreaCount, availabilityCount, canComplete, missing]
+      properties:
+        profile: { type: boolean }
+        location: { type: boolean }
+        availability: { type: boolean }
+        profileCount: { type: integer, minimum: 0 }
+        favoriteVenueCount: { type: integer, minimum: 0 }
+        preferredAreaCount: { type: integer, minimum: 0 }
+        availabilityCount: { type: integer, minimum: 0 }
+        canComplete: { type: boolean }
+        missing: { type: array, items: { type: string, enum: [profile, location, availability] } }
     Venue:
       type: object
       required: [id, name, city, latitude, longitude, lightingStatus, surfaceType, accessType, active]
@@ -387,6 +420,43 @@ components:
         maximumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
         visibility: { type: string, enum: [public, link-only, private] }
         status: { type: string, enum: [scheduled, cancelled, completed] }
+    GamePreview:
+      type: object
+      required: [id, startsAt, endsAt, venueName, capacity, confirmedPlayers, openSlots, minimumSkillLevel, maximumSkillLevel, visibility, status]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string, nullable: true }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        venueName: { type: string }
+        addressLabel: { type: string, nullable: true }
+        latitude: { type: number, format: double }
+        longitude: { type: number, format: double }
+        capacity: { type: integer, minimum: 2, maximum: 12 }
+        confirmedPlayers: { type: integer, minimum: 0 }
+        openSlots: { type: integer, minimum: 0 }
+        minimumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
+        maximumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
+        visibility: { type: string, enum: [public, link-only, private] }
+        status: { type: string, enum: [scheduled, cancelled, completed] }
+    AvailabilitySummary:
+      type: object
+      required: [id, weekday, start, end, labels]
+      properties:
+        id: { type: string, format: uuid }
+        weekday: { type: integer, minimum: 0, maximum: 6 }
+        start: { type: string }
+        end: { type: string }
+        labels: { type: array, items: { type: string } }
+    Dashboard:
+      type: object
+      required: [displayName, readiness, openGames, availabilitySummary]
+      properties:
+        displayName: { type: string }
+        readiness: { $ref: '#/components/schemas/OnboardingReadiness' }
+        nextGame: { $ref: '#/components/schemas/Game' }
+        openGames: { type: array, items: { $ref: '#/components/schemas/Game' } }
+        availabilitySummary: { type: array, items: { $ref: '#/components/schemas/AvailabilitySummary' } }
     GameInput:
       type: object
       required: [startsAt, venueId, capacity, minimumSkillLevel, maximumSkillLevel, visibility]

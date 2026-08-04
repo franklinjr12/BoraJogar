@@ -5,10 +5,11 @@ import { LocationsPage } from './LocationsPage';
 
 const venue = {
   id: 'venue-1',
-  name: 'Praia Central',
-  city: 'São Paulo',
-  latitude: -23.5,
-  longitude: -46.6,
+  name: 'Parque Barigui',
+  city: 'Curitiba',
+  addressLabel: 'Rua Example',
+  latitude: -25.4,
+  longitude: -49.3,
   lightingStatus: 'has_lighting',
   surfaceType: 'sand',
   accessType: 'public',
@@ -25,136 +26,245 @@ function response(value: unknown) {
 describe('locations page', () => {
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
-  it('loads venues, hides large map fallback, and saves preferred area', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch');
-    fetchMock
-      .mockResolvedValueOnce(response([venue]))
-      .mockResolvedValueOnce(response([]))
-      .mockResolvedValueOnce(response([]))
-      .mockResolvedValueOnce(
-        response({
-          id: 'area-1',
-          label: 'Centro',
-          latitude: -23.5,
-          longitude: -46.6,
-          radiusMeters: 2500,
-          priority: 0,
-          active: true,
-        }),
-      );
+  it('starts list-first and hides coordinates', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('favorite-venues')) return Promise.resolve(response([venue]));
+        if (url.includes('preferred-areas'))
+          return Promise.resolve(
+            response([
+              {
+                id: 'area-1',
+                label: 'Near home',
+                latitude: -25.4,
+                longitude: -49.3,
+                radiusMeters: 4000,
+                priority: 0,
+                active: true,
+              },
+            ]),
+          );
+        return Promise.resolve(response([venue]));
+      }),
+    );
     render(
       <MemoryRouter>
         <LocationsPage />
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole('heading', { name: 'Praia Central' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /where do you play/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/personalized name/i)).toBeInTheDocument();
-    expect(screen.queryByRole('img', { name: /map unavailable/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/map unavailable/i)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Area name'), { target: { value: 'Centro' } });
-    fireEvent.click(screen.getByRole('button', { name: /save preferred area/i }));
-    expect(await screen.findByText(/preferred area saved/i)).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/me/preferred-areas',
-      expect.objectContaining({ method: 'POST' }),
-    );
+    expect(await screen.findByRole('heading', { name: /where can you play/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Parque Barigui' })).toBeInTheDocument();
+    expect(screen.getByText(/within 4 km/i)).toBeInTheDocument();
+    expect(screen.queryByText(/-25\.4/)).not.toBeInTheDocument();
   });
 
-  it('handles empty venue list and favorites an approved venue', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch');
-    fetchMock
-      .mockResolvedValueOnce(response([venue]))
-      .mockResolvedValueOnce(response([]))
-      .mockResolvedValueOnce(response([]))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+  it('saves a known court from the chooser', async () => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return Promise.resolve(new Response(null, { status: 204 }));
+      if (url.includes('favorite-venues')) return Promise.resolve(response([]));
+      if (url.includes('preferred-areas')) return Promise.resolve(response([]));
+      return Promise.resolve(response([venue]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
     render(
       <MemoryRouter>
         <LocationsPage />
       </MemoryRouter>,
     );
-    await screen.findByRole('heading', { name: 'Praia Central' });
-    fireEvent.click(screen.getByRole('button', { name: /add praia central favorite/i }));
+
+    await screen.findByText(/choose where you could play/i);
+    fireEvent.click(screen.getByRole('button', { name: /choose a court/i }));
+    fireEvent.click(screen.getByRole('button', { name: /parque barigui/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save court/i }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/v1/me/favorite-venues/venue-1',
         expect.objectContaining({ method: 'POST' }),
       ),
     );
-    expect(
-      screen.getByRole('button', { name: /remove praia central favorite/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/court saved/i)).toBeInTheDocument();
   });
 
-  it('shows create-location controls when venue list is empty', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch');
-    fetchMock
-      .mockResolvedValueOnce(response([]))
-      .mockResolvedValueOnce(response([]))
-      .mockResolvedValueOnce(response([]))
-      .mockResolvedValueOnce(
-        response({
-          results: [
-            {
-              id: 123,
-              name: 'Sao Paulo',
-              admin1: 'Sao Paulo',
-              country: 'Brasil',
-              latitude: -23.5,
-              longitude: -46.6,
-              timezone: 'America/Sao_Paulo',
-            },
-          ],
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            id: 'venue-2',
-            name: 'Nova Quadra',
-            city: 'Sao Paulo',
-            latitude: -23.5,
-            longitude: -46.6,
-            lightingStatus: 'unknown',
-            surfaceType: 'sand',
-            accessType: 'unknown',
+  it('requests current location only after explicit click and uses radius presets', async () => {
+    const geolocation = {
+      getCurrentPosition: vi.fn((success: PositionCallback) =>
+        success({
+          coords: { latitude: -25.4289, longitude: -49.2738 } as GeolocationCoordinates,
+        } as GeolocationPosition),
+      ),
+    };
+    vi.stubGlobal('navigator', { ...navigator, geolocation });
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST')
+        return Promise.resolve(
+          response({
+            id: 'area-1',
+            label: 'Near my area',
+            latitude: -25.429,
+            longitude: -49.274,
+            radiusMeters: 7000,
+            priority: 0,
             active: true,
           }),
-          { status: 201, headers: { 'Content-Type': 'application/json' } },
-        ),
-      )
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+        );
+      if (url.includes('favorite-venues') || url.includes('preferred-areas'))
+        return Promise.resolve(response([]));
+      return Promise.resolve(response([venue]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
     render(
       <MemoryRouter>
         <LocationsPage />
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/no courts saved yet/i)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/personalized name/i), {
-      target: { value: 'Nova Quadra' },
+    await screen.findByText(/choose where you could play/i);
+    expect(geolocation.getCurrentPosition).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
+    fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
+    fireEvent.click(screen.getByRole('button', { name: '7 km' }));
+    fireEvent.click(screen.getByRole('button', { name: /save area/i }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/me/preferred-areas',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"radiusMeters":7000'),
+        }),
+      ),
+    );
+  });
+
+  it('searches for an area and saves the selected result', async () => {
+    const fetchMock = vi.fn((url: string | URL, init?: RequestInit) => {
+      const href = String(url);
+      if (href.includes('geocoding-api.open-meteo.com'))
+        return Promise.resolve(
+          response({
+            results: [
+              {
+                id: 123,
+                name: 'Batel',
+                latitude: -25.4412,
+                longitude: -49.2877,
+                admin1: 'Parana',
+                country: 'Brazil',
+              },
+            ],
+          }),
+        );
+      if (init?.method === 'POST')
+        return Promise.resolve(
+          response({
+            id: 'area-1',
+            label: 'Near Batel',
+            latitude: -25.441,
+            longitude: -49.288,
+            radiusMeters: 4000,
+            priority: 0,
+            active: true,
+          }),
+        );
+      if (href.includes('favorite-venues') || href.includes('preferred-areas'))
+        return Promise.resolve(response([]));
+      return Promise.resolve(response([venue]));
     });
-    fireEvent.change(screen.getByLabelText(/court address/i), {
-      target: { value: 'Rua das Areias, 10' },
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MemoryRouter>
+        <LocationsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/choose where you could play/i);
+    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
+    fireEvent.click(screen.getByRole('button', { name: /search for a neighborhood or address/i }));
+    fireEvent.change(screen.getByLabelText(/neighborhood or address search/i), {
+      target: { value: 'Batel' },
     });
-    fireEvent.change(screen.getByLabelText(/city search/i), {
-      target: { value: 'Sao Paulo' },
-    });
-    fireEvent.click(await screen.findByRole('option', { name: /sao paulo/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^create location$/i }));
-    expect(await screen.findByText(/ready for games/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/latitude/i)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/longitude/i)).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('option', { name: /batel/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save area/i }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/me/preferred-areas',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"label":"Near Batel"'),
+        }),
+      ),
+    );
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/me/venues',
+      '/api/v1/me/preferred-areas',
       expect.objectContaining({
-        method: 'POST',
-        body: expect.stringContaining('"city":"Sao Paulo"'),
+        body: expect.stringContaining('"latitude":-25.441'),
       }),
     );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/me/preferred-areas',
+      expect.objectContaining({
+        body: expect.stringContaining('"longitude":-49.288'),
+      }),
+    );
+  });
+
+  it('shows a message when area search has no matches', async () => {
+    const fetchMock = vi.fn((url: string | URL) => {
+      const href = String(url);
+      if (href.includes('geocoding-api.open-meteo.com'))
+        return Promise.resolve(response({ results: [] }));
+      if (href.includes('favorite-venues') || href.includes('preferred-areas'))
+        return Promise.resolve(response([]));
+      return Promise.resolve(response([venue]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MemoryRouter>
+        <LocationsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/choose where you could play/i);
+    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
+    fireEvent.click(screen.getByRole('button', { name: /search for a neighborhood or address/i }));
+    fireEvent.change(screen.getByLabelText(/neighborhood or address search/i), {
+      target: { value: 'Nopeville' },
+    });
+
+    expect(await screen.findByText(/neighborhood or address not found/i)).toBeInTheDocument();
+  });
+
+  it('shows a retry message when area search fails', async () => {
+    const fetchMock = vi.fn((url: string | URL) => {
+      const href = String(url);
+      if (href.includes('geocoding-api.open-meteo.com'))
+        return Promise.reject(new Error('search unavailable'));
+      if (href.includes('favorite-venues') || href.includes('preferred-areas'))
+        return Promise.resolve(response([]));
+      return Promise.resolve(response([venue]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MemoryRouter>
+        <LocationsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/choose where you could play/i);
+    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
+    fireEvent.click(screen.getByRole('button', { name: /search for a neighborhood or address/i }));
+    fireEvent.change(screen.getByLabelText(/neighborhood or address search/i), {
+      target: { value: 'Batel' },
+    });
+
+    expect(await screen.findByText(/could not search area/i)).toBeInTheDocument();
   });
 });

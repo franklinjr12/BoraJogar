@@ -42,6 +42,48 @@ type gameSummary struct {
 	CurrentUserStatus string    `json:"currentUserStatus,omitempty"`
 	CurrentUserRole   string    `json:"currentUserRole,omitempty"`
 }
+type gamePreview struct {
+	ID                string    `json:"id"`
+	Title             *string   `json:"title,omitempty"`
+	StartsAt          time.Time `json:"startsAt"`
+	EndsAt            time.Time `json:"endsAt"`
+	VenueName         string    `json:"venueName"`
+	AddressLabel      *string   `json:"addressLabel,omitempty"`
+	Latitude          float64   `json:"latitude"`
+	Longitude         float64   `json:"longitude"`
+	Capacity          int       `json:"capacity"`
+	ConfirmedPlayers  int       `json:"confirmedPlayers"`
+	OpenSlots         int       `json:"openSlots"`
+	MinimumSkillLevel string    `json:"minimumSkillLevel"`
+	MaximumSkillLevel string    `json:"maximumSkillLevel"`
+	Visibility        string    `json:"visibility"`
+	Status            string    `json:"status"`
+}
+type onboardingReadiness struct {
+	Profile            bool     `json:"profile"`
+	Location           bool     `json:"location"`
+	Availability       bool     `json:"availability"`
+	ProfileCount       int      `json:"profileCount"`
+	FavoriteVenueCount int      `json:"favoriteVenueCount"`
+	PreferredAreaCount int      `json:"preferredAreaCount"`
+	AvailabilityCount  int      `json:"availabilityCount"`
+	CanComplete        bool     `json:"canComplete"`
+	Missing            []string `json:"missing"`
+}
+type availabilitySummary struct {
+	ID      string   `json:"id"`
+	Weekday int      `json:"weekday"`
+	Start   string   `json:"start"`
+	End     string   `json:"end"`
+	Labels  []string `json:"labels"`
+}
+type dashboardResponse struct {
+	DisplayName         string                `json:"displayName"`
+	Readiness           onboardingReadiness   `json:"readiness"`
+	NextGame            *gameSummary          `json:"nextGame,omitempty"`
+	OpenGames           []gameSummary         `json:"openGames"`
+	AvailabilitySummary []availabilitySummary `json:"availabilitySummary"`
+}
 type gameDetails struct {
 	gameSummary
 	Description       *string  `json:"description,omitempty"`
@@ -73,7 +115,14 @@ func (h Handler) now() time.Time {
 }
 func (h Handler) Register(mux *http.ServeMux, requireAuth func(http.Handler) http.Handler) {
 	mux.Handle("/api/v1/games", requireAuth(http.HandlerFunc(h.games)))
-	mux.Handle("/api/v1/games/", requireAuth(http.HandlerFunc(h.gameByID)))
+	mux.Handle("/api/v1/me/dashboard", requireAuth(http.HandlerFunc(h.dashboard)))
+	mux.HandleFunc("/api/v1/games/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasSuffix(strings.Trim(r.URL.Path, "/"), "/preview") {
+			h.preview(w, r)
+			return
+		}
+		requireAuth(http.HandlerFunc(h.gameByID)).ServeHTTP(w, r)
+	})
 }
 func (h Handler) games(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
@@ -274,6 +323,154 @@ func (h Handler) list(w http.ResponseWriter, r *http.Request, userID uuid.UUID) 
 	writeJSON(w, 200, map[string]any{"items": out, "page": page, "pageSize": pageSize, "hasMore": hasMore})
 }
 
+func (h Handler) dashboard(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	out := dashboardResponse{DisplayName: u.DisplayName, OpenGames: []gameSummary{}, AvailabilitySummary: []availabilitySummary{}}
+	ready, err := h.dashboardReadiness(r, u.ID)
+	if err != nil {
+		http.Error(w, "dashboard unavailable", 500)
+		return
+	}
+	out.Readiness = ready
+	next, found, err := h.nextConfirmedGame(r, u.ID)
+	if err != nil {
+		http.Error(w, "dashboard unavailable", 500)
+		return
+	}
+	if found {
+		out.NextGame = &next
+	}
+	open, err := h.dashboardOpenGames(r, u.ID)
+	if err != nil {
+		http.Error(w, "dashboard unavailable", 500)
+		return
+	}
+	out.OpenGames = open
+	availability, err := h.dashboardAvailability(r, u.ID)
+	if err != nil {
+		http.Error(w, "dashboard unavailable", 500)
+		return
+	}
+	out.AvailabilitySummary = availability
+	writeJSON(w, 200, out)
+}
+
+func (h Handler) dashboardReadiness(r *http.Request, userID uuid.UUID) (onboardingReadiness, error) {
+	var out onboardingReadiness
+	if err := h.DB.QueryRow(r.Context(), `SELECT count(*) FROM player_profiles WHERE user_id=$1`, userID).Scan(&out.ProfileCount); err != nil {
+		return out, err
+	}
+	if err := h.DB.QueryRow(r.Context(), `SELECT count(*) FROM user_favorite_venues f JOIN venues v ON v.id=f.venue_id WHERE f.user_id=$1 AND v.active=true`, userID).Scan(&out.FavoriteVenueCount); err != nil {
+		return out, err
+	}
+	if err := h.DB.QueryRow(r.Context(), `SELECT count(*) FROM preferred_areas WHERE user_id=$1 AND active=true`, userID).Scan(&out.PreferredAreaCount); err != nil {
+		return out, err
+	}
+	if err := h.DB.QueryRow(r.Context(), `
+		SELECT count(*)
+		FROM availability_rules ar
+		WHERE ar.user_id=$1 AND ar.active=true AND (
+			EXISTS (
+				SELECT 1 FROM availability_rule_venues arv
+				JOIN user_favorite_venues ufv ON ufv.venue_id=arv.venue_id AND ufv.user_id=ar.user_id
+				JOIN venues v ON v.id=arv.venue_id AND v.active=true
+				WHERE arv.availability_rule_id=ar.id
+			) OR EXISTS (
+				SELECT 1 FROM availability_rule_areas ara
+				JOIN preferred_areas pa ON pa.id=ara.preferred_area_id AND pa.user_id=ar.user_id AND pa.active=true
+				WHERE ara.availability_rule_id=ar.id
+			)
+		)`, userID).Scan(&out.AvailabilityCount); err != nil {
+		return out, err
+	}
+	out.Profile = out.ProfileCount > 0
+	out.Location = out.FavoriteVenueCount+out.PreferredAreaCount > 0
+	out.Availability = out.AvailabilityCount > 0
+	if !out.Profile {
+		out.Missing = append(out.Missing, "profile")
+	}
+	if !out.Location {
+		out.Missing = append(out.Missing, "location")
+	}
+	if !out.Availability {
+		out.Missing = append(out.Missing, "availability")
+	}
+	out.CanComplete = len(out.Missing) == 0
+	return out, nil
+}
+
+func (h Handler) nextConfirmedGame(r *http.Request, userID uuid.UUID) (gameSummary, bool, error) {
+	var x gameSummary
+	err := h.DB.QueryRow(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),''),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id JOIN game_players mine ON mine.game_id=g.id AND mine.user_id=$1 AND mine.status='confirmed' WHERE g.status='scheduled' AND g.ends_at > $2 ORDER BY g.starts_at,g.id LIMIT 1`, userID, h.now()).Scan(&x.ID, &x.Title, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.CurrentUserStatus, &x.CurrentUserRole)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return x, false, nil
+	}
+	if err != nil {
+		return x, false, err
+	}
+	x.OpenSlots = x.Capacity - x.ConfirmedPlayers
+	return x, true, nil
+}
+
+func (h Handler) dashboardOpenGames(r *http.Request, userID uuid.UUID) ([]gameSummary, error) {
+	rows, err := h.DB.Query(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),''),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.status='scheduled' AND g.ends_at > $2 AND g.visibility='public' AND NOT EXISTS (SELECT 1 FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1 AND gp.status='confirmed') ORDER BY g.starts_at,g.id LIMIT 3`, userID, h.now())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []gameSummary{}
+	for rows.Next() {
+		var x gameSummary
+		if err = rows.Scan(&x.ID, &x.Title, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.CurrentUserStatus, &x.CurrentUserRole); err != nil {
+			return nil, err
+		}
+		x.OpenSlots = x.Capacity - x.ConfirmedPlayers
+		if x.OpenSlots > 0 {
+			out = append(out, x)
+		}
+	}
+	return out, rows.Err()
+}
+
+func (h Handler) dashboardAvailability(r *http.Request, userID uuid.UUID) ([]availabilitySummary, error) {
+	rows, err := h.DB.Query(r.Context(), `SELECT id,weekday,to_char(start_local_time,'HH24:MI'),to_char(end_local_time,'HH24:MI') FROM availability_rules WHERE user_id=$1 AND active=true ORDER BY weekday,start_local_time LIMIT 4`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []availabilitySummary{}
+	for rows.Next() {
+		var x availabilitySummary
+		if err = rows.Scan(&x.ID, &x.Weekday, &x.Start, &x.End); err != nil {
+			return nil, err
+		}
+		labels, labelErr := h.availabilityLabels(r, x.ID)
+		if labelErr != nil {
+			return nil, labelErr
+		}
+		x.Labels = labels
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}
+
+func (h Handler) availabilityLabels(r *http.Request, ruleID string) ([]string, error) {
+	rows, err := h.DB.Query(r.Context(), `SELECT v.name FROM availability_rule_venues arv JOIN venues v ON v.id=arv.venue_id WHERE arv.availability_rule_id=$1 UNION ALL SELECT pa.label FROM availability_rule_areas ara JOIN preferred_areas pa ON pa.id=ara.preferred_area_id WHERE ara.availability_rule_id=$1 ORDER BY 1`, ruleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var label string
+		if err = rows.Scan(&label); err != nil {
+			return nil, err
+		}
+		out = append(out, label)
+	}
+	return out, rows.Err()
+}
+
 func pagination(r *http.Request) (int, int, bool) {
 	page, pageSize := 1, 30
 	var err error
@@ -337,6 +534,34 @@ func (h Handler) details(w http.ResponseWriter, r *http.Request, id, userID uuid
 	}
 	writeJSON(w, 200, x)
 }
+
+func (h Handler) preview(w http.ResponseWriter, r *http.Request) {
+	raw := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/games/"), "/")
+	raw = strings.TrimSuffix(raw, "/preview")
+	id, err := uuid.Parse(strings.Trim(raw, "/"))
+	if err != nil {
+		writeError(w, 404, "game_not_found", "Game not found.")
+		return
+	}
+	var out gamePreview
+	var shareTokenHash string
+	err = h.DB.QueryRow(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE(g.share_token_hash,'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.id=$1`, id).Scan(&out.ID, &out.Title, &out.StartsAt, &out.EndsAt, &out.VenueName, &out.AddressLabel, &out.Latitude, &out.Longitude, &out.Capacity, &out.ConfirmedPlayers, &out.MinimumSkillLevel, &out.MaximumSkillLevel, &out.Visibility, &out.Status, &shareTokenHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, 404, "game_not_found", "Game not found.")
+		return
+	}
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if out.Visibility == "private" || (out.Visibility == "link-only" && hashToken(r.URL.Query().Get("access")) != shareTokenHash) {
+		writeError(w, 404, "game_not_found", "Game not found.")
+		return
+	}
+	out.OpenSlots = out.Capacity - out.ConfirmedPlayers
+	writeJSON(w, 200, out)
+}
+
 func (h Handler) readDetails(r *http.Request, id, userID uuid.UUID) (gameDetails, error) {
 	var x gameDetails
 	err := h.DB.QueryRow(r.Context(), `SELECT g.id,g.title,g.description,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE(g.share_token_hash,'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.id=$1`, id).Scan(&x.ID, &x.Title, &x.Description, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.shareTokenHash)

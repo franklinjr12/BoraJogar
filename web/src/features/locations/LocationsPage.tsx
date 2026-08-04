@@ -2,10 +2,22 @@ import { useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Link } from 'react-router-dom';
 import { locationApi, type PreferredArea, type Venue } from '../../api/client';
-import { VenueForm } from './VenueForm';
-import { blankVenueDraft, type VenueDraft } from './venueDraft';
+import { searchPlaces, type PlaceSearchResult } from './placeSearch';
 
-const defaultCenter = { latitude: -23.5505, longitude: -46.6333 };
+const defaultCenter = { latitude: -25.4284, longitude: -49.2733 };
+const radiusOptions = [
+  { meters: 2000, label: '2 km', hint: 'Very close' },
+  { meters: 4000, label: '4 km', hint: 'Nearby' },
+  { meters: 7000, label: '7 km', hint: 'Nearby neighborhoods' },
+  { meters: 10000, label: '10 km', hint: 'Reasonably close' },
+];
+
+function roundPoint(point: { latitude: number; longitude: number }) {
+  return {
+    latitude: Math.round(point.latitude * 1000) / 1000,
+    longitude: Math.round(point.longitude * 1000) / 1000,
+  };
+}
 
 function MapPanel({
   center,
@@ -26,9 +38,13 @@ function MapPanel({
         container: node.current,
         style: styleUrl,
         center: [center.longitude, center.latitude],
-        zoom: 11,
+        zoom: 12,
       });
       instance.addControl(new maplibregl.NavigationControl(), 'top-right');
+      instance.on('moveend', () => {
+        const next = instance.getCenter();
+        onSelect(next.lat, next.lng);
+      });
       instance.on('click', (event) => onSelect(event.lngLat.lat, event.lngLat.lng));
       map.current = instance;
     });
@@ -38,19 +54,32 @@ function MapPanel({
       map.current = null;
     };
   }, [center.latitude, center.longitude, onSelect, styleUrl]);
-  if (!styleUrl) return null;
-  return <div ref={node} className="map-panel" aria-label="Location map" />;
+  if (!styleUrl)
+    return <p className="map-inline-hint">Map unavailable. Search or use current location.</p>;
+  return (
+    <div className="map-shell">
+      <div ref={node} className="map-panel" aria-label="Area selection map" />
+      <div className="map-pin" aria-hidden="true" />
+    </div>
+  );
 }
 
 function venueLabel(venue: Venue) {
+  const access =
+    venue.accessType === 'paid_entry'
+      ? 'Paid entry'
+      : venue.accessType === 'public'
+        ? 'Public court'
+        : venue.accessType === 'private'
+          ? 'Private court'
+          : 'Court';
   const lighting =
     venue.lightingStatus === 'has_lighting'
-      ? 'Lit'
+      ? 'Lighting available'
       : venue.lightingStatus === 'no_lighting'
         ? 'No lighting'
         : 'Lighting unknown';
-  const access = venue.accessType === 'paid_entry' ? 'Paid entry' : venue.accessType;
-  return `${lighting} - ${access}`;
+  return `${access} - ${lighting}`;
 }
 
 export function LocationsPage() {
@@ -66,186 +95,377 @@ export function LocationsPage() {
 
 export function LocationSetup({ compact = false }: { compact?: boolean }) {
   const [venues, setVenues] = useState<Venue[]>([]);
-  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [favorites, setFavorites] = useState<Venue[]>([]);
   const [areas, setAreas] = useState<PreferredArea[]>([]);
+  const [mode, setMode] = useState<'list' | 'court' | 'area'>('list');
+  const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
+  const [search, setSearch] = useState('');
   const [point, setPoint] = useState(defaultCenter);
-  const [radius, setRadius] = useState(2500);
-  const [label, setLabel] = useState('');
-  const [venueDraft, setVenueDraft] = useState<VenueDraft>(blankVenueDraft());
+  const [radius, setRadius] = useState(4000);
+  const [label, setLabel] = useState('Near home');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
-  const mapStyleConfigured = Boolean(import.meta.env.VITE_MAP_STYLE_URL);
+  const [areaSearchOpen, setAreaSearchOpen] = useState(false);
+  const [areaSearchTouched, setAreaSearchTouched] = useState(false);
+  const [areaQuery, setAreaQuery] = useState('');
+  const [areaResults, setAreaResults] = useState<PlaceSearchResult[]>([]);
+  const [areaSearching, setAreaSearching] = useState(false);
+  const areaSearchInput = useRef<HTMLInputElement>(null);
+  const areaSearchSequence = useRef(0);
+  const areaSearchController = useRef<AbortController | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [loadedVenues, loadedFavorites, loadedAreas] = await Promise.all([
+        locationApi.venues(),
+        locationApi.favoriteVenues(),
+        locationApi.preferredAreas(),
+      ]);
+      setVenues(loadedVenues);
+      setFavorites(loadedFavorites);
+      setAreas(loadedAreas);
+    } catch {
+      setMessage('Could not load locations. Check connection and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    Promise.all([locationApi.venues(), locationApi.favoriteVenues(), locationApi.preferredAreas()])
-      .then(([loadedVenues, loadedFavorites, loadedAreas]) => {
-        setVenues(loadedVenues);
-        setFavorites(new Set(loadedFavorites.map((item) => item.id)));
-        setAreas(loadedAreas);
-      })
-      .catch(() => setMessage('Could not load locations. Check connection and try again.'))
-      .finally(() => setLoading(false));
+    void load();
   }, []);
 
-  const selectPoint = (latitude: number, longitude: number) => setPoint({ latitude, longitude });
+  useEffect(() => {
+    if (areaSearchOpen) areaSearchInput.current?.focus();
+  }, [areaSearchOpen]);
+
+  useEffect(() => {
+    areaSearchController.current?.abort();
+    setAreaResults([]);
+    if (!areaSearchOpen || !areaSearchTouched) return;
+    if (areaQuery.trim().length < 3) {
+      setAreaSearching(false);
+      return;
+    }
+
+    const sequence = areaSearchSequence.current + 1;
+    areaSearchSequence.current = sequence;
+    const controller = new AbortController();
+    areaSearchController.current = controller;
+    const timeout = window.setTimeout(() => {
+      setAreaSearching(true);
+      searchPlaces(areaQuery, { signal: controller.signal })
+        .then((matches) => {
+          if (sequence !== areaSearchSequence.current) return;
+          setAreaResults(matches);
+          setMessage(
+            matches.length > 0
+              ? 'Choose an area from the list.'
+              : 'Neighborhood or address not found.',
+          );
+        })
+        .catch((cause: unknown) => {
+          if (cause instanceof DOMException && cause.name === 'AbortError') return;
+          setMessage('Could not search area. Try again soon.');
+        })
+        .finally(() => {
+          if (sequence === areaSearchSequence.current) setAreaSearching(false);
+        });
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [areaQuery, areaSearchOpen, areaSearchTouched]);
+
+  const favoriteIds = new Set(favorites.map((venue) => venue.id));
+  const savedLocations = favorites.length + areas.length;
+  const filteredVenues = venues.filter((venue) =>
+    `${venue.name} ${venue.addressLabel ?? ''} ${venue.city}`
+      .toLowerCase()
+      .includes(search.toLowerCase()),
+  );
+
   const useCurrentLocation = () => {
     if (!navigator.geolocation) {
-      setMessage('Browser location is unavailable. Choose a point on the map.');
+      setMessage('Browser location is unavailable. Choose an area on the map.');
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (position) =>
-        setPoint({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
-      () => setMessage('Location permission denied. You can configure an area manually.'),
+      (position) => {
+        const rounded = roundPoint({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        setPoint(rounded);
+        setLabel('Near my area');
+      },
+      () => setMessage('Location permission denied. Search or choose on the map.'),
     );
   };
+
+  const openAreaSearch = () => {
+    setAreaSearchOpen(true);
+    setMessage('');
+  };
+
+  const chooseMap = () => {
+    setAreaSearchOpen(false);
+    setAreaResults([]);
+    setMessage('Move the map or click a point to choose an area.');
+  };
+
+  const selectAreaPlace = (place: PlaceSearchResult) => {
+    const rounded = roundPoint({ latitude: place.latitude, longitude: place.longitude });
+    setPoint(rounded);
+    setLabel(`Near ${place.city}`);
+    setAreaQuery(place.displayName);
+    setAreaSearchTouched(false);
+    setAreaResults([]);
+    setMessage(`Area selected: ${place.city}.`);
+  };
+
+  const saveCourt = async (venue: Venue) => {
+    try {
+      await locationApi.favoriteVenue(venue.id);
+      setFavorites((current) => (favoriteIds.has(venue.id) ? current : [...current, venue]));
+      setSelectedVenue(null);
+      setMode('list');
+      setMessage('Court saved.');
+    } catch {
+      setMessage('Could not save court.');
+    }
+  };
+
+  const removeCourt = async (venue: Venue) => {
+    try {
+      await locationApi.unfavoriteVenue(venue.id);
+      setFavorites((current) => current.filter((item) => item.id !== venue.id));
+    } catch {
+      setMessage('Could not remove court.');
+    }
+  };
+
   const saveArea = async () => {
     if (!label.trim()) {
-      setMessage('Enter an area name.');
+      setMessage('Enter a label for this area.');
       return;
     }
     try {
       const created = await locationApi.createPreferredArea({
         label: label.trim(),
-        latitude: point.latitude,
-        longitude: point.longitude,
+        ...roundPoint(point),
         radiusMeters: radius,
         priority: areas.length,
       });
       setAreas((current) => [...current, created]);
-      setLabel('');
-      setMessage('Preferred area saved.');
+      setMode('list');
+      setMessage('Area saved.');
     } catch {
-      setMessage('Could not save preferred area. You may have reached the limit of five.');
+      setMessage('Could not save area. You may have reached the limit of five.');
     }
   };
-  const toggleFavorite = async (venue: Venue) => {
-    try {
-      if (favorites.has(venue.id)) {
-        await locationApi.unfavoriteVenue(venue.id);
-        setFavorites((current) => {
-          const next = new Set(current);
-          next.delete(venue.id);
-          return next;
-        });
-      } else {
-        await locationApi.favoriteVenue(venue.id);
-        setFavorites((current) => new Set(current).add(venue.id));
-      }
-    } catch {
-      setMessage('Could not update favorite venue.');
-    }
-  };
+
   const removeArea = async (id: string) => {
     try {
       await locationApi.deletePreferredArea(id);
       setAreas((current) => current.filter((area) => area.id !== id));
     } catch {
-      setMessage('Could not remove preferred area.');
+      setMessage('Could not remove area.');
     }
   };
 
   return (
     <>
-      <p className="eyebrow">Where you play</p>
-      {!compact && <h1>Where do you play?</h1>}
-      <p className="lead">Add courts you use often, then save broader areas for matchmaking.</p>
-      <section className="location-grid">
-        <div className="location-setup-column">
-          <div className="card area-form">
-            <h2>Create court/location</h2>
-            <VenueForm
-              draft={venueDraft}
-              onChange={setVenueDraft}
-              onCreated={(created) => {
-                setVenues((current) => [...current, created]);
-                setFavorites((current) => new Set(current).add(created.id));
-                void locationApi.favoriteVenue(created.id).catch(() => undefined);
-              }}
-            />
-          </div>
-          <div className="card area-form">
-            <h2>Preferred area</h2>
-            {mapStyleConfigured ? (
-              <MapPanel center={point} onSelect={selectPoint} />
-            ) : (
-              <p className="map-inline-hint">
-                Map unavailable. Current location still works if browser permission is allowed.
-              </p>
-            )}
-            <button className="text-button" type="button" onClick={useCurrentLocation}>
-              Use my current location
-            </button>
-            <label>
-              Area name
-              <input
-                value={label}
-                onChange={(event) => setLabel(event.target.value)}
-                placeholder="Pinheiros"
-              />
-            </label>
-            <label>
-              Radius: {(radius / 1000).toFixed(1)} km
-              <input
-                type="range"
-                min="500"
-                max="25000"
-                step="500"
-                value={radius}
-                onChange={(event) => setRadius(Number(event.target.value))}
-              />
-            </label>
-            <button
-              className="button"
-              type="button"
-              onClick={saveArea}
-              disabled={areas.length >= 5}
-            >
-              Save preferred area
-            </button>
-          </div>
-        </div>
-        <div className="card location-summary">
-          <h2>Available venues</h2>
-          {loading && <p role="status">Loading venues...</p>}
-          {!loading && venues.length === 0 && <p>No courts saved yet. Add one to host a game.</p>}
-          <div className="venue-list">
-            {venues.map((venue) => (
-              <article className="venue" key={venue.id}>
-                <div>
-                  <h3>{venue.name}</h3>
-                  <p>{venue.addressLabel || venue.city}</p>
-                  <span>
-                    {venueLabel(venue)}
-                    {venue.distanceMeters !== undefined &&
-                      ` - ${Math.round(venue.distanceMeters)} m`}
-                  </span>
-                </div>
-                <button
-                  className="text-button"
-                  type="button"
-                  onClick={() => toggleFavorite(venue)}
-                  aria-label={`${favorites.has(venue.id) ? 'Remove' : 'Add'} ${venue.name} favorite`}
-                >
-                  {favorites.has(venue.id) ? 'Favorited' : 'Favorite'}
-                </button>
-              </article>
-            ))}
-          </div>
-          <h2>Your preferred areas</h2>
-          {areas.length === 0 && <p>No areas saved yet.</p>}
+      <p className="eyebrow">Playing locations</p>
+      {!compact && <h1>Where can you play?</h1>}
+      <p className="lead">
+        Choose courts you already use, or mark a general area. Your private areas are only used for
+        matching.
+      </p>
+      <div className="actions compact-actions">
+        <button className="button" type="button" onClick={() => setMode('court')}>
+          Choose a court
+        </button>
+        <button className="text-button" type="button" onClick={() => setMode('area')}>
+          Choose an area
+        </button>
+      </div>
+
+      {mode === 'list' && (
+        <section className="location-list">
+          <h2>Your playing locations</h2>
+          {loading && <p role="status">Loading locations...</p>}
+          {!loading && savedLocations === 0 && (
+            <div className="card">
+              <h3>Choose where you could play</h3>
+              <p>Add courts you know or mark an area such as near home or near work.</p>
+              <p>Your saved areas remain private.</p>
+              <button className="button" type="button" onClick={() => setMode('court')}>
+                Add my first location
+              </button>
+            </div>
+          )}
+          {favorites.map((venue) => (
+            <article className="card location-card" key={venue.id}>
+              <div>
+                <h3>{venue.name}</h3>
+                <p>{venueLabel(venue)}</p>
+                <p>{venue.addressLabel || venue.city}</p>
+                <p>Preferred anytime</p>
+              </div>
+              <button className="text-button" type="button" onClick={() => removeCourt(venue)}>
+                Remove
+              </button>
+            </article>
+          ))}
           {areas.map((area) => (
-            <div className="area-row" key={area.id}>
-              <span>
-                {area.label} - {(area.radiusMeters / 1000).toFixed(1)} km
-              </span>
+            <article className="card location-card" key={area.id}>
+              <div>
+                <h3>{area.label}</h3>
+                <p>Private area</p>
+                <p>Within {Math.round(area.radiusMeters / 1000)} km</p>
+                <p>Any availability</p>
+              </div>
               <button className="text-button" type="button" onClick={() => removeArea(area.id)}>
                 Remove
               </button>
-            </div>
+            </article>
           ))}
-        </div>
-      </section>
+        </section>
+      )}
+
+      {mode === 'court' && (
+        <section className="card">
+          <h2>Choose a court</h2>
+          <label>
+            Search courts or neighborhoods
+            <input value={search} onChange={(event) => setSearch(event.target.value)} />
+          </label>
+          {selectedVenue ? (
+            <div className="venue-preview">
+              <h3>{selectedVenue.name}</h3>
+              <p>{venueLabel(selectedVenue)}</p>
+              <p>{selectedVenue.addressLabel || selectedVenue.city}</p>
+              <div className="map-preview" aria-label={`${selectedVenue.name} map preview`} />
+              <p>When would you play here?</p>
+              <label className="checks">
+                <span>
+                  <input type="checkbox" defaultChecked /> Anytime I'm available
+                </span>
+              </label>
+              <button className="button" type="button" onClick={() => saveCourt(selectedVenue)}>
+                Save court
+              </button>
+            </div>
+          ) : (
+            <>
+              <h3>Nearby and popular</h3>
+              <div className="choice-list">
+                {filteredVenues.map((venue) => (
+                  <button
+                    className="choice"
+                    key={venue.id}
+                    type="button"
+                    onClick={() => setSelectedVenue(venue)}
+                  >
+                    <strong>{venue.name}</strong>
+                    <span>{venueLabel(venue)}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
+      {mode === 'area' && (
+        <section className="card">
+          <h2>Choose an area where you would be willing to play</h2>
+          <div className="actions compact-actions">
+            <button className="text-button" type="button" onClick={useCurrentLocation}>
+              Use my current location
+            </button>
+            <button className="text-button" type="button" onClick={openAreaSearch}>
+              Search for a neighborhood or address
+            </button>
+            <button className="text-button" type="button" onClick={chooseMap}>
+              Choose directly on the map
+            </button>
+          </div>
+          {areaSearchOpen && (
+            <>
+              <label>
+                Neighborhood or address search
+                <input
+                  ref={areaSearchInput}
+                  type="search"
+                  autoComplete="off"
+                  value={areaQuery}
+                  onChange={(event) => {
+                    setAreaSearchTouched(true);
+                    setAreaQuery(event.target.value);
+                  }}
+                  placeholder="Batel, Curitiba"
+                />
+              </label>
+              {areaSearching && <p className="hint">Searching area...</p>}
+              {areaResults.length > 0 && (
+                <div className="place-results" role="listbox" aria-label="Area results">
+                  {areaResults.map((result) => (
+                    <button
+                      className="place-result"
+                      key={result.id}
+                      type="button"
+                      role="option"
+                      onClick={() => selectAreaPlace(result)}
+                    >
+                      <strong>{result.displayName}</strong>
+                      <span>
+                        {result.latitude.toFixed(3)}, {result.longitude.toFixed(3)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          <MapPanel
+            center={point}
+            onSelect={(latitude, longitude) => setPoint({ latitude, longitude })}
+          />
+          <p className="hint">Near {label || 'selected area'}</p>
+          <fieldset>
+            <legend>How far would you travel?</legend>
+            <div className="segmented">
+              {radiusOptions.map((option) => (
+                <button
+                  className={radius === option.meters ? 'view-button selected' : 'view-button'}
+                  key={option.meters}
+                  type="button"
+                  onClick={() => setRadius(option.meters)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <p className="hint">{radiusOptions.find((option) => option.meters === radius)?.hint}</p>
+          </fieldset>
+          <label>
+            Label
+            <input value={label} onChange={(event) => setLabel(event.target.value)} />
+          </label>
+          <p className="hint">
+            Private area. Other players will only see the venue of a proposed game.
+          </p>
+          <button className="button" type="button" onClick={saveArea} disabled={areas.length >= 5}>
+            Save area
+          </button>
+        </section>
+      )}
+
       {message && (
         <p className="error" role="alert">
           {message}

@@ -1,8 +1,19 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link, Navigate, Route, Routes, useParams, useSearchParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Link,
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom';
+import {
+  ApiError,
   authApi,
   profileApi,
+  type CurrentUser,
   type PlayingStyle,
   type Profile,
   type SkillLevel,
@@ -13,6 +24,8 @@ import { CreateGamePage, GameDetailsPage, GamesPage } from '../features/games/Ga
 import { CalendarPage } from '../features/games/CalendarPage';
 import { DashboardPage } from '../features/games/DashboardPage';
 import { NotificationsPage } from '../features/notifications/NotificationsPage';
+import { OnboardingPage } from '../features/onboarding/OnboardingPage';
+import { blankProfile } from '../features/onboarding/options';
 import { AppShell } from '../platform/AppShell';
 import { getDeviceTimeZone } from '../platform/timeZone';
 
@@ -51,62 +64,138 @@ const styles: Array<{ value: PlayingStyle; label: string }> = [
   { value: 'training_focused', label: 'Training-focused' },
   { value: 'mixed', label: 'Mixed / no preference' },
 ];
-const blankProfile: Omit<Profile, 'userId' | 'avatarUrl'> = {
-  displayName: '',
-  timeZone: getDeviceTimeZone(),
-  skillLevel: 'beginner',
-  bio: '',
-  styles: ['mixed'],
-  preferredGameDurationMinutes: 90,
-  minimumNoticeMinutes: 120,
-  activeForMatchmaking: true,
-};
+
+function useCurrentUser() {
+  return useQuery<CurrentUser>({
+    queryKey: ['current-user'],
+    queryFn: authApi.currentUser,
+    retry: false,
+  });
+}
+
+function safeAppPath(value: string | null) {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return '';
+  return value;
+}
 
 function Home() {
+  const currentUser = useCurrentUser();
+  const user = currentUser.data;
+  const primaryAction = user ? (
+    <Link className="button" to={user.onboardingComplete ? '/dashboard' : '/onboarding'}>
+      {user.onboardingComplete ? 'Go to dashboard' : 'Continue setup'}
+    </Link>
+  ) : (
+    <Link className="button" to="/start">
+      Get started
+    </Link>
+  );
+  const secondaryAction =
+    user && user.onboardingComplete ? (
+      <Link className="text-link" to="/games/new">
+        Create a game
+      </Link>
+    ) : currentUser.isPending || user ? null : (
+      <Link className="text-link" to="/login">
+        Already have an account? Sign in
+      </Link>
+    );
+
   return (
     <main className="shell">
       <p className="eyebrow">Bora Jogar</p>
-      <h1>Beach volleyball, easier to organize.</h1>
-      <p className="lead">Find compatible players, coordinate schedules, and get on court.</p>
+      <h1>Find people to play beach volleyball</h1>
+      <p className="lead">Tell us when and where you can play. We'll help you complete a group.</p>
       <div className="actions">
-        <Link className="button" to="/login">
-          Get started
-        </Link>
-        <Link className="text-link" to="/dashboard">
-          Your dashboard
-        </Link>
-        <Link className="text-link" to="/calendar">
-          Your calendar
-        </Link>
-        <Link className="text-link" to="/locations">
-          Choose locations
-        </Link>
-        <Link className="text-link" to="/availability">
-          Set availability
-        </Link>
-        <Link className="text-link" to="/games">
-          Explore games
-        </Link>
+        {primaryAction}
+        {secondaryAction}
       </div>
       <section className="card">
-        <h2>Play with people who fit your schedule.</h2>
-        <p>
-          Set your level, style, preferred places, and availability. Bora Jogar handles the
-          coordination.
-        </p>
+        <p>Match compatible schedules</p>
+        <p>Find players around your level</p>
+        <p>Organize games with friends</p>
       </section>
+    </main>
+  );
+}
+
+function Start() {
+  const currentUser = useCurrentUser();
+  const user = currentUser.data;
+  const choose = (goal: string, returnTo?: string) => {
+    localStorage.setItem('borajogar_onboarding_goal', goal);
+    if (returnTo) localStorage.setItem('borajogar_return_to', returnTo);
+    else localStorage.removeItem('borajogar_return_to');
+  };
+  const routeFor = (goal: 'find_people' | 'create_game' | 'join_game') => {
+    if (!user) {
+      if (goal === 'create_game') return '/login?returnTo=/onboarding?goal=create_game';
+      if (goal === 'join_game') return '/login?returnTo=/onboarding?goal=join_game';
+      return '/login?returnTo=/onboarding';
+    }
+    if (user.onboardingComplete) {
+      if (goal === 'create_game') return '/games/new';
+      if (goal === 'join_game') return '/games';
+      return '/dashboard';
+    }
+    if (goal === 'create_game') return '/onboarding?goal=create_game';
+    if (goal === 'join_game') return '/onboarding?goal=join_game';
+    return '/onboarding';
+  };
+  const returnToFor = (goal: 'find_people' | 'create_game' | 'join_game') =>
+    user ? undefined : routeFor(goal).replace('/login?returnTo=', '');
+
+  return (
+    <main className="shell">
+      <p className="eyebrow">First step</p>
+      <h1>What would you like to do first?</h1>
+      {currentUser.isPending ? (
+        <p className="lead">Checking your session...</p>
+      ) : (
+        <div className="choice-list goal-list">
+          <Link
+            className="choice"
+            to={routeFor('find_people')}
+            onClick={() => choose('find_people', returnToFor('find_people'))}
+          >
+            <strong>Find people to play with</strong>
+            <span>Set your availability and receive game suggestions.</span>
+          </Link>
+          <Link
+            className="choice"
+            to={routeFor('create_game')}
+            onClick={() => choose('create_game', returnToFor('create_game'))}
+          >
+            <strong>Create a game</strong>
+            <span>Choose a time and place, then invite players.</span>
+          </Link>
+          <Link
+            className="choice"
+            to={routeFor('join_game')}
+            onClick={() => choose('join_game', returnToFor('join_game'))}
+          >
+            <strong>Join a game</strong>
+            <span>Open an invitation or explore available games.</span>
+          </Link>
+        </div>
+      )}
     </main>
   );
 }
 function Login() {
   const [params] = useSearchParams();
   const invitation = params.get('invite');
+  const returnTo = safeAppPath(
+    params.get('returnTo') ?? localStorage.getItem('borajogar_return_to'),
+  );
   const error = params.get('error');
+  const currentUser = useCurrentUser();
   const [mode, setMode] = useState<'signup' | 'login'>('signup');
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const url = new URL('/api/v1/auth/google', window.location.origin);
   if (invitation) url.searchParams.set('invitation', invitation);
+  if (returnTo) url.searchParams.set('returnTo', returnTo);
   const submitEmail = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError('');
@@ -119,10 +208,12 @@ function Login() {
               email: String(form.get('email')),
               password: String(form.get('password')),
               displayName: String(form.get('displayName')),
+              returnTo,
             })
           : await authApi.emailLogin({
               email: String(form.get('email')),
               password: String(form.get('password')),
+              returnTo,
             });
       window.location.assign(result.redirectTo);
     } catch (err) {
@@ -131,6 +222,15 @@ function Login() {
       setSubmitting(false);
     }
   };
+  if (currentUser.data) {
+    return (
+      <Navigate
+        replace
+        to={returnTo || (currentUser.data.onboardingComplete ? '/dashboard' : '/onboarding')}
+      />
+    );
+  }
+
   return (
     <main className="shell">
       <Link className="text-link" to="/">
@@ -201,7 +301,7 @@ function Invite() {
   return <Navigate replace to={`/login?invite=${encodeURIComponent(code ?? '')}`} />;
 }
 
-function Onboarding() {
+export function LegacyOnboarding() {
   const saved = localStorage.getItem('borajogar_onboarding');
   const initial = saved
     ? (JSON.parse(saved) as { step: number; profile: typeof blankProfile })
@@ -389,20 +489,47 @@ function Onboarding() {
 }
 
 function ProfilePage() {
+  const currentUser = useCurrentUser();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
+  const [signingOut, setSigningOut] = useState(false);
   useEffect(() => {
+    if (!currentUser.data) return;
+    setError('');
     profileApi
       .get()
       .then((nextProfile) => setProfile(nextProfile))
-      .catch(() => setError('Sign in to view your profile.'));
-  }, []);
+      .catch((err) =>
+        setError(
+          err instanceof ApiError && err.status === 401
+            ? 'Sign in to view your profile.'
+            : 'Complete your profile setup before viewing your profile.',
+        ),
+      );
+  }, [currentUser.data]);
+  if (currentUser.isPending)
+    return (
+      <main className="shell">
+        <p>Loading profile...</p>
+      </main>
+    );
+  if (!currentUser.data)
+    return (
+      <main className="shell">
+        <p className="error">Sign in to view your profile.</p>
+        <Link to="/login">Sign in</Link>
+      </main>
+    );
   if (error)
     return (
       <main className="shell">
         <p className="error">{error}</p>
-        <Link to="/login">Sign in</Link>
+        <Link to={error.startsWith('Sign in') ? '/login' : '/onboarding'}>
+          {error.startsWith('Sign in') ? 'Sign in' : 'Continue setup'}
+        </Link>
       </main>
     );
   if (!profile)
@@ -429,6 +556,18 @@ function ProfilePage() {
       setEditing(false);
     } catch {
       setError('Could not save profile. Check the fields and try again.');
+    }
+  };
+  const signOut = async () => {
+    setError('');
+    setSigningOut(true);
+    try {
+      await authApi.logout();
+      queryClient.clear();
+      navigate('/login', { replace: true });
+    } catch {
+      setError('Could not sign out. Check connection and try again.');
+      setSigningOut(false);
     }
   };
   return (
@@ -523,6 +662,9 @@ function ProfilePage() {
           </button>
         </section>
       )}
+      <button className="text-button" type="button" onClick={signOut} disabled={signingOut}>
+        {signingOut ? 'Signing out...' : 'Sign out'}
+      </button>
       {error && (
         <p className="error" role="alert">
           {error}
@@ -547,9 +689,10 @@ export function App() {
     <AppShell>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/start" element={<Start />} />
         <Route path="/login" element={<Login />} />
         <Route path="/invite/:code" element={<Invite />} />
-        <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/locations" element={<LocationsPage />} />

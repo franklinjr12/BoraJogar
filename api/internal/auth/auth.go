@@ -21,6 +21,7 @@ import (
 
 const sessionCookie = "borajogar_session"
 const stateCookie = "borajogar_oauth_state"
+const returnToCookie = "borajogar_return_to"
 
 var ErrInvalidInvitation = errors.New("invalid invitation")
 var ErrDuplicateEmail = errors.New("duplicate email")

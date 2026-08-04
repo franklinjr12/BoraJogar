@@ -89,6 +89,7 @@ func validateProgress(p progress) error {
 func (h Handler) Register(mux *http.ServeMux, requireAuth func(http.Handler) http.Handler) {
 	mux.Handle("/api/v1/me/profile", requireAuth(http.HandlerFunc(h.profile)))
 	mux.Handle("/api/v1/me/onboarding", requireAuth(http.HandlerFunc(h.onboarding)))
+	mux.Handle("/api/v1/me/onboarding/readiness", requireAuth(http.HandlerFunc(h.readiness)))
 	mux.Handle("/api/v1/me/onboarding/complete", requireAuth(http.HandlerFunc(h.completeOnboarding)))
 	mux.Handle("/api/v1/users/{userId}/public-profile", requireAuth(http.HandlerFunc(h.publicProfile)))
 }
@@ -186,6 +187,18 @@ type progress struct {
 	CompletedSteps []int `json:"completedSteps"`
 }
 
+type readiness struct {
+	Profile            bool     `json:"profile"`
+	Location           bool     `json:"location"`
+	Availability       bool     `json:"availability"`
+	ProfileCount       int      `json:"profileCount"`
+	FavoriteVenueCount int      `json:"favoriteVenueCount"`
+	PreferredAreaCount int      `json:"preferredAreaCount"`
+	AvailabilityCount  int      `json:"availabilityCount"`
+	CanComplete        bool     `json:"canComplete"`
+	Missing            []string `json:"missing"`
+}
+
 func (h Handler) onboarding(w http.ResponseWriter, r *http.Request) {
 	u, _ := user(r)
 	if r.Method != http.MethodGet && r.Method != http.MethodPut {
@@ -216,16 +229,82 @@ func (h Handler) onboarding(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, p)
 }
+
+func (h Handler) readiness(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(405)
+		return
+	}
+	u, _ := user(r)
+	out, err := h.readinessForUser(r.Context(), u.ID)
+	if err != nil {
+		http.Error(w, "onboarding unavailable", 500)
+		return
+	}
+	writeJSON(w, 200, out)
+}
+
+func (h Handler) readinessForUser(ctx context.Context, userID uuid.UUID) (readiness, error) {
+	var out readiness
+	if err := h.DB.QueryRow(ctx, `SELECT count(*) FROM player_profiles WHERE user_id=$1`, userID).Scan(&out.ProfileCount); err != nil {
+		return out, err
+	}
+	if err := h.DB.QueryRow(ctx, `SELECT count(*) FROM user_favorite_venues f JOIN venues v ON v.id=f.venue_id WHERE f.user_id=$1 AND v.active=true`, userID).Scan(&out.FavoriteVenueCount); err != nil {
+		return out, err
+	}
+	if err := h.DB.QueryRow(ctx, `SELECT count(*) FROM preferred_areas WHERE user_id=$1 AND active=true`, userID).Scan(&out.PreferredAreaCount); err != nil {
+		return out, err
+	}
+	if err := h.DB.QueryRow(ctx, `
+		SELECT count(*)
+		FROM availability_rules ar
+		WHERE ar.user_id=$1 AND ar.active=true AND (
+			EXISTS (
+				SELECT 1 FROM availability_rule_venues arv
+				JOIN user_favorite_venues ufv ON ufv.venue_id=arv.venue_id AND ufv.user_id=ar.user_id
+				JOIN venues v ON v.id=arv.venue_id AND v.active=true
+				WHERE arv.availability_rule_id=ar.id
+			) OR EXISTS (
+				SELECT 1 FROM availability_rule_areas ara
+				JOIN preferred_areas pa ON pa.id=ara.preferred_area_id AND pa.user_id=ar.user_id AND pa.active=true
+				WHERE ara.availability_rule_id=ar.id
+			)
+		)`, userID).Scan(&out.AvailabilityCount); err != nil {
+		return out, err
+	}
+	out.Profile = out.ProfileCount > 0
+	out.Location = out.FavoriteVenueCount+out.PreferredAreaCount > 0
+	out.Availability = out.AvailabilityCount > 0
+	if !out.Profile {
+		out.Missing = append(out.Missing, "profile")
+	}
+	if !out.Location {
+		out.Missing = append(out.Missing, "location")
+	}
+	if !out.Availability {
+		out.Missing = append(out.Missing, "availability")
+	}
+	out.CanComplete = len(out.Missing) == 0
+	return out, nil
+}
+
 func (h Handler) completeOnboarding(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(405)
 		return
 	}
 	u, _ := user(r)
-	var count int
-	err := h.DB.QueryRow(r.Context(), `SELECT count(*) FROM player_profiles WHERE user_id=$1`, u.ID).Scan(&count)
-	if err != nil || count != 1 {
-		writeError(w, 422, "profile_incomplete", "Complete profile before finishing onboarding.")
+	ready, err := h.readinessForUser(r.Context(), u.ID)
+	if err != nil {
+		http.Error(w, "onboarding unavailable", 500)
+		return
+	}
+	if !ready.CanComplete {
+		fields := map[string]string{}
+		for _, item := range ready.Missing {
+			fields[item] = "Required before finishing onboarding."
+		}
+		writeErrorFields(w, 422, "onboarding_incomplete", "Add a profile, location, and availability before finishing onboarding.", fields)
 		return
 	}
 	_, err = h.DB.Exec(r.Context(), `UPDATE users SET onboarding_completed=true,onboarding_completed_at=now(),updated_at=now() WHERE id=$1`, u.ID)
@@ -276,4 +355,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": message, "fields": map[string]string{}}})
+}
+func writeErrorFields(w http.ResponseWriter, status int, code, message string, fields map[string]string) {
+	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": message, "fields": fields}})
 }

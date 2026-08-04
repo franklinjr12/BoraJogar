@@ -84,6 +84,7 @@ type emailAuthInput struct {
 	Email       string `json:"email"`
 	Password    string `json:"password"`
 	DisplayName string `json:"displayName"`
+	ReturnTo    string `json:"returnTo"`
 }
 
 func (h Handler) emailSignup(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +105,7 @@ func (h Handler) emailSignup(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	h.startSession(w, r, user)
+	h.startSession(w, r, user, input.ReturnTo)
 }
 
 func (h Handler) emailLogin(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +123,7 @@ func (h Handler) emailLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
-	h.startSession(w, r, user)
+	h.startSession(w, r, user, input.ReturnTo)
 }
 
 func (h Handler) startGoogle(w http.ResponseWriter, r *http.Request) {
@@ -132,6 +133,9 @@ func (h Handler) startGoogle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: stateCookie, Value: state, Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: 600})
+	if returnTo := safeReturnTo(r.URL.Query().Get("returnTo")); returnTo != "" {
+		http.SetCookie(w, &http.Cookie{Name: returnToCookie, Value: url.QueryEscape(returnTo), Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: 600})
+	}
 	if invitation := r.URL.Query().Get("invitation"); invitation != "" {
 		http.SetCookie(w, &http.Cookie{Name: "borajogar_invitation", Value: invitation, Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: 600})
 	}
@@ -151,6 +155,12 @@ func (h Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 	invitationCode := ""
 	if invitationCookie, cookieErr := r.Cookie("borajogar_invitation"); cookieErr == nil {
 		invitationCode = invitationCookie.Value
+	}
+	returnTo := ""
+	if returnToCookieValue, cookieErr := r.Cookie(returnToCookie); cookieErr == nil {
+		if decoded, decodeErr := url.QueryUnescape(returnToCookieValue.Value); decodeErr == nil {
+			returnTo = safeReturnTo(decoded)
+		}
 	}
 	profile, err := h.Google.Exchange(r.Context(), r.URL.Query().Get("code"), h.RedirectURL)
 	if err != nil || profile.Subject == "" || !profile.EmailVerified {
@@ -177,8 +187,9 @@ func (h Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: stateCookie, Value: "", Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	http.SetCookie(w, &http.Cookie{Name: "borajogar_invitation", Value: "", Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: returnToCookie, Value: "", Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	h.setSessionCookie(w, token)
-	http.Redirect(w, r, postAuthRedirect(user), http.StatusFound)
+	http.Redirect(w, r, postAuthRedirect(user, returnTo), http.StatusFound)
 }
 
 func (h Handler) upsertUser(ctx context.Context, profile GoogleProfile, invitationCode string) (User, error) {
@@ -267,7 +278,7 @@ func (h Handler) authenticateEmailUser(ctx context.Context, email, password stri
 	return user, nil
 }
 
-func (h Handler) startSession(w http.ResponseWriter, r *http.Request, user User) {
+func (h Handler) startSession(w http.ResponseWriter, r *http.Request, user User, returnTo string) {
 	token, err := randomToken()
 	if err != nil {
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
@@ -278,18 +289,33 @@ func (h Handler) startSession(w http.ResponseWriter, r *http.Request, user User)
 		return
 	}
 	h.setSessionCookie(w, token)
-	writeJSON(w, http.StatusOK, map[string]string{"redirectTo": postAuthRedirect(user)})
+	writeJSON(w, http.StatusOK, map[string]string{"redirectTo": postAuthRedirect(user, returnTo)})
 }
 
 func (h Handler) setSessionCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: 60 * 60 * 24 * 30})
 }
 
-func postAuthRedirect(user User) string {
+func postAuthRedirect(user User, returnTo string) string {
+	if safe := safeReturnTo(returnTo); safe != "" {
+		return safe
+	}
 	if !user.OnboardingComplete {
 		return "/onboarding"
 	}
 	return "/dashboard"
+}
+
+func safeReturnTo(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") || strings.Contains(value, "\\") {
+		return ""
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" {
+		return ""
+	}
+	return parsed.RequestURI()
 }
 
 func nullable(value string) *string {
