@@ -186,7 +186,7 @@ export function CreateGamePage() {
     try {
       const game = await gameApi.create(input);
       markGameAlertPromptReady();
-      navigate(`/games/${game.id}`);
+      navigate(game.shareUrl ?? `/games/${game.id}`);
     } catch (cause: unknown) {
       if (cause instanceof ApiError && cause.status === 409) {
         setError(
@@ -410,6 +410,27 @@ export function GameDetailsPage() {
       setBusy(false);
     }
   };
+  const accessToken = params.get('access');
+  const shareURL =
+    game.visibility === 'link-only' && (game.shareUrl || accessToken)
+      ? new URL(
+          game.shareUrl ??
+            `${currentLocation.pathname}?access=${encodeURIComponent(accessToken ?? '')}`,
+          window.location.origin,
+        ).toString()
+      : '';
+  const copyShareURL = async () => {
+    if (!shareURL || !navigator.clipboard) return;
+    await navigator.clipboard.writeText(shareURL);
+  };
+  const removePlayer = (playerID: string) => {
+    if (!window.confirm('Remover este jogador da partida?')) return;
+    void action(() => gameApi.removePlayer(id, playerID));
+  };
+  const cancelGame = () => {
+    if (!window.confirm('Excluir esta partida para todos os jogadores?')) return;
+    void action(() => gameApi.cancel(id));
+  };
   const mapURL = `https://www.openstreetmap.org/?mlat=${game.latitude}&mlon=${game.longitude}#map=18/${game.latitude}/${game.longitude}`;
   return (
     <main className="shell">
@@ -440,6 +461,20 @@ export function GameDetailsPage() {
           {game.openSlots === 1 ? 'vaga disponível' : 'vagas disponíveis'}
         </p>
         {game.description && <p>{game.description}</p>}
+        {game.currentUserStatus === 'removed' && (
+          <p className="error" role="alert">
+            O organizador removeu você desta partida.
+          </p>
+        )}
+        {shareURL && game.currentUserRole === 'organizer' && (
+          <section className="inline-panel" aria-label="Link da partida">
+            <h2>Link para convidar jogadores</h2>
+            <input aria-label="Link da partida" readOnly value={shareURL} />
+            <button className="text-button" type="button" onClick={() => void copyShareURL()}>
+              Copiar link
+            </button>
+          </section>
+        )}
         <h2>Jogadores</h2>
         {game.players?.map((player) => (
           <p key={player.id}>
@@ -447,6 +482,25 @@ export function GameDetailsPage() {
             {player.role === 'organizer' ? ' · organizador' : ''}
           </p>
         ))}
+        {game.currentUserRole === 'organizer' &&
+          game.players?.some((player) => player.role !== 'organizer') && (
+            <section className="inline-panel" aria-label="Gerenciar jogadores">
+              <h2>Gerenciar jogadores</h2>
+              {game.players
+                ?.filter((player) => player.role !== 'organizer')
+                .map((player) => (
+                  <button
+                    className="text-button"
+                    type="button"
+                    disabled={busy}
+                    key={player.id}
+                    onClick={() => removePlayer(player.id)}
+                  >
+                    Remover {player.displayName}
+                  </button>
+                ))}
+            </section>
+          )}
         {game.waitlist && game.waitlist.length > 0 && (
           <>
             <h2>Lista de espera</h2>
@@ -455,7 +509,7 @@ export function GameDetailsPage() {
             ))}
           </>
         )}
-        {game.currentUserStatus !== 'confirmed' && (
+        {game.currentUserStatus !== 'confirmed' && game.currentUserStatus !== 'removed' && (
           <button className="button" disabled={busy} onClick={() => action(() => gameApi.join(id))}>
             Participar da partida
           </button>
@@ -467,6 +521,11 @@ export function GameDetailsPage() {
             onClick={() => action(() => gameApi.leave(id))}
           >
             Sair da partida
+          </button>
+        )}
+        {game.currentUserRole === 'organizer' && game.status === 'scheduled' && (
+          <button className="text-button danger" type="button" disabled={busy} onClick={cancelGame}>
+            Excluir partida
           </button>
         )}
       </section>

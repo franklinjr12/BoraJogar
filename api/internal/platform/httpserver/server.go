@@ -38,9 +38,9 @@ func NewWithMetrics(logger *slog.Logger, db *pgxpool.Pool, requestMetrics *metri
 		profile.Handler{DB: db}.Register(mux, authHandler.RequireAuth)
 		location.Handler{DB: db}.Register(mux, authHandler.RequireAuth, authHandler.RequireAdmin)
 		availability.Handler{DB: db}.Register(mux, authHandler.RequireAuth)
-		game.Handler{DB: db}.Register(mux, authHandler.RequireAuth)
 		notification.Service{DB: db}.Register(mux, authHandler.RequireAuth)
 		publisher := notification.Service{DB: db}
+		game.Handler{DB: db, Notifications: publisher}.Register(mux, authHandler.RequireAuth)
 		attendance.Handler{DB: db, Notifications: publisher}.Register(mux, authHandler.RequireAuth, authHandler.RequireAdmin)
 		moderation.Handler{DB: db, Notifications: publisher}.Register(mux, authHandler.RequireAuth, authHandler.RequireAdmin)
 		admin.Handler{DB: db, Metrics: requestMetrics}.Register(mux, authHandler.RequireAdmin)

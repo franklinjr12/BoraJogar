@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CreateGamePage, GamesPage } from './GamesPage';
+import { CreateGamePage, GameDetailsPage, GamesPage } from './GamesPage';
 
 const futureGameDate = '2099-08-01';
 
@@ -349,6 +349,86 @@ describe('CreateGamePage', () => {
     expect(fetchMock).not.toHaveBeenCalledWith(
       '/api/v1/games',
       expect.objectContaining({ method: 'POST' }),
+    );
+  });
+});
+
+describe('GameDetailsPage', () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('shows link-only share link and organizer-only controls', async () => {
+    const game = {
+      id: 'game-1',
+      title: 'Saturday game',
+      startsAt: '2099-08-01T12:00:00Z',
+      endsAt: '2099-08-01T13:30:00Z',
+      venueId: 'venue-1',
+      venueName: 'Central court',
+      latitude: -23.5,
+      longitude: -46.6,
+      capacity: 4,
+      confirmedPlayers: 2,
+      openSlots: 2,
+      minimumSkillLevel: 'beginner',
+      maximumSkillLevel: 'advanced',
+      visibility: 'link-only',
+      status: 'scheduled',
+      currentUserStatus: 'confirmed',
+      currentUserRole: 'organizer',
+      players: [
+        { id: 'host-1', displayName: 'Host', role: 'organizer' },
+        { id: 'player-1', displayName: 'Bruno', role: 'player' },
+      ],
+    };
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ result: 'removed' }), { status: 200 }),
+        );
+      }
+      if (init?.method === 'POST' && url.endsWith('/cancel')) {
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(game), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/games/game-1?access=secret']}>
+        <Routes>
+          <Route path="/games/:id" element={<GameDetailsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByDisplayValue(`${window.location.origin}/games/game-1?access=secret`),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remover Bruno' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /excluir partida/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /sair da partida/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remover Bruno' }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/games/game-1/players/player-1',
+        expect.objectContaining({ method: 'DELETE' }),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /excluir partida/i }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/games/game-1/cancel',
+        expect.objectContaining({ method: 'POST' }),
+      ),
     );
   });
 });

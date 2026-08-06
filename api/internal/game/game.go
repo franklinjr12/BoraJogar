@@ -77,3 +77,13 @@ func SkillAllowed(minimum, maximum, userSkill string) bool {
 	level, levelOK := skillRank[userSkill]
 	return minOK && maxOK && levelOK && level >= min && level <= max
 }
+
+func ValidatePlayerRemoval(actorRole, targetRole, targetStatus string) error {
+	if actorRole != "organizer" {
+		return ErrForbidden
+	}
+	if targetRole == "organizer" || targetStatus != "confirmed" {
+		return ErrConflict
+	}
+	return nil
+}

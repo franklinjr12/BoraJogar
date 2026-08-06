@@ -77,4 +77,25 @@ describe('typed API client', () => {
       expect.objectContaining({ method: 'DELETE', credentials: 'include' }),
     );
   });
+
+  it('uses host game-management routes', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify({ result: 'removed' }), { status: 200 })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await gameApi.removePlayer('game/1', 'user/2');
+    await gameApi.cancel('game-1');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/games/game%2F1/players/user%2F2',
+      expect.objectContaining({ method: 'DELETE', credentials: 'include' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/games/game-1/cancel',
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    );
+  });
 });

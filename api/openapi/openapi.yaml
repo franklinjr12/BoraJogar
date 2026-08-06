@@ -204,6 +204,14 @@ paths:
     post: { summary: Join game or waitlist, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Join result }, '409': { description: Join rejected } } }
   /api/v1/games/{gameId}/leave:
     post: { summary: Leave game, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Leave result } } }
+  /api/v1/games/{gameId}/players/{userId}:
+    delete:
+      summary: Remove player from game
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { in: path, name: gameId, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: userId, required: true, schema: { type: string, format: uuid } }
+      responses: { '200': { description: Player removed }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { description: Player unavailable }, '409': { $ref: '#/components/responses/Conflict' } }
   /api/v1/games/{gameId}/cancel:
     post: { summary: Cancel game, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/GameCancellation' } } } }, responses: { '204': { description: Cancelled }, '403': { $ref: '#/components/responses/Forbidden' } } }
   /api/v1/games/{gameId}/waitlist:
@@ -420,6 +428,21 @@ components:
         maximumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
         visibility: { type: string, enum: [public, link-only, private] }
         status: { type: string, enum: [scheduled, cancelled, completed] }
+        organizer: { $ref: '#/components/schemas/GamePlayer' }
+        players: { type: array, items: { $ref: '#/components/schemas/GamePlayer' } }
+        waitlist: { type: array, items: { $ref: '#/components/schemas/GamePlayer' } }
+        isMember: { type: boolean }
+        currentUserStatus: { type: string }
+        currentUserRole: { type: string }
+        shareUrl: { type: string }
+    GamePlayer:
+      type: object
+      required: [id, displayName]
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string }
+        role: { type: string, enum: [organizer, player] }
+        status: { type: string, enum: [confirmed, cancelled, removed] }
     GamePreview:
       type: object
       required: [id, startsAt, endsAt, venueName, capacity, confirmedPlayers, openSlots, minimumSkillLevel, maximumSkillLevel, visibility, status]

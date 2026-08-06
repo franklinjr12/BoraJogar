@@ -105,7 +105,7 @@ export interface Game {
   visibility: GameVisibility;
   status: 'scheduled' | 'cancelled' | 'completed';
   organizer?: { id: string; displayName: string };
-  players?: Array<{ id: string; displayName: string; role?: string }>;
+  players?: Array<{ id: string; displayName: string; role?: string; status?: string }>;
   waitlist?: Array<{ id: string; displayName: string }>;
   isMember?: boolean;
   currentUserStatus?: string;
@@ -454,6 +454,12 @@ export const gameApi = {
     request<{ result: 'confirmed' | 'waitlisted' }>(`/api/v1/games/${id}/join`, { method: 'POST' }),
   leave: (id: string) =>
     request<{ result: string }>(`/api/v1/games/${id}/leave`, { method: 'POST' }),
+  cancel: (id: string) => request<void>(`/api/v1/games/${id}/cancel`, { method: 'POST' }),
+  removePlayer: (gameId: string, userId: string) =>
+    request<{ result: 'removed'; promotedUserId?: string }>(
+      `/api/v1/games/${encodeURIComponent(gameId)}/players/${encodeURIComponent(userId)}`,
+      { method: 'DELETE' },
+    ),
   calendarURL: (id: string, access?: string) =>
     `/api/v1/games/${id}/calendar.ics${access ? `?access=${encodeURIComponent(access)}` : ''}`,
 };

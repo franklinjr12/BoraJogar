@@ -44,6 +44,11 @@ export const weekdayLabels = [
 export const weekdayShortLabels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 const apiErrorMessages: Record<string, string> = {
+  player_removed: 'O organizador removeu você desta partida.',
+  player_not_removable: 'Este jogador não pode ser removido.',
+  game_remove_forbidden: 'Somente o organizador pode remover jogadores.',
+  game_cancel_forbidden: 'Somente o organizador pode excluir esta partida.',
+  game_not_cancellable: 'Esta partida já foi encerrada.',
   unauthorized: 'Entre para continuar.',
   forbidden: 'Você não tem permissão para realizar esta ação.',
   invalid_credentials: 'E-mail ou senha inválidos.',

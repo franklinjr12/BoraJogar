@@ -1,6 +1,7 @@
 package game
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -13,14 +14,16 @@ import (
 	"time"
 
 	"github.com/borajogar/borajogar/api/internal/auth"
+	"github.com/borajogar/borajogar/api/internal/notification"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Handler struct {
-	DB  *pgxpool.Pool
-	Now func() time.Time
+	DB            *pgxpool.Pool
+	Now           func() time.Time
+	Notifications notification.Publisher
 }
 type gameSummary struct {
 	ID                string    `json:"id"`
@@ -171,11 +174,20 @@ func (h Handler) gameByID(w http.ResponseWriter, r *http.Request) {
 }
 func (h Handler) action(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
 	// Action routes use the stable game resource prefix plus operation suffix.
-	var op string
-	if r.Method == http.MethodDelete {
-		op = "waitlist"
-	} else {
-		op = strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/games/"+id.String()), "/")
+	op := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/games/"+id.String()), "/")
+	if r.Method == http.MethodDelete && strings.HasPrefix(op, "players/") {
+		targetPath := strings.TrimPrefix(op, "players/")
+		if targetPath == "" || strings.Contains(targetPath, "/") {
+			writeError(w, http.StatusNotFound, "player_not_found", "Player not found.")
+			return
+		}
+		targetID, err := uuid.Parse(targetPath)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "player_not_found", "Player not found.")
+			return
+		}
+		h.removePlayer(w, r, id, userID, targetID)
+		return
 	}
 	switch op {
 	case "join":
@@ -187,8 +199,10 @@ func (h Handler) action(w http.ResponseWriter, r *http.Request, id, userID uuid.
 	case "waitlist":
 		if r.Method == http.MethodPost {
 			h.addWaitlist(w, r, id, userID)
-		} else {
+		} else if r.Method == http.MethodDelete {
 			h.removeWaitlist(w, r, id, userID)
+		} else {
+			writeError(w, http.StatusNotFound, "game_action_not_found", "Game action not found.")
 		}
 	default:
 		writeError(w, 404, "game_action_not_found", "Game action not found.")
@@ -521,7 +535,7 @@ func (h Handler) details(w http.ResponseWriter, r *http.Request, id, userID uuid
 		http.Error(w, "game unavailable", 500)
 		return
 	}
-	if x.Visibility == "link-only" && !x.IsMember {
+	if x.Visibility == "link-only" && !x.IsMember && x.CurrentUserStatus != "removed" {
 		token := r.URL.Query().Get("access")
 		if token == "" || hashToken(token) != x.shareTokenHash {
 			writeError(w, 404, "game_not_found", "Game not found.")
@@ -607,7 +621,7 @@ func (h Handler) readDetails(r *http.Request, id, userID uuid.UUID) (gameDetails
 	var status, role string
 	err = h.DB.QueryRow(r.Context(), `SELECT status,role FROM game_players WHERE game_id=$1 AND user_id=$2`, id, userID).Scan(&status, &role)
 	if err == nil {
-		x.IsMember = true
+		x.IsMember = status == "confirmed"
 		x.CurrentUserStatus = status
 		x.CurrentUserRole = role
 	}
@@ -661,6 +675,10 @@ func (h Handler) join(w http.ResponseWriter, r *http.Request, id, userID uuid.UU
 	err = tx.QueryRow(r.Context(), `SELECT status FROM game_players WHERE game_id=$1 AND user_id=$2`, id, userID).Scan(&existing)
 	if err == nil && existing == "confirmed" {
 		writeError(w, 409, "already_joined", "You already joined this game.")
+		return
+	}
+	if err == nil && existing == "removed" {
+		writeError(w, 403, "player_removed", "The organizer removed you from this game.")
 		return
 	}
 	var conflicting int
@@ -797,6 +815,78 @@ func (h Handler) leave(w http.ResponseWriter, r *http.Request, id, userID uuid.U
 	}
 	writeJSON(w, 200, actionResponse{Result: "left", PromotedUserID: promoted})
 }
+
+func (h Handler) removePlayer(w http.ResponseWriter, r *http.Request, id, userID, targetID uuid.UUID) {
+	tx, err := h.DB.Begin(r.Context())
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var gameStatus string
+	if err = tx.QueryRow(r.Context(), `SELECT status FROM games WHERE id=$1 FOR UPDATE`, id).Scan(&gameStatus); errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, 404, "game_not_found", "Game not found.")
+		return
+	}
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if gameStatus != "scheduled" {
+		writeError(w, 409, "game_not_joinable", "This game is not active.")
+		return
+	}
+	var actorRole string
+	if err = tx.QueryRow(r.Context(), `SELECT role FROM game_players WHERE game_id=$1 AND user_id=$2 AND status='confirmed' FOR UPDATE`, id, userID).Scan(&actorRole); errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, 403, "game_remove_forbidden", "Only the organizer can remove players.")
+		return
+	}
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	var targetRole, targetStatus string
+	if err = tx.QueryRow(r.Context(), `SELECT role,status FROM game_players WHERE game_id=$1 AND user_id=$2 FOR UPDATE`, id, targetID).Scan(&targetRole, &targetStatus); errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, 404, "player_not_found", "Player not found in this game.")
+		return
+	}
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if err = ValidatePlayerRemoval(actorRole, targetRole, targetStatus); errors.Is(err, ErrForbidden) {
+		writeError(w, 403, "game_remove_forbidden", "Only the organizer can remove players.")
+		return
+	} else if errors.Is(err, ErrConflict) {
+		writeError(w, 409, "player_not_removable", "This player cannot be removed.")
+		return
+	} else if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if _, err = tx.Exec(r.Context(), `UPDATE game_players SET status='removed',cancelled_at=now() WHERE game_id=$1 AND user_id=$2`, id, targetID); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	promoted, err := promote(tx, r, id)
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	h.notifyGameUsers(r.Context(), []uuid.UUID{targetID}, notification.GameChanged, "Você foi removido da partida.", "O organizador removeu você desta partida.", id, targetID)
+	if promoted != "" {
+		promotedID, parseErr := uuid.Parse(promoted)
+		if parseErr == nil {
+			h.notifyGameUsers(r.Context(), []uuid.UUID{promotedID}, notification.WaitlistPromotion, "Sua vaga foi confirmada.", "Você entrou nesta partida a partir da lista de espera.", id, promotedID)
+		}
+	}
+	writeJSON(w, 200, actionResponse{Result: "removed", PromotedUserID: promoted})
+}
+
 func promote(tx pgx.Tx, r *http.Request, id uuid.UUID) (string, error) {
 	var starts, ends time.Time
 	var minimum, maximum string
@@ -854,16 +944,90 @@ func (h Handler) cancel(w http.ResponseWriter, r *http.Request, id, userID uuid.
 		writeError(w, 422, "invalid_cancellation", "Cancellation input is invalid.")
 		return
 	}
-	tag, err := h.DB.Exec(r.Context(), `UPDATE games SET status='cancelled',cancelled_at=now(),cancellation_threshold_minutes=360,cancellation_reason=$1,updated_at=now() WHERE id=$2 AND status='scheduled' AND (created_by_user_id=$3 OR EXISTS (SELECT 1 FROM users WHERE id=$3 AND is_admin=true))`, nullableString(in.Reason), id, userID)
+	tx, err := h.DB.Begin(r.Context())
 	if err != nil {
 		http.Error(w, "game unavailable", 500)
 		return
 	}
-	if tag.RowsAffected() == 0 {
+	defer tx.Rollback(r.Context())
+	var gameStatus string
+	var creatorID uuid.UUID
+	if err = tx.QueryRow(r.Context(), `SELECT status,created_by_user_id FROM games WHERE id=$1 FOR UPDATE`, id).Scan(&gameStatus, &creatorID); errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, 404, "game_not_found", "Game not found.")
+		return
+	}
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	var isAdmin bool
+	if err = tx.QueryRow(r.Context(), `SELECT COALESCE(is_admin,false) FROM users WHERE id=$1`, userID).Scan(&isAdmin); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if creatorID != userID && !isAdmin {
 		writeError(w, 403, "game_cancel_forbidden", "Only organizer or admin can cancel this game.")
 		return
 	}
+	if gameStatus != "scheduled" {
+		writeError(w, 409, "game_not_cancellable", "This game is already closed.")
+		return
+	}
+	rows, err := tx.Query(r.Context(), `SELECT user_id FROM game_players WHERE game_id=$1 AND status='confirmed' AND user_id<>$2 UNION SELECT user_id FROM game_waitlist WHERE game_id=$1`, id, userID)
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	recipients := []uuid.UUID{}
+	for rows.Next() {
+		var recipient uuid.UUID
+		if err = rows.Scan(&recipient); err != nil {
+			rows.Close()
+			http.Error(w, "game unavailable", 500)
+			return
+		}
+		recipients = append(recipients, recipient)
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	rows.Close()
+	if _, err = tx.Exec(r.Context(), `UPDATE games SET status='cancelled',cancelled_at=now(),cancellation_threshold_minutes=360,cancellation_reason=$1,updated_at=now() WHERE id=$2`, nullableString(in.Reason), id); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if _, err = tx.Exec(r.Context(), `DELETE FROM game_waitlist WHERE game_id=$1`, id); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	h.notifyGameUsers(r.Context(), recipients, notification.GameCancelled, "Partida excluída.", "O organizador excluiu esta partida.", id, uuid.Nil)
 	w.WriteHeader(204)
+}
+
+func (h Handler) notifyGameUsers(ctx context.Context, recipients []uuid.UUID, eventType notification.Type, title, body string, gameID, playerID uuid.UUID) {
+	if h.Notifications == nil {
+		return
+	}
+	for _, recipient := range recipients {
+		payload := map[string]string{"gameId": gameID.String()}
+		if playerID != uuid.Nil {
+			payload["playerId"] = playerID.String()
+		}
+		_ = h.Notifications.Publish(ctx, notification.EventInput{
+			UserID:    recipient,
+			Type:      eventType,
+			Title:     title,
+			Body:      body,
+			ActionURL: "/games/" + gameID.String(),
+			Payload:   payload,
+		})
+	}
 }
 func (h Handler) update(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
 	var in struct {

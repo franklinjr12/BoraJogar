@@ -105,9 +105,12 @@ test.describe('Bora Jogar real backend E2E', () => {
     await page.getByLabel(/título/i).fill('E2E Created From Browser');
     await page.getByRole('button', { name: /criar partida/i }).click();
 
-    await expect(page).toHaveURL(/\/games\/[0-9a-f-]+$/);
+    await expect(page).toHaveURL(/\/games\/[0-9a-f-]+\?access=[A-Za-z0-9_-]+$/);
     await expect(page.getByRole('heading', { name: 'E2E Created From Browser' })).toBeVisible();
     await expect(page.getByText('E2E Praia Paulista')).toBeVisible();
+    await expect(page.getByRole('textbox', { name: /link da partida/i })).toHaveValue(
+      /\/games\/[0-9a-f-]+\?access=/,
+    );
   });
 
   test('new create-game user completes onboarding before game creation', async ({ page }) => {

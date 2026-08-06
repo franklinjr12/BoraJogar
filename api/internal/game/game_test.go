@@ -1,9 +1,14 @@
 package game
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/borajogar/borajogar/api/internal/notification"
+	"github.com/google/uuid"
 )
 
 func TestValidateCreateDefaultsAndRules(t *testing.T) {
@@ -78,5 +83,49 @@ func TestSkillAllowedRejectsUnknownAndOutOfRangeLevels(t *testing.T) {
 		if SkillAllowed(tc.min, tc.max, tc.user) {
 			t.Fatalf("skill accepted: %+v", tc)
 		}
+	}
+}
+
+func TestValidatePlayerRemovalRequiresOrganizerAndConfirmedPlayer(t *testing.T) {
+	if err := ValidatePlayerRemoval("player", "player", "confirmed"); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("non-organizer removal error = %v", err)
+	}
+	if err := ValidatePlayerRemoval("organizer", "organizer", "confirmed"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("organizer removal error = %v", err)
+	}
+	if err := ValidatePlayerRemoval("organizer", "player", "removed"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("removed player error = %v", err)
+	}
+	if err := ValidatePlayerRemoval("organizer", "player", "confirmed"); err != nil {
+		t.Fatalf("confirmed player removal error = %v", err)
+	}
+}
+
+type recordingPublisher struct {
+	events []notification.EventInput
+}
+
+func (p *recordingPublisher) Publish(_ context.Context, input notification.EventInput) error {
+	p.events = append(p.events, input)
+	return nil
+}
+
+func TestNotifyGameUsersPublishesRemovalEventWithSafeActionData(t *testing.T) {
+	publisher := &recordingPublisher{}
+	gameID := uuid.New()
+	playerID := uuid.New()
+	h := Handler{Notifications: publisher}
+
+	h.notifyGameUsers(context.Background(), []uuid.UUID{playerID}, notification.GameChanged, "Removed", "Removed from game", gameID, playerID)
+
+	if len(publisher.events) != 1 {
+		t.Fatalf("events = %d, want 1", len(publisher.events))
+	}
+	event := publisher.events[0]
+	if event.UserID != playerID || event.Type != notification.GameChanged || event.ActionURL != "/games/"+gameID.String() {
+		t.Fatalf("event = %+v", event)
+	}
+	if payload, ok := event.Payload.(map[string]string); !ok || payload["gameId"] != gameID.String() || payload["playerId"] != playerID.String() {
+		t.Fatalf("payload = %#v", event.Payload)
 	}
 }
