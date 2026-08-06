@@ -27,15 +27,15 @@ export function GameAlertPrompt() {
   };
 
   return (
-    <aside className="install-prompt card" aria-label="Game alerts">
-      <h2>Get notified when a game is found</h2>
-      <p>We'll only alert you about proposals, confirmations, changes and reminders.</p>
+    <aside className="install-prompt card" aria-label="Alertas de partidas">
+      <h2>Receba avisos quando uma partida for encontrada</h2>
+      <p>Avisaremos apenas sobre propostas, confirmações, alterações e lembretes.</p>
       <div className="actions compact-actions">
         <button className="button" onClick={() => void enable()}>
-          Enable game alerts
+          Ativar alertas de partidas
         </button>
         <button className="text-button" onClick={dismiss}>
-          Use email only
+          Usar apenas e-mail
         </button>
       </div>
     </aside>

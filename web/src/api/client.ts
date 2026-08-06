@@ -1,4 +1,6 @@
 export type SkillLevel = 'learning' | 'beginner' | 'intermediate' | 'advanced' | 'competitive';
+import { apiErrorMessage } from '../i18n/pt-BR';
+
 export type PlayingStyle = 'casual' | 'competitive' | 'training_focused' | 'mixed';
 
 export interface Profile {
@@ -233,7 +235,7 @@ export class ApiError extends Error {
   readonly requestId?: string;
 
   constructor(status: number, payload: ApiErrorPayload, requestId?: string) {
-    super(payload.message);
+    super(apiErrorMessage(payload.code));
     this.name = 'ApiError';
     this.status = status;
     this.code = payload.code;
@@ -275,7 +277,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       response.status,
       {
         code: error?.code ?? `http_${response.status}`,
-        message: error?.message ?? `Request failed with status ${response.status}.`,
+        message: error?.message ?? `http_${response.status}`,
         fields: error?.fields ?? {},
       },
       isErrorResponse(body) ? body.requestId : (response.headers.get('X-Request-ID') ?? undefined),

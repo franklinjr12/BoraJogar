@@ -67,11 +67,11 @@ describe('OnboardingPage', () => {
         <OnboardingPage />
       </MemoryRouter>,
     );
-    fireEvent.change(await screen.findByLabelText(/display name/i), {
+    fireEvent.change(await screen.findByLabelText(/nome exibido/i), {
       target: { value: 'Franklin' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /intermediate/i }));
-    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    fireEvent.click(screen.getByRole('button', { name: /intermediário/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(

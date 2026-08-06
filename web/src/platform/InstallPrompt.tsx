@@ -9,19 +9,19 @@ function platformGuide(): { title: string; text: string } {
   const agent = navigator.userAgent.toLowerCase();
   if (agent.includes('iphone') || agent.includes('ipad')) {
     return {
-      title: 'Add Bora Jogar to Home Screen',
-      text: 'Tap Share, then Add to Home Screen in Safari.',
+      title: 'Adicionar Bora Jogar à tela inicial',
+      text: 'Toque em Compartilhar e depois em Adicionar à Tela de Início no Safari.',
     };
   }
   if (agent.includes('android')) {
     return {
-      title: 'Install Bora Jogar',
-      text: 'Open your browser menu and choose Install app or Add to Home screen.',
+      title: 'Instalar o Bora Jogar',
+      text: 'Abra o menu do navegador e escolha Instalar aplicativo ou Adicionar à tela inicial.',
     };
   }
   return {
-    title: 'Install Bora Jogar',
-    text: 'Use the install icon in your Chromium browser address bar or menu.',
+    title: 'Instalar o Bora Jogar',
+    text: 'Use o ícone de instalação na barra de endereço ou no menu do navegador Chromium.',
   };
 }
 
@@ -51,17 +51,17 @@ export function InstallPrompt() {
     setOpen(false);
   };
   return (
-    <aside className="install-prompt card" aria-label="Install Bora Jogar">
+    <aside className="install-prompt card" aria-label="Instalar o Bora Jogar">
       <h2>{guide.title}</h2>
       <p>{guide.text}</p>
       <div className="actions">
         {event && (
           <button className="button" onClick={install}>
-            Install app
+            Instalar aplicativo
           </button>
         )}
         <button className="text-button" onClick={() => setOpen(false)}>
-          Not now
+          Agora não
         </button>
       </div>
     </aside>

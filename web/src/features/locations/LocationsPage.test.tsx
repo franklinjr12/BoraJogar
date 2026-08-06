@@ -112,9 +112,11 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole('heading', { name: /where can you play/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: /onde você pode jogar/i }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Parque Barigui' })).toBeInTheDocument();
-    expect(screen.getByText(/within 4 km/i)).toBeInTheDocument();
+    expect(screen.getByText(/em um raio de 4 km/i)).toBeInTheDocument();
     expect(screen.queryByText(/-25\.4/)).not.toBeInTheDocument();
   });
 
@@ -132,17 +134,17 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/choose where you could play/i);
-    fireEvent.click(screen.getByRole('button', { name: /choose a court/i }));
+    await screen.findByText(/escolha onde você poderia jogar/i);
+    fireEvent.click(screen.getByRole('button', { name: /escolher uma quadra/i }));
     fireEvent.click(screen.getByRole('button', { name: /parque barigui/i }));
-    fireEvent.click(screen.getByRole('button', { name: /save court/i }));
+    fireEvent.click(screen.getByRole('button', { name: /salvar quadra/i }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/v1/me/favorite-venues/venue-1',
         expect.objectContaining({ method: 'POST' }),
       ),
     );
-    expect(await screen.findByText(/court saved/i)).toBeInTheDocument();
+    expect(await screen.findByText(/quadra salva/i)).toBeInTheDocument();
   });
 
   it('requests current location only after explicit click and uses radius presets', async () => {
@@ -178,13 +180,15 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/choose where you could play/i);
+    await screen.findByText(/escolha onde você poderia jogar/i);
     expect(geolocation.getCurrentPosition).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
-    fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
-    expect(await screen.findByText(/area set from your device location/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
+    fireEvent.click(screen.getByRole('button', { name: /usar minha localização atual/i }));
+    expect(
+      await screen.findByText(/área definida pela localização do seu dispositivo/i),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '7 km' }));
-    fireEvent.click(screen.getByRole('button', { name: /save area/i }));
+    fireEvent.click(screen.getByRole('button', { name: /salvar área/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -229,11 +233,11 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/choose where you could play/i);
-    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
-    fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
+    await screen.findByText(/escolha onde você poderia jogar/i);
+    fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
+    fireEvent.click(screen.getByRole('button', { name: /usar minha localização atual/i }));
 
-    expect(await screen.findByText(/location requires https/i)).toBeInTheDocument();
+    expect(await screen.findByText(/localização exige https/i)).toBeInTheDocument();
     expect(geolocation.getCurrentPosition).not.toHaveBeenCalled();
   });
 
@@ -264,11 +268,11 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/choose where you could play/i);
-    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
-    fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
+    await screen.findByText(/escolha onde você poderia jogar/i);
+    fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
+    fireEvent.click(screen.getByRole('button', { name: /usar minha localização atual/i }));
 
-    expect(await screen.findByText(/enable it in browser settings/i)).toBeInTheDocument();
+    expect(await screen.findByText(/ative-a nas configurações do navegador/i)).toBeInTheDocument();
   });
 
   it('keeps search fallback available when geolocation is missing', async () => {
@@ -287,13 +291,15 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/choose where you could play/i);
-    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
-    fireEvent.click(screen.getByRole('button', { name: /use my current location/i }));
-    fireEvent.click(screen.getByRole('button', { name: /search for a neighborhood or address/i }));
+    await screen.findByText(/escolha onde você poderia jogar/i);
+    fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
+    fireEvent.click(screen.getByRole('button', { name: /usar minha localização atual/i }));
+    fireEvent.click(screen.getByRole('button', { name: /pesquisar um bairro ou endereço/i }));
 
-    expect(await screen.findByText(/browser location is unavailable/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/neighborhood or address search/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/a localização do navegador está indisponível/i),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/pesquisa de bairro ou endereço/i)).toBeInTheDocument();
   });
 
   it('renders the dev map fallback when no map style URL is configured', async () => {
@@ -311,11 +317,11 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/choose where you could play/i);
-    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
+    await screen.findByText(/escolha onde você poderia jogar/i);
+    fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
 
-    expect(screen.getByLabelText(/area selection map/i)).toBeInTheDocument();
-    expect(screen.queryByText(/map unavailable/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/mapa para selecionar área/i)).toBeInTheDocument();
+    expect(screen.queryByText(/mapa indisponível/i)).not.toBeInTheDocument();
   });
 
   it('shows the map fallback message when map loading fails', async () => {
@@ -333,13 +339,13 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/choose where you could play/i);
-    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
+    await screen.findByText(/escolha onde você poderia jogar/i);
+    fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
     await waitFor(() => expect(maplibreMock.instances.length).toBeGreaterThan(0));
 
     maplibreMock.instances[0]?.handlers.error?.();
 
-    expect(await screen.findByText(/map unavailable/i)).toBeInTheDocument();
+    expect(await screen.findByText(/mapa indisponível/i)).toBeInTheDocument();
   });
 
   it('searches for an area and saves the selected result', async () => {
@@ -383,22 +389,22 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/choose where you could play/i);
-    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
-    fireEvent.click(screen.getByRole('button', { name: /search for a neighborhood or address/i }));
-    fireEvent.change(screen.getByLabelText(/neighborhood or address search/i), {
+    await screen.findByText(/escolha onde você poderia jogar/i);
+    fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
+    fireEvent.click(screen.getByRole('button', { name: /pesquisar um bairro ou endereço/i }));
+    fireEvent.change(screen.getByLabelText(/pesquisa de bairro ou endereço/i), {
       target: { value: 'Batel' },
     });
 
     fireEvent.click(await screen.findByRole('option', { name: /batel/i }));
-    fireEvent.click(screen.getByRole('button', { name: /save area/i }));
+    fireEvent.click(screen.getByRole('button', { name: /salvar área/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/v1/me/preferred-areas',
         expect.objectContaining({
           method: 'POST',
-          body: expect.stringContaining('"label":"Near Batel"'),
+          body: expect.stringContaining('"label":"Perto de Batel"'),
         }),
       ),
     );
@@ -432,14 +438,14 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/choose where you could play/i);
-    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
-    fireEvent.click(screen.getByRole('button', { name: /search for a neighborhood or address/i }));
-    fireEvent.change(screen.getByLabelText(/neighborhood or address search/i), {
+    await screen.findByText(/escolha onde você poderia jogar/i);
+    fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
+    fireEvent.click(screen.getByRole('button', { name: /pesquisar um bairro ou endereço/i }));
+    fireEvent.change(screen.getByLabelText(/pesquisa de bairro ou endereço/i), {
       target: { value: 'Nopeville' },
     });
 
-    expect(await screen.findByText(/neighborhood or address not found/i)).toBeInTheDocument();
+    expect(await screen.findByText(/bairro ou endereço não encontrado/i)).toBeInTheDocument();
   });
 
   it('shows a retry message when area search fails', async () => {
@@ -458,13 +464,13 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/choose where you could play/i);
-    fireEvent.click(screen.getByRole('button', { name: /choose an area/i }));
-    fireEvent.click(screen.getByRole('button', { name: /search for a neighborhood or address/i }));
-    fireEvent.change(screen.getByLabelText(/neighborhood or address search/i), {
+    await screen.findByText(/escolha onde você poderia jogar/i);
+    fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
+    fireEvent.click(screen.getByRole('button', { name: /pesquisar um bairro ou endereço/i }));
+    fireEvent.change(screen.getByLabelText(/pesquisa de bairro ou endereço/i), {
       target: { value: 'Batel' },
     });
 
-    expect(await screen.findByText(/could not search area/i)).toBeInTheDocument();
+    expect(await screen.findByText(/não foi possível pesquisar a área/i)).toBeInTheDocument();
   });
 });

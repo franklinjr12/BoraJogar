@@ -33,13 +33,13 @@ describe('GamesPage', () => {
       </MemoryRouter>,
     );
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: /get on court/i })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /vamos jogar/i })).toBeInTheDocument(),
     );
-    expect(screen.getByRole('link', { name: /create a game/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /criar uma partida/i })).toHaveAttribute(
       'href',
       '/games/new',
     );
-    expect(screen.getByText(/no upcoming games/i)).toBeInTheDocument();
+    expect(screen.getByText(/nenhuma partida futura/i)).toBeInTheDocument();
   });
 
   it('shows API failure instead of stale empty state', async () => {
@@ -52,8 +52,8 @@ describe('GamesPage', () => {
         <GamesPage />
       </MemoryRouter>,
     );
-    expect(await screen.findByRole('alert')).toHaveTextContent(/sign in/i);
-    expect(screen.queryByText(/no upcoming games/i)).not.toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent(/entre e tente novamente/i);
+    expect(screen.queryByText(/nenhuma partida futura/i)).not.toBeInTheDocument();
   });
 });
 
@@ -128,20 +128,22 @@ describe('CreateGamePage', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole('heading', { name: /set up a game/i })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: futureGameDate } });
-    fireEvent.change(screen.getByLabelText(/start time/i), { target: { value: '09:00' } });
-    fireEvent.change(screen.getByLabelText(/personalized name/i), {
+    expect(
+      await screen.findByRole('heading', { name: /configure uma partida/i }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^data$/i), { target: { value: futureGameDate } });
+    fireEvent.change(screen.getByLabelText(/horário de início/i), { target: { value: '09:00' } });
+    fireEvent.change(screen.getByLabelText(/nome personalizado/i), {
       target: { value: 'Nova Quadra' },
     });
-    fireEvent.change(screen.getByLabelText(/court address/i), {
+    fireEvent.change(screen.getByLabelText(/endereço da quadra/i), {
       target: { value: 'Rua das Areias, 10' },
     });
-    fireEvent.change(screen.getByLabelText(/city search/i), {
+    fireEvent.change(screen.getByLabelText(/pesquisa de cidade/i), {
       target: { value: 'Sao Paulo' },
     });
     fireEvent.click(await screen.findByRole('option', { name: /sao paulo/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^create game$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^criar partida$/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -206,11 +208,11 @@ describe('CreateGamePage', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole('heading', { name: /set up a game/i });
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: futureGameDate } });
-    fireEvent.change(screen.getByLabelText(/start time/i), { target: { value: '09:00' } });
-    fireEvent.change(screen.getByLabelText(/venue/i), { target: { value: 'venue:venue-1' } });
-    fireEvent.click(screen.getByRole('button', { name: /^create game$/i }));
+    await screen.findByRole('heading', { name: /configure uma partida/i });
+    fireEvent.change(screen.getByLabelText(/^data$/i), { target: { value: futureGameDate } });
+    fireEvent.change(screen.getByLabelText(/horário de início/i), { target: { value: '09:00' } });
+    fireEvent.change(screen.getByLabelText(/^quadra$/i), { target: { value: 'venue:venue-1' } });
+    fireEvent.click(screen.getByRole('button', { name: /^criar partida$/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -286,13 +288,13 @@ describe('CreateGamePage', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole('heading', { name: /set up a game/i });
-    await waitFor(() => expect(screen.getByLabelText(/venue/i)).toHaveValue('area:area-1'));
-    expect(screen.getByText(/this game will use near beach/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/personalized name/i)).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: futureGameDate } });
-    fireEvent.change(screen.getByLabelText(/start time/i), { target: { value: '09:00' } });
-    fireEvent.click(screen.getByRole('button', { name: /^create game$/i }));
+    await screen.findByRole('heading', { name: /configure uma partida/i });
+    await waitFor(() => expect(screen.getByLabelText(/^quadra$/i)).toHaveValue('area:area-1'));
+    expect(screen.getByText(/esta partida usará near beach/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/nome personalizado/i)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^data$/i), { target: { value: futureGameDate } });
+    fireEvent.change(screen.getByLabelText(/horário de início/i), { target: { value: '09:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /^criar partida$/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -336,13 +338,13 @@ describe('CreateGamePage', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole('heading', { name: /set up a game/i });
-    await waitFor(() => expect(screen.getByLabelText(/venue/i)).toHaveValue('venue:venue-1'));
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: todayForDateInput() } });
-    fireEvent.change(screen.getByLabelText(/start time/i), { target: { value: '00:01' } });
-    fireEvent.click(screen.getByRole('button', { name: /^create game$/i }));
+    await screen.findByRole('heading', { name: /configure uma partida/i });
+    await waitFor(() => expect(screen.getByLabelText(/^quadra$/i)).toHaveValue('venue:venue-1'));
+    fireEvent.change(screen.getByLabelText(/^data$/i), { target: { value: todayForDateInput() } });
+    fireEvent.change(screen.getByLabelText(/horário de início/i), { target: { value: '00:01' } });
+    fireEvent.click(screen.getByRole('button', { name: /^criar partida$/i }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/at least 15 minutes/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/pelo menos 15 minutos/i);
     expect(fetchMock).not.toHaveBeenCalledWith(
       '/api/v1/games',
       expect.objectContaining({ method: 'POST' }),

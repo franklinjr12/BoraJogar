@@ -9,7 +9,7 @@ const defaultDevMapStyle: StyleSpecification = {
       type: 'raster',
       tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
       tileSize: 256,
-      attribution: 'OpenStreetMap contributors',
+      attribution: 'Colaboradores do OpenStreetMap',
     },
   },
   layers: [

@@ -10,6 +10,7 @@ import {
 import { AvailabilityEditor } from '../availability/AvailabilityPage';
 import { LocationSetup } from '../locations/LocationsPage';
 import { blankProfile, skills, styles } from './options';
+import { readinessLabel } from '../../i18n/pt-BR';
 
 type OnboardingGoal = 'find_people' | 'create_game' | 'join_game';
 type OnboardingStep = 0 | 1 | 2;
@@ -71,9 +72,9 @@ function stepForReadiness(readiness: OnboardingReadiness): OnboardingStep {
 }
 
 function finishLabel(goal: OnboardingGoal) {
-  if (goal === 'create_game') return 'Create game';
-  if (goal === 'join_game') return 'Find games';
-  return 'Go to dashboard';
+  if (goal === 'create_game') return 'Criar partida';
+  if (goal === 'join_game') return 'Encontrar partidas';
+  return 'Ir para o painel';
 }
 
 export function OnboardingPage() {
@@ -118,7 +119,7 @@ export function OnboardingPage() {
     event.preventDefault();
     setError('');
     if (profile.displayName.trim().length < 2) {
-      setError('Choose a name with at least 2 characters.');
+      setError('Escolha um nome com pelo menos 2 caracteres.');
       return;
     }
     if (profile.styles.length === 0) update('styles', ['mixed']);
@@ -140,7 +141,7 @@ export function OnboardingPage() {
       }
       setStep(stepForReadiness(nextReadiness));
     } catch {
-      setError('Could not save profile. Check connection and try again.');
+      setError('Não foi possível salvar o perfil. Verifique a conexão e tente novamente.');
     }
   };
 
@@ -149,7 +150,7 @@ export function OnboardingPage() {
     const nextReadiness = await profileApi.readiness().catch(() => null);
     setReadiness(nextReadiness);
     if (!nextReadiness?.location) {
-      setError('Add one court or area before continuing.');
+      setError('Adicione uma quadra ou área antes de continuar.');
       return;
     }
     await profileApi.saveProgress(2, [0, 1]).catch(() => undefined);
@@ -161,7 +162,7 @@ export function OnboardingPage() {
     const nextReadiness = await profileApi.readiness().catch(() => null);
     setReadiness(nextReadiness);
     if (!nextReadiness?.availability) {
-      setError('Add one usable time before continuing.');
+      setError('Adicione um horário disponível antes de continuar.');
       return;
     }
     try {
@@ -170,7 +171,9 @@ export function OnboardingPage() {
       localStorage.removeItem('borajogar_onboarding');
       navigate(nextPathForGoal(goal));
     } catch {
-      setError('Could not finish onboarding. Add one location and one available time.');
+      setError(
+        'Não foi possível concluir a configuração. Adicione um local e um horário disponível.',
+      );
     }
   };
 
@@ -179,11 +182,11 @@ export function OnboardingPage() {
       <p className="eyebrow">Bora Jogar</p>
       {step === 0 && (
         <>
-          <h1>Tell us about your game.</h1>
-          <p className="lead">Only the basics for matching. Everything else can wait.</p>
+          <h1>Conte sobre seu jogo.</h1>
+          <p className="lead">Só o básico para encontrar jogadores. O resto pode esperar.</p>
           <form className="card" onSubmit={saveProfile}>
             <label>
-              Display name
+              Nome exibido
               <input
                 value={profile.displayName}
                 onChange={(event) => update('displayName', event.target.value)}
@@ -192,7 +195,7 @@ export function OnboardingPage() {
               />
             </label>
             <fieldset>
-              <legend>How would you describe your current level?</legend>
+              <legend>Como você descreveria seu nível atual?</legend>
               <div className="choice-list">
                 {skills.map((skill) => (
                   <button
@@ -208,7 +211,7 @@ export function OnboardingPage() {
               </div>
             </fieldset>
             <label>
-              Style preference
+              Preferência de estilo
               <select
                 value={profile.styles[0] ?? 'mixed'}
                 onChange={(event) => update('styles', [event.target.value as PlayingStyle])}
@@ -226,7 +229,7 @@ export function OnboardingPage() {
               </p>
             )}
             <button className="button" type="submit">
-              Continue
+              Continuar
             </button>
           </form>
         </>
@@ -236,10 +239,10 @@ export function OnboardingPage() {
           <LocationSetup compact />
           <div className="actions">
             <button className="button" onClick={continueFromLocations}>
-              Continue
+              Continuar
             </button>
             <button className="text-button" onClick={() => setStep(0)}>
-              Back
+              Voltar
             </button>
           </div>
         </>
@@ -247,19 +250,19 @@ export function OnboardingPage() {
       {step === 2 && (
         <>
           <AvailabilityEditor compact />
-          <p className="hint">You can add more times later.</p>
+          <p className="hint">Você pode adicionar mais horários depois.</p>
           <div className="actions">
             <button className="button" onClick={finish}>
               {finishLabel(goal)}
             </button>
             <button className="text-button" onClick={() => setStep(1)}>
-              Back
+              Voltar
             </button>
           </div>
         </>
       )}
       {readiness && !readiness.canComplete && step > 0 && (
-        <p className="hint">Missing: {readiness.missing.join(', ')}</p>
+        <p className="hint">Falta: {readiness.missing.map(readinessLabel).join(', ')}</p>
       )}
       {error && step > 0 && (
         <p className="error" role="alert">
@@ -268,7 +271,7 @@ export function OnboardingPage() {
       )}
       <p>
         <Link className="text-link" to="/">
-          Home
+          Início
         </Link>
       </p>
     </main>

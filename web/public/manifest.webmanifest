@@ -1,7 +1,7 @@
 {
-  "name": "Bora Jogar — Beach volleyball",
+  "name": "Bora Jogar — Vôlei de praia",
   "short_name": "Bora Jogar",
-  "description": "Organize beach volleyball games with compatible players.",
+  "description": "Organize partidas de vôlei de praia com jogadores compatíveis.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

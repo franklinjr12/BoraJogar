@@ -25,45 +25,9 @@ import { CalendarPage } from '../features/games/CalendarPage';
 import { DashboardPage } from '../features/games/DashboardPage';
 import { NotificationsPage } from '../features/notifications/NotificationsPage';
 import { OnboardingPage } from '../features/onboarding/OnboardingPage';
-import { blankProfile } from '../features/onboarding/options';
+import { blankProfile, skills, styles } from '../features/onboarding/options';
 import { AppShell } from '../platform/AppShell';
 import { getDeviceTimeZone } from '../platform/timeZone';
-
-const skills: Array<{ value: SkillLevel; label: string; description: string }> = [
-  {
-    value: 'learning',
-    label: 'Learning',
-    description: 'Still learning basic passing, setting, serving, positioning, and rules.',
-  },
-  {
-    value: 'beginner',
-    label: 'Beginner',
-    description:
-      'Can maintain short rallies and understands basic positioning, with some inconsistency.',
-  },
-  {
-    value: 'intermediate',
-    label: 'Intermediate',
-    description: 'Can pass, set, attack, serve, and position with reasonable consistency.',
-  },
-  {
-    value: 'advanced',
-    label: 'Advanced',
-    description:
-      'Plays with strong consistency, control, tactical awareness, and specialized technique.',
-  },
-  {
-    value: 'competitive',
-    label: 'Competitive',
-    description: 'Regularly plays tournaments or high-level organized games.',
-  },
-];
-const styles: Array<{ value: PlayingStyle; label: string }> = [
-  { value: 'casual', label: 'Casual' },
-  { value: 'competitive', label: 'Competitive' },
-  { value: 'training_focused', label: 'Training-focused' },
-  { value: 'mixed', label: 'Mixed / no preference' },
-];
 
 function useCurrentUser() {
   return useQuery<CurrentUser>({
@@ -83,37 +47,39 @@ function Home() {
   const user = currentUser.data;
   const primaryAction = user ? (
     <Link className="button" to={user.onboardingComplete ? '/dashboard' : '/onboarding'}>
-      {user.onboardingComplete ? 'Go to dashboard' : 'Continue setup'}
+      {user.onboardingComplete ? 'Ir para o painel' : 'Continuar configuração'}
     </Link>
   ) : (
     <Link className="button" to="/start">
-      Get started
+      Começar
     </Link>
   );
   const secondaryAction =
     user && user.onboardingComplete ? (
       <Link className="text-link" to="/games/new">
-        Create a game
+        Criar uma partida
       </Link>
     ) : currentUser.isPending || user ? null : (
       <Link className="text-link" to="/login">
-        Already have an account? Sign in
+        Já tem uma conta? Entrar
       </Link>
     );
 
   return (
     <main className="shell">
       <p className="eyebrow">Bora Jogar</p>
-      <h1>Find people to play beach volleyball</h1>
-      <p className="lead">Tell us when and where you can play. We'll help you complete a group.</p>
+      <h1>Encontre pessoas para jogar vôlei de praia</h1>
+      <p className="lead">
+        Conte quando e onde você pode jogar. A gente ajuda a completar seu grupo.
+      </p>
       <div className="actions">
         {primaryAction}
         {secondaryAction}
       </div>
       <section className="card">
-        <p>Match compatible schedules</p>
-        <p>Find players around your level</p>
-        <p>Organize games with friends</p>
+        <p>Combine horários compatíveis</p>
+        <p>Encontre jogadores do seu nível</p>
+        <p>Organize partidas com amigos</p>
       </section>
     </main>
   );
@@ -147,10 +113,10 @@ function Start() {
 
   return (
     <main className="shell">
-      <p className="eyebrow">First step</p>
-      <h1>What would you like to do first?</h1>
+      <p className="eyebrow">Primeiro passo</p>
+      <h1>O que você gostaria de fazer primeiro?</h1>
       {currentUser.isPending ? (
-        <p className="lead">Checking your session...</p>
+        <p className="lead">Verificando sua sessão...</p>
       ) : (
         <div className="choice-list goal-list">
           <Link
@@ -158,24 +124,24 @@ function Start() {
             to={routeFor('find_people')}
             onClick={() => choose('find_people', returnToFor('find_people'))}
           >
-            <strong>Find people to play with</strong>
-            <span>Set your availability and receive game suggestions.</span>
+            <strong>Encontrar pessoas para jogar</strong>
+            <span>Defina sua disponibilidade e receba sugestões de partidas.</span>
           </Link>
           <Link
             className="choice"
             to={routeFor('create_game')}
             onClick={() => choose('create_game', returnToFor('create_game'))}
           >
-            <strong>Create a game</strong>
-            <span>Choose a time and place, then invite players.</span>
+            <strong>Criar uma partida</strong>
+            <span>Escolha horário e local, depois convide jogadores.</span>
           </Link>
           <Link
             className="choice"
             to={routeFor('join_game')}
             onClick={() => choose('join_game', returnToFor('join_game'))}
           >
-            <strong>Join a game</strong>
-            <span>Open an invitation or explore available games.</span>
+            <strong>Entrar em uma partida</strong>
+            <span>Abra um convite ou explore partidas disponíveis.</span>
           </Link>
         </div>
       )}
@@ -217,7 +183,7 @@ function Login() {
             });
       window.location.assign(result.redirectTo);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Could not sign in.');
+      setFormError(err instanceof ApiError ? err.message : 'Não foi possível entrar.');
     } finally {
       setSubmitting(false);
     }
@@ -234,14 +200,14 @@ function Login() {
   return (
     <main className="shell">
       <Link className="text-link" to="/">
-        Home
+        Início
       </Link>
-      <p className="eyebrow">Player access</p>
-      <h1>Sign in to play.</h1>
-      <p className="lead">Use email and password, or continue with Google.</p>
+      <p className="eyebrow">Acesso de jogador</p>
+      <h1>Entre para jogar.</h1>
+      <p className="lead">Use e-mail e senha ou continue com o Google.</p>
       {error && (
         <p className="error" role="alert">
-          {error}
+          Não foi possível concluir o acesso. Tente novamente.
         </p>
       )}
       {formError && (
@@ -255,29 +221,29 @@ function Login() {
           type="button"
           onClick={() => setMode('signup')}
         >
-          Create account
+          Criar conta
         </button>
         <button
           className={mode === 'login' ? 'button' : 'text-button'}
           type="button"
           onClick={() => setMode('login')}
         >
-          Sign in
+          Entrar
         </button>
       </div>
       <form className="card" onSubmit={submitEmail}>
         {mode === 'signup' && (
           <label>
-            Display name
+            Nome exibido
             <input name="displayName" autoComplete="name" />
           </label>
         )}
         <label>
-          Email
+          E-mail
           <input name="email" type="email" autoComplete="email" required />
         </label>
         <label>
-          Password
+          Senha
           <input
             name="password"
             type="password"
@@ -286,13 +252,13 @@ function Login() {
           />
         </label>
         <button className="button" type="submit" disabled={submitting}>
-          {submitting ? 'Working...' : mode === 'signup' ? 'Create account' : 'Sign in'}
+          {submitting ? 'Processando...' : mode === 'signup' ? 'Criar conta' : 'Entrar'}
         </button>
       </form>
       <a className="button" href={url.toString()}>
-        Continue with Google
+        Continuar com o Google
       </a>
-      {invitation && <p className="hint">Invitation code ready for Google sign-in.</p>}
+      {invitation && <p className="hint">Código de convite pronto para entrar com o Google.</p>}
     </main>
   );
 }
@@ -331,15 +297,15 @@ export function LegacyOnboarding() {
   const next = async () => {
     setError('');
     if (step === 1 && profile.displayName.trim().length < 2) {
-      setError('Choose a name with at least 2 characters.');
+      setError('Escolha um nome com pelo menos 2 caracteres.');
       return;
     }
     if (step === 2 && !profile.skillLevel) {
-      setError('Choose a skill level.');
+      setError('Escolha um nível de habilidade.');
       return;
     }
     if (step === 3 && profile.styles.length === 0) {
-      setError('Choose at least one style.');
+      setError('Escolha pelo menos um estilo.');
       return;
     }
     try {
@@ -357,7 +323,7 @@ export function LegacyOnboarding() {
         localStorage.setItem('borajogar_install_prompt_ready', 'true');
         localStorage.removeItem('borajogar_onboarding');
       } catch {
-        setError('Could not save profile. Check connection and try again.');
+        setError('Não foi possível salvar o perfil. Verifique a conexão e tente novamente.');
         return;
       }
       setStep(total);
@@ -366,50 +332,53 @@ export function LegacyOnboarding() {
   if (step === total)
     return (
       <main className="shell">
-        <p className="eyebrow">Ready</p>
-        <h1>Profile complete.</h1>
-        <p className="lead">You can now discover games and receive compatible proposals.</p>
+        <p className="eyebrow">Tudo pronto</p>
+        <h1>Perfil completo.</h1>
+        <p className="lead">Agora você pode descobrir partidas e receber propostas compatíveis.</p>
         <Link className="button" to="/profile">
-          View profile
+          Ver perfil
         </Link>
       </main>
     );
   return (
     <main className="shell onboarding">
       <p className="eyebrow">
-        Step {step + 1} of {total}
+        Etapa {step + 1} de {total}
       </p>
       <progress value={step + 1} max={total} />
       <h1>
         {
           [
-            'Welcome to Bora Jogar',
-            'Your name',
-            'Your playing level',
-            'Your playing style',
-            'Time zone',
-            'Preferred locations',
-            'Weekly availability',
-            'Notifications',
-            'Review',
+            'Bem-vindo ao Bora Jogar',
+            'Seu nome',
+            'Seu nível de jogo',
+            'Seu estilo de jogo',
+            'Fuso horário',
+            'Locais preferidos',
+            'Disponibilidade semanal',
+            'Notificações',
+            'Revisão',
           ][step]
         }
       </h1>
       <p className="lead">
-        {step === 0 && 'Find compatible beach volleyball players without endless group messages.'}
-        {step === 1 && 'Use the name other players should see.'}
-        {step === 2 && 'Pick the description that feels closest today.'}
-        {step === 3 && 'Choose one or more. This helps matching, but never blocks a good game.'}
-        {step === 4 && `We found ${profile.timeZone}. Games display in your local time.`}
-        {step === 5 && 'Next, choose courts or areas where you like to play.'}
-        {step === 6 && 'Next, tell us when you usually have time.'}
+        {step === 0 &&
+          'Encontre jogadores de vôlei de praia compatíveis sem mensagens intermináveis em grupos.'}
+        {step === 1 && 'Use o nome que os outros jogadores devem ver.'}
+        {step === 2 && 'Escolha a descrição que mais combina com você hoje.'}
+        {step === 3 &&
+          'Escolha um ou mais. Isso ajuda nas combinações, mas nunca impede uma boa partida.'}
+        {step === 4 &&
+          `Encontramos ${profile.timeZone}. As partidas aparecem no seu horário local.`}
+        {step === 5 && 'Agora, escolha quadras ou áreas onde você gosta de jogar.'}
+        {step === 6 && 'Agora, conte quando você geralmente tem tempo.'}
         {step === 7 &&
-          'We will explain game proposals and reminders when notifications are available.'}
-        {step === 8 && 'Check your basics before joining the community.'}
+          'Vamos explicar propostas e lembretes de partidas quando as notificações estiverem disponíveis.'}
+        {step === 8 && 'Confira seus dados antes de entrar na comunidade.'}
       </p>
       {step === 1 && (
         <label>
-          Display name
+          Nome exibido
           <input
             value={profile.displayName}
             onChange={(e) => update('displayName', e.target.value)}
@@ -452,13 +421,13 @@ export function LegacyOnboarding() {
           ))}
         </div>
       )}
-      {step === 4 && <p className="card">Time zone: {profile.timeZone}</p>}
+      {step === 4 && <p className="card">Fuso horário: {profile.timeZone}</p>}
       {step === 5 && <LocationSetup compact />}
       {step === 6 && <AvailabilityEditor compact />}
       {step === 8 && (
         <section className="card summary">
           <p>
-            <strong>{profile.displayName || 'Your name'}</strong>
+            <strong>{profile.displayName || 'Seu nome'}</strong>
           </p>
           <p>{skills.find((skill) => skill.value === profile.skillLevel)?.label}</p>
           <p>
@@ -476,11 +445,15 @@ export function LegacyOnboarding() {
       )}
       <div className="actions">
         <button className="button" onClick={next}>
-          {step === total - 1 ? 'Finish onboarding' : step === 0 ? 'Let’s go' : 'Continue'}
+          {step === total - 1
+            ? 'Concluir configuração'
+            : step === 0
+              ? 'Vamos começar'
+              : 'Continuar'}
         </button>
         {step > 0 && (
           <button className="text-button" onClick={() => setStep(step - 1)}>
-            Back
+            Voltar
           </button>
         )}
       </div>
@@ -505,37 +478,37 @@ function ProfilePage() {
       .catch((err) =>
         setError(
           err instanceof ApiError && err.status === 401
-            ? 'Sign in to view your profile.'
-            : 'Complete your profile setup before viewing your profile.',
+            ? 'Entre para ver seu perfil.'
+            : 'Conclua a configuração do perfil antes de visualizá-lo.',
         ),
       );
   }, [currentUser.data]);
   if (currentUser.isPending)
     return (
       <main className="shell">
-        <p>Loading profile...</p>
+        <p>Carregando perfil...</p>
       </main>
     );
   if (!currentUser.data)
     return (
       <main className="shell">
-        <p className="error">Sign in to view your profile.</p>
-        <Link to="/login">Sign in</Link>
+        <p className="error">Entre para ver seu perfil.</p>
+        <Link to="/login">Entrar</Link>
       </main>
     );
   if (error)
     return (
       <main className="shell">
         <p className="error">{error}</p>
-        <Link to={error.startsWith('Sign in') ? '/login' : '/onboarding'}>
-          {error.startsWith('Sign in') ? 'Sign in' : 'Continue setup'}
+        <Link to={error.startsWith('Entre para') ? '/login' : '/onboarding'}>
+          {error.startsWith('Entre para') ? 'Entrar' : 'Continuar configuração'}
         </Link>
       </main>
     );
   if (!profile)
     return (
       <main className="shell">
-        <p>Loading profile…</p>
+        <p>Carregando perfil…</p>
       </main>
     );
   const save = async (event: FormEvent<HTMLFormElement>) => {
@@ -555,7 +528,7 @@ function ProfilePage() {
       setProfile(updated);
       setEditing(false);
     } catch {
-      setError('Could not save profile. Check the fields and try again.');
+      setError('Não foi possível salvar o perfil. Verifique os campos e tente novamente.');
     }
   };
   const signOut = async () => {
@@ -566,25 +539,25 @@ function ProfilePage() {
       queryClient.clear();
       navigate('/login', { replace: true });
     } catch {
-      setError('Could not sign out. Check connection and try again.');
+      setError('Não foi possível sair. Verifique a conexão e tente novamente.');
       setSigningOut(false);
     }
   };
   return (
     <main className="shell">
       <Link className="text-link" to="/">
-        ← Home
+        ← Início
       </Link>
-      <p className="eyebrow">Your profile</p>
+      <p className="eyebrow">Seu perfil</p>
       <h1>{profile.displayName}</h1>
       {editing ? (
         <form className="card" onSubmit={save}>
           <label>
-            Display name
+            Nome exibido
             <input name="displayName" defaultValue={profile.displayName} required minLength={2} />
           </label>
           <label>
-            Skill level
+            Nível de habilidade
             <select name="skillLevel" defaultValue={profile.skillLevel}>
               {skills.map((skill) => (
                 <option key={skill.value} value={skill.value}>
@@ -594,7 +567,7 @@ function ProfilePage() {
             </select>
           </label>
           <fieldset>
-            <legend>Playing styles</legend>
+            <legend>Estilos de jogo</legend>
             {styles.map((style) => (
               <label className="checks" key={style.value}>
                 <span>
@@ -610,23 +583,23 @@ function ProfilePage() {
             ))}
           </fieldset>
           <label>
-            Bio
+            Biografia
             <textarea name="bio" defaultValue={profile.bio} maxLength={280} />
           </label>
           <label>
-            Time zone
+            Fuso horário
             <input name="timeZone" defaultValue={profile.timeZone} required />
           </label>
           <label>
-            Preferred duration
+            Duração preferida
             <select name="duration" defaultValue={profile.preferredGameDurationMinutes}>
-              <option value="60">60 minutes</option>
-              <option value="90">90 minutes</option>
-              <option value="120">120 minutes</option>
+              <option value="60">60 minutos</option>
+              <option value="90">90 minutos</option>
+              <option value="120">120 minutos</option>
             </select>
           </label>
           <label>
-            Minimum notice (minutes)
+            Antecedência mínima (minutos)
             <input
               name="notice"
               type="number"
@@ -638,11 +611,11 @@ function ProfilePage() {
           <label className="checks">
             <span>
               <input name="active" type="checkbox" defaultChecked={profile.activeForMatchmaking} />{' '}
-              Available for matchmaking
+              Disponível para combinações
             </span>
           </label>
           <button className="button" type="submit">
-            Save changes
+            Salvar alterações
           </button>
         </form>
       ) : (
@@ -650,20 +623,25 @@ function ProfilePage() {
           <p className="lead">
             {skills.find((skill) => skill.value === profile.skillLevel)?.label} · {profile.timeZone}
           </p>
-          <p>{profile.bio || 'Add a short bio to help players get to know you.'}</p>
+          <p>
+            {profile.bio ||
+              'Adicione uma breve biografia para ajudar os jogadores a conhecerem você.'}
+          </p>
           <p>
             {profile.styles
               .map((style) => styles.find((item) => item.value === style)?.label)
               .join(', ')}
           </p>
-          <p>{profile.activeForMatchmaking ? 'Available for matchmaking' : 'Matchmaking paused'}</p>
+          <p>
+            {profile.activeForMatchmaking ? 'Disponível para combinações' : 'Combinações pausadas'}
+          </p>
           <button className="button" onClick={() => setEditing(true)}>
-            Edit profile
+            Editar perfil
           </button>
         </section>
       )}
       <button className="text-button" type="button" onClick={signOut} disabled={signingOut}>
-        {signingOut ? 'Signing out...' : 'Sign out'}
+        {signingOut ? 'Saindo...' : 'Sair'}
       </button>
       {error && (
         <p className="error" role="alert">
@@ -677,10 +655,10 @@ function Placeholder({ title }: { title: string }) {
   return (
     <main className="shell">
       <Link className="text-link" to="/">
-        ← Home
+        ← Início
       </Link>
       <h1>{title}</h1>
-      <p className="lead">This feature arrives in a later milestone.</p>
+      <p className="lead">Este recurso estará disponível em uma próxima etapa.</p>
     </main>
   );
 }
@@ -702,7 +680,7 @@ export function App() {
         <Route path="/games" element={<GamesPage />} />
         <Route path="/games/new" element={<CreateGamePage />} />
         <Route path="/games/:id" element={<GameDetailsPage />} />
-        <Route path="*" element={<Placeholder title="Page not found" />} />
+        <Route path="*" element={<Placeholder title="Página não encontrada" />} />
       </Routes>
     </AppShell>
   );

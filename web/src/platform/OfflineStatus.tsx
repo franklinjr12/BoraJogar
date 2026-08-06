@@ -9,10 +9,10 @@ export function OfflineStatus({
   if (isOnline) return null;
   return (
     <div className="offline-banner" role="status">
-      <strong>You are offline.</strong> Showing saved upcoming games. Actions needing confirmation
-      are disabled.
+      <strong>Você está offline.</strong> Mostrando partidas futuras salvas. Ações que exigem
+      confirmação estão desativadas.
       <button className="text-button" onClick={onRetry}>
-        Retry connection
+        Tentar conexão novamente
       </button>
     </div>
   );

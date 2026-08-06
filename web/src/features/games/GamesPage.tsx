@@ -19,6 +19,7 @@ import {
   type VenueDraft,
 } from '../locations/venueDraft';
 import { markGameAlertPromptReady } from '../notifications/gameAlertPromptState';
+import { formatDate, gameVisibilityLabels, skillLabel } from '../../i18n/pt-BR';
 
 const levels: GameSkillLevel[] = [
   'learning',
@@ -27,10 +28,8 @@ const levels: GameSkillLevel[] = [
   'advanced',
   'competitive',
 ];
-const label = (value: string) =>
-  value.replace('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
-const localDate = (value: string) =>
-  new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+const label = skillLabel;
+const localDate = (value: string) => formatDate(value, { dateStyle: 'medium', timeStyle: 'short' });
 const minimumStartLeadMs = 15 * 60 * 1000;
 
 function todayInputValue() {
@@ -48,19 +47,19 @@ export function GamesPage() {
     gameApi
       .list()
       .then((page) => setGames(page.items))
-      .catch(() => setError('Could not load games. Sign in and try again.'));
+      .catch(() => setError('Não foi possível carregar as partidas. Entre e tente novamente.'));
   }, []);
   return (
     <main className="shell">
       <Link className="text-link" to="/">
-        ← Home
+        ← Partidas
       </Link>
-      <p className="eyebrow">Manual games</p>
-      <h1>Get on court.</h1>
-      <p className="lead">Create a game, share the link, and fill the open slots.</p>
+      <p className="eyebrow">Partidas manuais</p>
+      <h1>Vamos jogar.</h1>
+      <p className="lead">Crie uma partida, compartilhe o link e preencha as vagas.</p>
       <div className="actions">
         <Link className="button" to="/games/new">
-          Create a game
+          Criar uma partida
         </Link>
       </div>
       {error && (
@@ -69,16 +68,18 @@ export function GamesPage() {
         </p>
       )}
       <section className="game-list">
-        {games.length === 0 && !error && <p className="hint">No upcoming games yet.</p>}
+        {games.length === 0 && !error && <p className="hint">Nenhuma partida futura ainda.</p>}
         {games.map((game) => (
           <Link className="card game-card" key={game.id} to={`/games/${game.id}`}>
-            <p className="eyebrow">{game.visibility === 'link-only' ? 'Link-only' : 'Open game'}</p>
-            <h2>{game.title || 'Beach volleyball game'}</h2>
+            <p className="eyebrow">
+              {game.visibility === 'link-only' ? 'Somente com link' : 'Partida aberta'}
+            </p>
+            <h2>{game.title || 'Partida de vôlei de praia'}</h2>
             <p>
               {localDate(game.startsAt)} · {game.venueName}
             </p>
             <p>
-              {game.openSlots} open {game.openSlots === 1 ? 'slot' : 'slots'} ·{' '}
+              {game.openSlots} {game.openSlots === 1 ? 'vaga disponível' : 'vagas disponíveis'} ·{' '}
               {label(game.minimumSkillLevel)}–{label(game.maximumSkillLevel)}
             </p>
           </Link>
@@ -126,7 +127,7 @@ export function CreateGamePage() {
 
   const createVenueFromArea = async (area: PreferredArea) =>
     locationApi.createVenue({
-      name: area.label.trim().length >= 2 ? area.label.trim() : 'Game location',
+      name: area.label.trim().length >= 2 ? area.label.trim() : 'Local da partida',
       city: 'S\u00e3o Paulo',
       latitude: area.latitude,
       longitude: area.longitude,
@@ -142,7 +143,7 @@ export function CreateGamePage() {
     const starts = `${String(form.get('date'))}T${String(form.get('time'))}:00`;
     const startsAt = new Date(starts);
     if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() <= Date.now() + minimumStartLeadMs) {
-      setError('Choose a start time at least 15 minutes from now.');
+      setError('Escolha um horário de início com pelo menos 15 minutos de antecedência.');
       return;
     }
     let gameVenueId = locationChoice.startsWith('venue:')
@@ -150,7 +151,7 @@ export function CreateGamePage() {
       : '';
     if (!gameVenueId) {
       if (!selectedArea && !venueDraftReady(venueDraft)) {
-        setError('Enter location name and city, or choose a saved location.');
+        setError('Informe o nome e a cidade do local ou escolha um local salvo.');
         return;
       }
       try {
@@ -163,9 +164,9 @@ export function CreateGamePage() {
         setVenueDraft(blankVenueDraft());
       } catch (cause: unknown) {
         setError(
-          cause instanceof Error
-            ? `Could not create location: ${cause.message}`
-            : 'Could not create location. Check name, city, and address.',
+          cause instanceof ApiError
+            ? `Não foi possível criar o local: ${cause.message}`
+            : 'Não foi possível criar o local. Verifique nome, cidade e endereço.',
         );
         return;
       }
@@ -187,22 +188,26 @@ export function CreateGamePage() {
       navigate(`/games/${game.id}`);
     } catch (cause: unknown) {
       if (cause instanceof ApiError && cause.status === 409) {
-        setError(cause.message);
+        setError(
+          cause instanceof ApiError
+            ? cause.message
+            : 'Não foi possível criar a partida. Tente novamente.',
+        );
       } else {
-        setError('Could not create game. Check the date, venue, and skill range.');
+        setError('Não foi possível criar a partida. Verifique data, local e faixa de habilidade.');
       }
     }
   };
   return (
     <main className="shell">
       <Link className="text-link" to="/games">
-        ← Games
+        ← Partidas
       </Link>
-      <p className="eyebrow">New game</p>
-      <h1>Set up a game.</h1>
+      <p className="eyebrow">Nova partida</p>
+      <h1>Configure uma partida.</h1>
       <form className="card" onSubmit={save}>
         <label>
-          Date
+          Data
           <input
             name="date"
             type="date"
@@ -213,29 +218,29 @@ export function CreateGamePage() {
           />
         </label>
         <label>
-          Start time
+          Horário de início
           <input name="time" type="time" required />
         </label>
         <label>
-          Duration
+          Duração
           <select name="duration" defaultValue="90">
-            <option value="60">60 minutes</option>
-            <option value="90">90 minutes</option>
-            <option value="120">120 minutes</option>
+            <option value="60">60 minutos</option>
+            <option value="90">90 minutos</option>
+            <option value="120">120 minutos</option>
           </select>
         </label>
-        <section className="inline-panel" aria-label="Location">
-          <h2>Location</h2>
+        <section className="inline-panel" aria-label="Local">
+          <h2>Local</h2>
           <label>
-            Venue
+            Quadra
             <select
               name="venueId"
               value={locationChoice}
               onChange={(event) => setLocationChoice(event.target.value)}
             >
-              <option value="">Create a new court</option>
+              <option value="">Criar uma nova quadra</option>
               {venues.length > 0 && (
-                <optgroup label="Courts">
+                <optgroup label="Quadras">
                   {venues.map((venue) => (
                     <option key={venue.id} value={`venue:${venue.id}`}>
                       {venue.name}
@@ -244,7 +249,7 @@ export function CreateGamePage() {
                 </optgroup>
               )}
               {areas.length > 0 && (
-                <optgroup label="Saved areas">
+                <optgroup label="Áreas salvas">
                   {areas.map((area) => (
                     <option key={area.id} value={`area:${area.id}`}>
                       {area.label}
@@ -256,49 +261,53 @@ export function CreateGamePage() {
           </label>
           {selectedArea ? (
             <p className="hint">
-              This game will use {selectedArea.label}. You can choose a saved court or create a new
-              court instead.
+              Esta partida usará {selectedArea.label}. Você pode escolher uma quadra salva ou criar
+              uma nova.
             </p>
           ) : (
             <VenueForm draft={venueDraft} onChange={setVenueDraft} />
           )}
         </section>
         <label>
-          Capacity
+          Número de jogadores
           <input name="capacity" type="number" min="2" max="12" defaultValue="4" required />
         </label>
         <div className="time-fields">
           <label>
-            Minimum skill
+            Habilidade mínima
             <select name="minimum" defaultValue="beginner">
               {levels.map((level) => (
-                <option key={level}>{level}</option>
+                <option key={level} value={level}>
+                  {label(level)}
+                </option>
               ))}
             </select>
           </label>
           <label>
-            Maximum skill
+            Habilidade máxima
             <select name="maximum" defaultValue="advanced">
               {levels.map((level) => (
-                <option key={level}>{level}</option>
+                <option key={level} value={level}>
+                  {label(level)}
+                </option>
               ))}
             </select>
           </label>
         </div>
         <label>
-          Visibility
+          Visibilidade
           <select name="visibility" defaultValue="link-only">
-            <option value="link-only">Link-only</option>
-            <option value="public">Public</option>
-            <option value="private">Private</option>
+            <option value="link-only">{gameVisibilityLabels['link-only']}</option>
+            <option value="public">{gameVisibilityLabels.public}</option>
+            <option value="private">{gameVisibilityLabels.private}</option>
           </select>
         </label>
         <label>
-          Title (optional)
+          Título (opcional)
           <input name="title" maxLength={120} />
         </label>
         <label>
-          Notes (optional)
+          Observações (opcional)
           <textarea name="description" maxLength={2000} />
         </label>
         {error && (
@@ -307,7 +316,7 @@ export function CreateGamePage() {
           </p>
         )}
         <button className="button" type="submit">
-          Create game
+          Criar partida
         </button>
       </form>
     </main>
@@ -333,14 +342,14 @@ export function GameDetailsPage() {
             setPreview(nextPreview);
             setError('');
           })
-          .catch(() => setError('Game unavailable or access link expired.')),
+          .catch(() => setError('Partida indisponível ou link de acesso expirado.')),
       );
   }, [id, params]);
   if (error)
     return (
       <main className="shell">
         <Link className="text-link" to="/games">
-          ← Games
+          ← Partidas
         </Link>
         <p className="error" role="alert">
           {error}
@@ -351,10 +360,10 @@ export function GameDetailsPage() {
     return (
       <main className="shell">
         <Link className="text-link" to="/games">
-          &lt;- Games
+          ← Partidas
         </Link>
-        <p className="eyebrow">Game invitation</p>
-        <h1>{preview.title || 'Beach volleyball game'}</h1>
+        <p className="eyebrow">Convite para partida</p>
+        <h1>{preview.title || 'Partida de vôlei de praia'}</h1>
         <section className="card">
           <p className="lead">{localDate(preview.startsAt)}</p>
           <p>
@@ -362,8 +371,8 @@ export function GameDetailsPage() {
             {preview.addressLabel ? ` - ${preview.addressLabel}` : ''}
           </p>
           <p>
-            {preview.openSlots} open {preview.openSlots === 1 ? 'slot' : 'slots'} -{' '}
-            {label(preview.minimumSkillLevel)}-{label(preview.maximumSkillLevel)}
+            {preview.openSlots} {preview.openSlots === 1 ? 'vaga disponível' : 'vagas disponíveis'}{' '}
+            - {label(preview.minimumSkillLevel)}-{label(preview.maximumSkillLevel)}
           </p>
           <Link
             className="button"
@@ -375,7 +384,7 @@ export function GameDetailsPage() {
               )
             }
           >
-            Sign in to join
+            Entre para participar
           </Link>
         </section>
       </main>
@@ -383,7 +392,7 @@ export function GameDetailsPage() {
   if (!game)
     return (
       <main className="shell">
-        <p>Loading game…</p>
+        <p>Carregando partida…</p>
       </main>
     );
   const action = async (fn: () => Promise<unknown>) => {
@@ -394,7 +403,7 @@ export function GameDetailsPage() {
       const refreshed = await gameApi.get(id, params.get('access') ?? undefined);
       setGame(refreshed);
     } catch {
-      setError('Could not update this game.');
+      setError('Não foi possível atualizar esta partida.');
     } finally {
       setBusy(false);
     }
@@ -403,10 +412,10 @@ export function GameDetailsPage() {
   return (
     <main className="shell">
       <Link className="text-link" to="/games">
-        ← Games
+        ← Partidas
       </Link>
-      <p className="eyebrow">Game details</p>
-      <h1>{game.title || 'Beach volleyball game'}</h1>
+      <p className="eyebrow">Detalhes da partida</p>
+      <h1>{game.title || 'Partida de vôlei de praia'}</h1>
       <section className="card">
         <p className="lead">{localDate(game.startsAt)}</p>
         <p>
@@ -415,30 +424,30 @@ export function GameDetailsPage() {
         </p>
         <p className="calendar-links">
           <a className="text-link" href={mapURL} target="_blank" rel="noreferrer">
-            Open venue map
+            Abrir mapa do local
           </a>
           <a
             className="text-link"
             href={gameApi.calendarURL(game.id, params.get('access') ?? undefined)}
           >
-            Add to calendar
+            Adicionar ao calendário
           </a>
         </p>
         <p>
-          {label(game.minimumSkillLevel)}–{label(game.maximumSkillLevel)} · {game.openSlots} open
-          slots
+          {label(game.minimumSkillLevel)}–{label(game.maximumSkillLevel)} · {game.openSlots}{' '}
+          {game.openSlots === 1 ? 'vaga disponível' : 'vagas disponíveis'}
         </p>
         {game.description && <p>{game.description}</p>}
-        <h2>Players</h2>
+        <h2>Jogadores</h2>
         {game.players?.map((player) => (
           <p key={player.id}>
             {player.displayName}
-            {player.role === 'organizer' ? ' · organizer' : ''}
+            {player.role === 'organizer' ? ' · organizador' : ''}
           </p>
         ))}
         {game.waitlist && game.waitlist.length > 0 && (
           <>
-            <h2>Waitlist</h2>
+            <h2>Lista de espera</h2>
             {game.waitlist.map((player) => (
               <p key={player.id}>{player.displayName}</p>
             ))}
@@ -446,7 +455,7 @@ export function GameDetailsPage() {
         )}
         {game.currentUserStatus !== 'confirmed' && (
           <button className="button" disabled={busy} onClick={() => action(() => gameApi.join(id))}>
-            Join game
+            Participar da partida
           </button>
         )}
         {game.currentUserStatus === 'confirmed' && game.currentUserRole !== 'organizer' && (
@@ -455,7 +464,7 @@ export function GameDetailsPage() {
             disabled={busy}
             onClick={() => action(() => gameApi.leave(id))}
           >
-            Leave game
+            Sair da partida
           </button>
         )}
       </section>

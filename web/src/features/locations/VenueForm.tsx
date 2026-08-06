@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import type { Venue } from '../../api/client';
+import { ApiError, type Venue } from '../../api/client';
 import { requestBrowserLocation, type LocationMessages } from './browserLocation';
 import { resolveMapStyle } from './mapStyle';
 import {
@@ -12,12 +12,15 @@ import {
 import { searchPlaces, type PlaceSearchResult } from './placeSearch';
 
 const locationMessages: LocationMessages = {
-  unavailable: 'Location permission is unavailable. Search by city.',
-  insecure: 'Location requires HTTPS on phone browsers. Use local HTTPS, then try again.',
-  denied: 'Location permission is blocked. Enable it in browser settings, then try again.',
-  positionUnavailable: 'Could not find your device location. Search by city.',
-  timeout: 'Finding your location timed out. Search by city.',
-  unknown: 'Could not use your current location. Search by city.',
+  unavailable: 'A permissão de localização está indisponível. Pesquise por cidade.',
+  insecure:
+    'A localização exige HTTPS em navegadores de celular. Use HTTPS local e tente novamente.',
+  denied:
+    'A permissão de localização está bloqueada. Ative-a nas configurações do navegador e tente novamente.',
+  positionUnavailable:
+    'Não foi possível encontrar a localização do seu dispositivo. Pesquise por cidade.',
+  timeout: 'A busca pela sua localização expirou. Pesquise por cidade.',
+  unknown: 'Não foi possível usar sua localização atual. Pesquise por cidade.',
 };
 
 function MapPicker({
@@ -77,15 +80,15 @@ function MapPicker({
   }, [point.latitude, point.longitude]);
 
   if (!style || mapFailed)
-    return <p className="map-inline-hint">Map unavailable. Search by city.</p>;
-  return <div ref={node} className="map-panel compact-map" aria-label="Pick location on map" />;
+    return <p className="map-inline-hint">Mapa indisponível. Pesquise por cidade.</p>;
+  return <div ref={node} className="map-panel compact-map" aria-label="Escolher local no mapa" />;
 }
 
 export function VenueForm({
   draft,
   onChange,
   onCreated,
-  buttonLabel = 'Create location',
+  buttonLabel = 'Criar local',
 }: {
   draft: VenueDraft;
   onChange: (draft: VenueDraft) => void;
@@ -118,7 +121,7 @@ export function VenueForm({
         longitude: result.longitude,
       },
     });
-    setMessage('Map pin set from your device. Select city before saving.');
+    setMessage('Ponto definido pelo seu dispositivo. Selecione a cidade antes de salvar.');
   };
   useEffect(() => {
     searchController.current?.abort();
@@ -138,11 +141,13 @@ export function VenueForm({
         .then((matches) => {
           if (sequence !== searchSequence.current) return;
           setResults(matches);
-          setMessage(matches.length > 0 ? 'Choose a city from the list.' : 'City not found.');
+          setMessage(
+            matches.length > 0 ? 'Escolha uma cidade da lista.' : 'Cidade não encontrada.',
+          );
         })
         .catch((cause: unknown) => {
           if (cause instanceof DOMException && cause.name === 'AbortError') return;
-          setMessage('Could not search city. Try again soon.');
+          setMessage('Não foi possível pesquisar a cidade. Tente novamente em instantes.');
         })
         .finally(() => {
           if (sequence === searchSequence.current) setSearching(false);
@@ -163,31 +168,31 @@ export function VenueForm({
     setCityQuery(place.displayName);
     setCitySearchTouched(false);
     setResults([]);
-    setMessage(`City selected: ${place.city}.`);
+    setMessage(`Cidade selecionada: ${place.city}.`);
   };
   const save = async () => {
     setMessage('');
     if (!venueDraftReady(draft)) {
-      setMessage('Enter a name, court address, then search and select a city.');
+      setMessage('Informe um nome e o endereço da quadra, depois pesquise e selecione uma cidade.');
       return;
     }
     try {
       const created = await createVenueFromDraft(draft);
       onCreated?.(created);
       onChange(blankVenueDraft());
-      setMessage('Location created and ready for games.');
+      setMessage('Local criado e pronto para partidas.');
     } catch (cause: unknown) {
       setMessage(
-        cause instanceof Error
-          ? `Could not create location: ${cause.message}`
-          : 'Could not create location. Check name, city, and address.',
+        cause instanceof ApiError
+          ? `Não foi possível criar o local: ${cause.message}`
+          : 'Não foi possível criar o local. Verifique nome, cidade e endereço.',
       );
     }
   };
   return (
     <div className="venue-form">
       <label>
-        Personalized name
+        Nome personalizado
         <input
           value={draft.name}
           onChange={(event) => update('name', event.target.value)}
@@ -195,7 +200,7 @@ export function VenueForm({
         />
       </label>
       <label>
-        Court address
+        Endereço da quadra
         <input
           value={draft.addressLabel}
           onChange={(event) => updateAddress(event.target.value)}
@@ -203,7 +208,7 @@ export function VenueForm({
         />
       </label>
       <label>
-        City search
+        Pesquisa de cidade
         <input
           type="search"
           autoComplete="off"
@@ -216,9 +221,9 @@ export function VenueForm({
           placeholder="Curitiba"
         />
       </label>
-      {searching && <p className="hint">Searching city...</p>}
+      {searching && <p className="hint">Pesquisando cidade...</p>}
       {results.length > 0 && (
-        <div className="place-results" role="listbox" aria-label="City results">
+        <div className="place-results" role="listbox" aria-label="Resultados de cidades">
           {results.map((result) => (
             <button
               className="place-result"
@@ -235,13 +240,13 @@ export function VenueForm({
           ))}
         </div>
       )}
-      {draft.addressConfirmed && <p className="hint">Selected city: {draft.city}</p>}
+      {draft.addressConfirmed && <p className="hint">Cidade selecionada: {draft.city}</p>}
       <MapPicker
         point={draft.point}
         onSelect={(point) => onChange({ ...draft, point, addressConfirmed: false })}
       />
       <button className="text-button" type="button" onClick={useCurrentLocation}>
-        Use my current location
+        Usar minha localização atual
       </button>
       {onCreated && (
         <button className="button" type="button" onClick={save}>

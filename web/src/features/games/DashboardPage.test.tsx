@@ -64,14 +64,14 @@ describe('DashboardPage', () => {
       </MemoryRouter>,
     );
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: /your next game/i })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /sua próxima partida/i })).toBeInTheDocument(),
     );
-    expect(screen.getByText(/good to see you, Franklin/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /directions/i })).toHaveAttribute(
+    expect(screen.getByText(/que bom ver você, Franklin/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /como chegar/i })).toHaveAttribute(
       'href',
       expect.stringContaining('openstreetmap'),
     );
-    expect(screen.getByText(/Mon/)).toBeInTheDocument();
+    expect(screen.getByText(/Seg/)).toBeInTheDocument();
   });
 
   it('shows a productive empty state without empty sections', async () => {
@@ -96,9 +96,9 @@ describe('DashboardPage', () => {
         <DashboardPage />
       </MemoryRouter>,
     );
-    expect(await screen.findByRole('heading', { name: /you're ready/i })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /your next game/i })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: /create a game/i })[0]).toHaveAttribute(
+    expect(await screen.findByRole('heading', { name: /você está pronto/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /sua próxima partida/i })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: /criar uma partida/i })[0]).toHaveAttribute(
       'href',
       '/games/new',
     );

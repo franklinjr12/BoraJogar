@@ -53,11 +53,11 @@ describe('CalendarPage', () => {
       expect(screen.getByRole('heading', { name: /saturday match/i })).toBeInTheDocument(),
     );
     expect(screen.getByRole('button', { name: 'Agenda' })).toHaveClass('selected');
-    expect(screen.getByRole('link', { name: /open venue map/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /abrir mapa do local/i })).toHaveAttribute(
       'href',
       expect.stringContaining('openstreetmap.org'),
     );
-    expect(screen.getByRole('link', { name: /add to calendar/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /adicionar ao calendário/i })).toHaveAttribute(
       'href',
       '/api/v1/games/game-1/calendar.ics',
     );

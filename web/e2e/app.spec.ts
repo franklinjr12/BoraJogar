@@ -29,35 +29,36 @@ function uniqueEmail(prefix: string) {
 
 async function signUpWithEmail(page: Page, displayName: string, email: string, returnTo: string) {
   await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`);
-  await page.getByLabel(/display name/i).fill(displayName);
-  await page.getByLabel(/email/i).fill(email);
-  await page.getByLabel(/password/i).fill('pw');
+  await page.getByLabel(/nome exibido/i).fill(displayName);
+  await page.getByLabel(/e-mail/i).fill(email);
+  await page.getByLabel(/senha/i).fill('pw');
   await page
     .locator('form')
-    .getByRole('button', { name: /^create account$/i })
+    .getByRole('button', { name: /^criar conta$/i })
     .click();
 }
 
 async function saveProfileStep(page: Page, displayName: string) {
-  await expect(page.getByRole('heading', { name: /tell us about your game/i })).toBeVisible();
-  await page.getByLabel(/display name/i).fill(displayName);
-  await page.getByRole('button', { name: /^continue$/i }).click();
+  await expect(page.getByRole('heading', { name: /conte sobre seu jogo/i })).toBeVisible();
+  await page.getByLabel(/nome exibido/i).fill(displayName);
+  await page.getByRole('button', { name: /^continuar$/i }).click();
 }
 
 async function saveAreaStep(page: Page, label: string) {
-  await expect(page.getByText('Playing locations', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /choose an area/i }).click();
-  await page.getByLabel(/^label$/i).fill(label);
-  await page.getByRole('button', { name: /save area/i }).click();
-  await expect(page.getByText(/area saved/i)).toBeVisible();
-  await page.getByRole('button', { name: /^continue$/i }).click();
+  await expect(page.getByText('Locais para jogar', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /escolher uma área/i }).click();
+  await page.getByLabel(/^nome$/i).fill(label);
+  await page.getByRole('button', { name: /salvar área/i }).click();
+  await expect(page.getByText(/área salva/i)).toBeVisible();
+  await page.getByRole('button', { name: /^continuar$/i }).click();
 }
 
 async function saveAvailabilityStep(page: Page) {
-  await expect(page.getByText(/your schedule/i)).toBeVisible();
-  await page.getByRole('button', { name: /add available time/i }).click();
-  await expect(page.getByText(/available time saved/i)).toBeVisible();
-  await page.getByRole('button', { name: /use email only/i }).click();
+  await expect(page.getByText(/sua agenda/i)).toBeVisible();
+  await page.getByRole('button', { name: /adicionar horário disponível/i }).click();
+  await expect(page.getByText(/horário disponível salvo/i)).toBeVisible();
+  const emailOnly = page.getByRole('button', { name: /usar apenas e-mail/i });
+  if (await emailOnly.isVisible().catch(() => false)) await emailOnly.click();
 }
 
 function futureDate(daysFromNow: number) {
@@ -70,8 +71,8 @@ test.describe('Bora Jogar real backend E2E', () => {
   test('requires backend authentication for protected profile data', async ({ page }) => {
     await page.goto('/profile');
 
-    await expect(page.getByText(/sign in to view your profile/i)).toBeVisible();
-    await expect(page.getByRole('link', { name: /sign in/i })).toHaveAttribute('href', '/login');
+    await expect(page.getByText(/entre para ver seu perfil/i)).toBeVisible();
+    await expect(page.getByRole('link', { name: /entrar/i })).toHaveAttribute('href', '/login');
   });
 
   test('loads and updates profile through the real API', async ({ page }) => {
@@ -79,9 +80,9 @@ test.describe('Bora Jogar real backend E2E', () => {
     await page.goto('/profile');
 
     await expect(page.getByRole('heading', { name: /Ana/i })).toBeVisible();
-    await page.getByRole('button', { name: /edit profile/i }).click();
-    await page.getByLabel(/display name/i).fill('Ana E2E Updated');
-    await page.getByRole('button', { name: /save changes/i }).click();
+    await page.getByRole('button', { name: /editar perfil/i }).click();
+    await page.getByLabel(/nome exibido/i).fill('Ana E2E Updated');
+    await page.getByRole('button', { name: /salvar alterações/i }).click();
 
     await expect(page.getByRole('heading', { name: 'Ana E2E Updated' })).toBeVisible();
     await page.reload();
@@ -92,15 +93,17 @@ test.describe('Bora Jogar real backend E2E', () => {
     await signIn(page, sessions.ana);
     await page.goto('/games');
 
-    await expect(page.getByRole('heading', { name: /get on court/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /vamos jogar/i })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'E2E Open Game' })).toBeVisible();
 
-    await page.getByRole('link', { name: /create a game/i }).click();
-    await page.getByLabel(/date/i).fill(futureDate(5));
-    await page.getByLabel(/start time/i).fill('10:30');
-    await page.getByLabel(/venue/i).selectOption({ label: 'E2E Praia Paulista' });
-    await page.getByLabel(/title/i).fill('E2E Created From Browser');
-    await page.getByRole('button', { name: /create game/i }).click();
+    await page.getByRole('link', { name: /criar uma partida/i }).click();
+    await page.getByLabel(/data/i).fill(futureDate(5));
+    await page.getByLabel(/horário de início/i).fill('10:30');
+    await page.getByRole('combobox', { name: /^quadra$/i }).selectOption({
+      label: 'E2E Praia Paulista',
+    });
+    await page.getByLabel(/título/i).fill('E2E Created From Browser');
+    await page.getByRole('button', { name: /criar partida/i }).click();
 
     await expect(page).toHaveURL(/\/games\/[0-9a-f-]+$/);
     await expect(page.getByRole('heading', { name: 'E2E Created From Browser' })).toBeVisible();
@@ -110,8 +113,8 @@ test.describe('Bora Jogar real backend E2E', () => {
   test('new create-game user completes onboarding before game creation', async ({ page }) => {
     const displayName = 'New Flow Player';
     await page.goto('/');
-    await page.getByRole('link', { name: /get started/i }).click();
-    await page.getByRole('link', { name: /create a game/i }).click();
+    await page.getByRole('link', { name: /começar/i }).click();
+    await page.getByRole('link', { name: /criar uma partida/i }).click();
     await signUpWithEmail(
       page,
       displayName,
@@ -122,12 +125,12 @@ test.describe('Bora Jogar real backend E2E', () => {
     await saveProfileStep(page, displayName);
     await saveAreaStep(page, 'New flow area');
     await saveAvailabilityStep(page);
-    await page.getByRole('button', { name: /^create game$/i }).click();
+    await page.getByRole('button', { name: /^criar partida$/i }).click();
 
     await expect(page).toHaveURL(/\/games\/new$/);
-    await expect(page.getByRole('heading', { name: /set up a game/i })).toBeVisible();
-    await expect(page.getByLabel(/venue/i)).toHaveValue(/area:/);
-    await expect(page.getByText(/this game will use new flow area/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /configure uma partida/i })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: /^quadra$/i })).toHaveValue(/area:/);
+    await expect(page.getByText(/esta partida usará new flow area/i)).toBeVisible();
   });
 
   test('returning incomplete user resumes setup and profile never asks to sign in', async ({
@@ -139,9 +142,9 @@ test.describe('Bora Jogar real backend E2E', () => {
 
     await page
       .getByRole('main')
-      .getByRole('link', { name: /^home$/i })
+      .getByRole('link', { name: /^início$/i })
       .click();
-    await expect(page.getByRole('link', { name: /continue setup/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /continuar configuração/i })).toBeVisible();
     await page.evaluate(() =>
       localStorage.setItem(
         'borajogar_onboarding',
@@ -149,18 +152,18 @@ test.describe('Bora Jogar real backend E2E', () => {
       ),
     );
 
-    await page.getByRole('link', { name: /profile/i }).click();
+    await page.getByRole('link', { name: /perfil/i }).click();
     await expect(page.getByRole('heading', { name: displayName })).toBeVisible();
-    await expect(page.getByText(/sign in to view your profile/i)).toHaveCount(0);
+    await expect(page.getByText(/entre para ver seu perfil/i)).toHaveCount(0);
 
     await page.goto('/');
-    await page.getByRole('link', { name: /continue setup/i }).click();
+    await page.getByRole('link', { name: /continuar configuração/i }).click();
     await saveAreaStep(page, 'Returning flow area');
     await saveAvailabilityStep(page);
-    await page.getByRole('button', { name: /go to dashboard/i }).click();
+    await page.getByRole('button', { name: /ir para o painel/i }).click();
 
     await expect(page).toHaveURL(/\/dashboard$/);
-    await expect(page.getByRole('heading', { name: /good to see you, returning/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /que bom ver você, returning/i })).toBeVisible();
   });
 
   test('waitlists a player when a real backend game is full', async ({ page }) => {
@@ -168,10 +171,10 @@ test.describe('Bora Jogar real backend E2E', () => {
     await page.goto('/games/60000000-0000-0000-0000-000000000102');
 
     await expect(page.getByRole('heading', { name: 'E2E Full Game' })).toBeVisible();
-    await expect(page.getByText(/0 open slots/i)).toBeVisible();
-    await page.getByRole('button', { name: /join game/i }).click();
+    await expect(page.getByText(/0 vagas disponíveis/i)).toBeVisible();
+    await page.getByRole('button', { name: /participar da partida/i }).click();
 
-    await expect(page.getByRole('heading', { name: /waitlist/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /lista de espera/i })).toBeVisible();
     await expect(page.getByText('Carla Lima')).toBeVisible();
   });
 });

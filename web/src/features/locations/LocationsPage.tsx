@@ -8,19 +8,21 @@ import { searchPlaces, type PlaceSearchResult } from './placeSearch';
 
 const defaultCenter = { latitude: -25.4284, longitude: -49.2733 };
 const locationMessages: LocationMessages = {
-  unavailable: 'Browser location is unavailable. Search or choose on the map.',
+  unavailable: 'A localização do navegador está indisponível. Pesquise ou escolha no mapa.',
   insecure:
-    'Location requires HTTPS on phone browsers. Use local HTTPS, then try again, or search/choose on the map.',
-  denied: 'Location permission is blocked. Enable it in browser settings, then try again.',
-  positionUnavailable: 'Could not find your device location. Search or choose on the map.',
-  timeout: 'Finding your location timed out. Search or choose on the map.',
-  unknown: 'Could not use your current location. Search or choose on the map.',
+    'A localização exige HTTPS em navegadores de celular. Use HTTPS local, tente novamente ou pesquise/escolha no mapa.',
+  denied:
+    'A permissão de localização está bloqueada. Ative-a nas configurações do navegador e tente novamente.',
+  positionUnavailable:
+    'Não foi possível encontrar a localização do seu dispositivo. Pesquise ou escolha no mapa.',
+  timeout: 'A busca pela sua localização expirou. Pesquise ou escolha no mapa.',
+  unknown: 'Não foi possível usar sua localização atual. Pesquise ou escolha no mapa.',
 };
 const radiusOptions = [
-  { meters: 2000, label: '2 km', hint: 'Very close' },
-  { meters: 4000, label: '4 km', hint: 'Nearby' },
-  { meters: 7000, label: '7 km', hint: 'Nearby neighborhoods' },
-  { meters: 10000, label: '10 km', hint: 'Reasonably close' },
+  { meters: 2000, label: '2 km', hint: 'Bem perto' },
+  { meters: 4000, label: '4 km', hint: 'Perto' },
+  { meters: 7000, label: '7 km', hint: 'Bairros próximos' },
+  { meters: 10000, label: '10 km', hint: 'Relativamente perto' },
 ];
 
 function roundPoint(point: { latitude: number; longitude: number }) {
@@ -89,10 +91,12 @@ function MapPanel({
   }, [center.latitude, center.longitude]);
 
   if (!style || mapFailed)
-    return <p className="map-inline-hint">Map unavailable. Search or use current location.</p>;
+    return (
+      <p className="map-inline-hint">Mapa indisponível. Pesquise ou use sua localização atual.</p>
+    );
   return (
     <div className="map-shell">
-      <div ref={node} className="map-panel" aria-label="Area selection map" />
+      <div ref={node} className="map-panel" aria-label="Mapa para selecionar área" />
       <div className="map-pin" aria-hidden="true" />
     </div>
   );
@@ -101,18 +105,18 @@ function MapPanel({
 function venueLabel(venue: Venue) {
   const access =
     venue.accessType === 'paid_entry'
-      ? 'Paid entry'
+      ? 'Entrada paga'
       : venue.accessType === 'public'
-        ? 'Public court'
+        ? 'Quadra pública'
         : venue.accessType === 'private'
-          ? 'Private court'
-          : 'Court';
+          ? 'Quadra privada'
+          : 'Quadra';
   const lighting =
     venue.lightingStatus === 'has_lighting'
-      ? 'Lighting available'
+      ? 'Com iluminação'
       : venue.lightingStatus === 'no_lighting'
-        ? 'No lighting'
-        : 'Lighting unknown';
+        ? 'Sem iluminação'
+        : 'Iluminação desconhecida';
   return `${access} - ${lighting}`;
 }
 
@@ -120,7 +124,7 @@ export function LocationsPage() {
   return (
     <main className="shell locations">
       <Link className="text-link" to="/">
-        &lt;- Home
+        ← Início
       </Link>
       <LocationSetup />
     </main>
@@ -136,7 +140,7 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
   const [search, setSearch] = useState('');
   const [point, setPoint] = useState(defaultCenter);
   const [radius, setRadius] = useState(4000);
-  const [label, setLabel] = useState('Near home');
+  const [label, setLabel] = useState('Perto de casa');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [areaSearchOpen, setAreaSearchOpen] = useState(false);
@@ -160,7 +164,7 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
       setFavorites(loadedFavorites);
       setAreas(loadedAreas);
     } catch {
-      setMessage('Could not load locations. Check connection and try again.');
+      setMessage('Não foi possível carregar os locais. Verifique a conexão e tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -195,13 +199,13 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
           setAreaResults(matches);
           setMessage(
             matches.length > 0
-              ? 'Choose an area from the list.'
-              : 'Neighborhood or address not found.',
+              ? 'Escolha uma área da lista.'
+              : 'Bairro ou endereço não encontrado.',
           );
         })
         .catch((cause: unknown) => {
           if (cause instanceof DOMException && cause.name === 'AbortError') return;
-          setMessage('Could not search area. Try again soon.');
+          setMessage('Não foi possível pesquisar a área. Tente novamente em instantes.');
         })
         .finally(() => {
           if (sequence === areaSearchSequence.current) setAreaSearching(false);
@@ -234,8 +238,8 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
       longitude: result.longitude,
     });
     setPoint(rounded);
-    setLabel('Near my area');
-    setMessage('Area set from your device location.');
+    setLabel('Perto da minha região');
+    setMessage('Área definida pela localização do seu dispositivo.');
   };
 
   const openAreaSearch = () => {
@@ -246,17 +250,17 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
   const chooseMap = () => {
     setAreaSearchOpen(false);
     setAreaResults([]);
-    setMessage('Move the map or click a point to choose an area.');
+    setMessage('Mova o mapa ou clique em um ponto para escolher uma área.');
   };
 
   const selectAreaPlace = (place: PlaceSearchResult) => {
     const rounded = roundPoint({ latitude: place.latitude, longitude: place.longitude });
     setPoint(rounded);
-    setLabel(`Near ${place.city}`);
+    setLabel(`Perto de ${place.city}`);
     setAreaQuery(place.displayName);
     setAreaSearchTouched(false);
     setAreaResults([]);
-    setMessage(`Area selected: ${place.city}.`);
+    setMessage(`Área selecionada: ${place.city}.`);
   };
 
   const saveCourt = async (venue: Venue) => {
@@ -265,9 +269,9 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
       setFavorites((current) => (favoriteIds.has(venue.id) ? current : [...current, venue]));
       setSelectedVenue(null);
       setMode('list');
-      setMessage('Court saved.');
+      setMessage('Quadra salva.');
     } catch {
-      setMessage('Could not save court.');
+      setMessage('Não foi possível salvar a quadra.');
     }
   };
 
@@ -276,13 +280,13 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
       await locationApi.unfavoriteVenue(venue.id);
       setFavorites((current) => current.filter((item) => item.id !== venue.id));
     } catch {
-      setMessage('Could not remove court.');
+      setMessage('Não foi possível remover a quadra.');
     }
   };
 
   const saveArea = async () => {
     if (!label.trim()) {
-      setMessage('Enter a label for this area.');
+      setMessage('Informe um nome para esta área.');
       return;
     }
     try {
@@ -294,9 +298,9 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
       });
       setAreas((current) => [...current, created]);
       setMode('list');
-      setMessage('Area saved.');
+      setMessage('Área salva.');
     } catch {
-      setMessage('Could not save area. You may have reached the limit of five.');
+      setMessage('Não foi possível salvar a área. Você pode ter atingido o limite de cinco.');
     }
   };
 
@@ -305,38 +309,40 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
       await locationApi.deletePreferredArea(id);
       setAreas((current) => current.filter((area) => area.id !== id));
     } catch {
-      setMessage('Could not remove area.');
+      setMessage('Não foi possível remover a área.');
     }
   };
 
   return (
     <>
-      <p className="eyebrow">Playing locations</p>
-      {!compact && <h1>Where can you play?</h1>}
+      <p className="eyebrow">Locais para jogar</p>
+      {!compact && <h1>Onde você pode jogar?</h1>}
       <p className="lead">
-        Choose courts you already use, or mark a general area. Your private areas are only used for
-        matching.
+        Escolha quadras que você já frequenta ou marque uma área geral. Suas áreas privadas são
+        usadas apenas para encontrar combinações.
       </p>
       <div className="actions compact-actions">
         <button className="button" type="button" onClick={() => setMode('court')}>
-          Choose a court
+          Escolher uma quadra
         </button>
         <button className="text-button" type="button" onClick={() => setMode('area')}>
-          Choose an area
+          Escolher uma área
         </button>
       </div>
 
       {mode === 'list' && (
         <section className="location-list">
-          <h2>Your playing locations</h2>
-          {loading && <p role="status">Loading locations...</p>}
+          <h2>Seus locais para jogar</h2>
+          {loading && <p role="status">Carregando locais...</p>}
           {!loading && savedLocations === 0 && (
             <div className="card">
-              <h3>Choose where you could play</h3>
-              <p>Add courts you know or mark an area such as near home or near work.</p>
-              <p>Your saved areas remain private.</p>
+              <h3>Escolha onde você poderia jogar</h3>
+              <p>
+                Adicione quadras que conhece ou marque uma área, como perto de casa ou do trabalho.
+              </p>
+              <p>Suas áreas salvas permanecem privadas.</p>
               <button className="button" type="button" onClick={() => setMode('court')}>
-                Add my first location
+                Adicionar meu primeiro local
               </button>
             </div>
           )}
@@ -346,10 +352,10 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
                 <h3>{venue.name}</h3>
                 <p>{venueLabel(venue)}</p>
                 <p>{venue.addressLabel || venue.city}</p>
-                <p>Preferred anytime</p>
+                <p>Preferida em qualquer horário</p>
               </div>
               <button className="text-button" type="button" onClick={() => removeCourt(venue)}>
-                Remove
+                Remover
               </button>
             </article>
           ))}
@@ -357,12 +363,12 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
             <article className="card location-card" key={area.id}>
               <div>
                 <h3>{area.label}</h3>
-                <p>Private area</p>
-                <p>Within {Math.round(area.radiusMeters / 1000)} km</p>
-                <p>Any availability</p>
+                <p>Área privada</p>
+                <p>Em um raio de {Math.round(area.radiusMeters / 1000)} km</p>
+                <p>Qualquer disponibilidade</p>
               </div>
               <button className="text-button" type="button" onClick={() => removeArea(area.id)}>
-                Remove
+                Remover
               </button>
             </article>
           ))}
@@ -371,9 +377,9 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
 
       {mode === 'court' && (
         <section className="card">
-          <h2>Choose a court</h2>
+          <h2>Escolha uma quadra</h2>
           <label>
-            Search courts or neighborhoods
+            Pesquisar quadras ou bairros
             <input value={search} onChange={(event) => setSearch(event.target.value)} />
           </label>
           {selectedVenue ? (
@@ -381,20 +387,20 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
               <h3>{selectedVenue.name}</h3>
               <p>{venueLabel(selectedVenue)}</p>
               <p>{selectedVenue.addressLabel || selectedVenue.city}</p>
-              <div className="map-preview" aria-label={`${selectedVenue.name} map preview`} />
-              <p>When would you play here?</p>
+              <div className="map-preview" aria-label={`Prévia do mapa de ${selectedVenue.name}`} />
+              <p>Quando você jogaria aqui?</p>
               <label className="checks">
                 <span>
-                  <input type="checkbox" defaultChecked /> Anytime I'm available
+                  <input type="checkbox" defaultChecked /> Sempre que eu estiver disponível
                 </span>
               </label>
               <button className="button" type="button" onClick={() => saveCourt(selectedVenue)}>
-                Save court
+                Salvar quadra
               </button>
             </div>
           ) : (
             <>
-              <h3>Nearby and popular</h3>
+              <h3>Próximas e populares</h3>
               <div className="choice-list">
                 {filteredVenues.map((venue) => (
                   <button
@@ -415,22 +421,22 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
 
       {mode === 'area' && (
         <section className="card">
-          <h2>Choose an area where you would be willing to play</h2>
+          <h2>Escolha uma área onde você aceitaria jogar</h2>
           <div className="actions compact-actions">
             <button className="text-button" type="button" onClick={useCurrentLocation}>
-              Use my current location
+              Usar minha localização atual
             </button>
             <button className="text-button" type="button" onClick={openAreaSearch}>
-              Search for a neighborhood or address
+              Pesquisar um bairro ou endereço
             </button>
             <button className="text-button" type="button" onClick={chooseMap}>
-              Choose directly on the map
+              Escolher diretamente no mapa
             </button>
           </div>
           {areaSearchOpen && (
             <>
               <label>
-                Neighborhood or address search
+                Pesquisa de bairro ou endereço
                 <input
                   ref={areaSearchInput}
                   type="search"
@@ -443,9 +449,9 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
                   placeholder="Batel, Curitiba"
                 />
               </label>
-              {areaSearching && <p className="hint">Searching area...</p>}
+              {areaSearching && <p className="hint">Pesquisando área...</p>}
               {areaResults.length > 0 && (
-                <div className="place-results" role="listbox" aria-label="Area results">
+                <div className="place-results" role="listbox" aria-label="Resultados de áreas">
                   {areaResults.map((result) => (
                     <button
                       className="place-result"
@@ -468,9 +474,9 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
             center={point}
             onSelect={(latitude, longitude) => setPoint({ latitude, longitude })}
           />
-          <p className="hint">Near {label || 'selected area'}</p>
+          <p className="hint">Perto de {label || 'área selecionada'}</p>
           <fieldset>
-            <legend>How far would you travel?</legend>
+            <legend>Até onde você viajaria?</legend>
             <div className="segmented">
               {radiusOptions.map((option) => (
                 <button
@@ -486,14 +492,14 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
             <p className="hint">{radiusOptions.find((option) => option.meters === radius)?.hint}</p>
           </fieldset>
           <label>
-            Label
+            Nome
             <input value={label} onChange={(event) => setLabel(event.target.value)} />
           </label>
           <p className="hint">
-            Private area. Other players will only see the venue of a proposed game.
+            Área privada. Outros jogadores verão apenas o local da partida proposta.
           </p>
           <button className="button" type="button" onClick={saveArea} disabled={areas.length >= 5}>
-            Save area
+            Salvar área
           </button>
         </section>
       )}

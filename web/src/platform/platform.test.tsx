@@ -16,8 +16,8 @@ describe('mobile platform experience', () => {
         </AppShell>
       </MemoryRouter>,
     );
-    expect(screen.getByRole('navigation', { name: /primary/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Games' })).toHaveAttribute('href', '/games');
+    expect(screen.getByRole('navigation', { name: /navegação principal/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Partidas' })).toHaveAttribute('href', '/games');
     expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument();
   });
 
@@ -25,8 +25,8 @@ describe('mobile platform experience', () => {
     vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
     const retry = vi.fn();
     render(<OfflineStatus onRetry={retry} />);
-    expect(screen.getByRole('status')).toHaveTextContent(/offline/i);
-    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    expect(screen.getByRole('status')).toHaveTextContent(/você está offline/i);
+    fireEvent.click(screen.getByRole('button', { name: /tentar conexão novamente/i }));
     expect(retry).toHaveBeenCalledOnce();
   });
 
@@ -39,8 +39,8 @@ describe('mobile platform experience', () => {
       userChoice: Promise.resolve({ outcome: 'dismissed' as const }),
     });
     window.dispatchEvent(installEvent);
-    expect(await screen.findByRole('complementary', { name: /install/i })).toHaveTextContent(
-      /install/i,
-    );
+    expect(
+      await screen.findByRole('complementary', { name: /instalar o bora jogar/i }),
+    ).toHaveTextContent(/instalar aplicativo/i);
   });
 });

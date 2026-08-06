@@ -10,14 +10,21 @@ import {
 } from '../../api/client';
 import { markGameAlertPromptReady } from '../notifications/gameAlertPromptState';
 import { getDeviceTimeZone } from '../../platform/timeZone';
+import { weekdayLabels } from '../../i18n/pt-BR';
 
-const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const days = weekdayLabels;
 const today = new Date().toISOString().slice(0, 10);
 const presets = [
-  { id: 'weekend', label: 'This weekend', weekday: 6, start: '09:00', end: '13:00' },
-  { id: 'mornings', label: 'Weekday mornings', weekday: 1, start: '07:00', end: '09:00' },
-  { id: 'evenings', label: 'Weekday evenings', weekday: 3, start: '18:00', end: '20:00' },
-  { id: 'custom', label: 'Choose specific times', weekday: 1, start: '07:00', end: '09:00' },
+  { id: 'weekend', label: 'Neste fim de semana', weekday: 6, start: '09:00', end: '13:00' },
+  { id: 'mornings', label: 'Manhãs durante a semana', weekday: 1, start: '07:00', end: '09:00' },
+  { id: 'evenings', label: 'Noites durante a semana', weekday: 3, start: '18:00', end: '20:00' },
+  {
+    id: 'custom',
+    label: 'Escolher horários específicos',
+    weekday: 1,
+    start: '07:00',
+    end: '09:00',
+  },
 ];
 const defaultPreset = presets[0]!;
 
@@ -25,7 +32,7 @@ export function AvailabilityPage() {
   return (
     <main className="shell">
       <Link className="text-link" to="/">
-        &lt;- Home
+        ← Início
       </Link>
       <AvailabilityEditor />
     </main>
@@ -59,7 +66,7 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
       setAreas(Array.isArray(nextAreas) ? nextAreas.filter((area) => area.active) : []);
       setVenues(Array.isArray(nextVenues) ? nextVenues.filter((venue) => venue.active) : []);
     } catch {
-      setError('Sign in to manage availability.');
+      setError('Entre para gerenciar sua disponibilidade.');
     } finally {
       setLoading(false);
     }
@@ -105,14 +112,14 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
           .map((item) => item.id),
       });
       formElement.reset();
-      setMessage('Available time saved.');
+      setMessage('Horário disponível salvo.');
       markGameAlertPromptReady();
       await load();
     } catch (err) {
       setError(
         err instanceof ApiError
           ? err.message
-          : 'Could not save interval. Check times and location.',
+          : 'Não foi possível salvar o intervalo. Verifique os horários e o local.',
       );
     }
   };
@@ -122,36 +129,38 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
       await availabilityApi.deleteRule(id);
       setRules((current) => current.filter((rule) => rule.id !== id));
     } catch {
-      setError('Could not remove interval.');
+      setError('Não foi possível remover o intervalo.');
     }
   };
 
   const locationLabel = (id: string) =>
-    savedLocations.find((location) => location.id === id)?.label ?? 'Saved location';
+    savedLocations.find((location) => location.id === id)?.label ?? 'Local salvo';
 
   if (loading)
     return (
       <section>
-        <p>Loading availability...</p>
+        <p>Carregando disponibilidade...</p>
       </section>
     );
 
   return (
     <>
-      <p className="eyebrow">Your schedule</p>
-      {!compact && <h1>When would you most like to play next?</h1>}
-      <p className="lead">Add one usable time now. You can add more times later.</p>
+      <p className="eyebrow">Sua agenda</p>
+      {!compact && <h1>Quando você mais gostaria de jogar?</h1>}
+      <p className="lead">
+        Adicione um horário disponível agora. Você pode adicionar outros depois.
+      </p>
       {savedLocations.length === 0 && (
         <p className="hint">
-          Add a playing location first.{' '}
+          Adicione primeiro um local para jogar.{' '}
           <Link className="text-link" to="/locations">
-            Choose where you can play
+            Escolha onde você pode jogar
           </Link>
         </p>
       )}
       <form className="card" onSubmit={create}>
         <fieldset>
-          <legend>When would you most like to play next?</legend>
+          <legend>Quando você mais gostaria de jogar?</legend>
           <div className="choice-list">
             {presets.map((preset) => (
               <button
@@ -172,7 +181,7 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
           </div>
         </fieldset>
         <label>
-          Day
+          Dia
           <select
             name="weekday"
             value={window.weekday}
@@ -190,7 +199,7 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
         </label>
         <div className="time-fields">
           <label>
-            Start
+            Início
             <input
               name="start"
               type="time"
@@ -203,7 +212,7 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
             />
           </label>
           <label>
-            End
+            Fim
             <input
               name="end"
               type="time"
@@ -217,7 +226,7 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
           </label>
         </div>
         <fieldset>
-          <legend>Where could you play at this time?</legend>
+          <legend>Onde você poderia jogar nesse horário?</legend>
           <label className="checks">
             <span>
               <input
@@ -225,7 +234,7 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
                 checked={!specificLocations}
                 onChange={() => setSpecificLocations(false)}
               />{' '}
-              Any of my saved locations
+              Qualquer um dos meus locais salvos
             </span>
           </label>
           <label className="checks">
@@ -235,7 +244,7 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
                 checked={specificLocations}
                 onChange={() => setSpecificLocations(true)}
               />{' '}
-              Select locations
+              Selecionar locais
             </span>
           </label>
           {specificLocations && (
@@ -270,13 +279,13 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
           </p>
         )}
         <button className="button" type="submit" disabled={savedLocations.length === 0}>
-          Add available time
+          Adicionar horário disponível
         </button>
       </form>
       <section className="card weekly-summary">
-        <h2>Your availability</h2>
+        <h2>Sua disponibilidade</h2>
         {rules.length === 0 ? (
-          <p>No available times yet.</p>
+          <p>Nenhum horário disponível ainda.</p>
         ) : (
           days.map((day, index) => {
             const dayRules = rules.filter((rule) => rule.weekday === index);
@@ -287,7 +296,9 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
                   <div className="availability-row" key={rule.id}>
                     <span>
                       <strong>
-                        {rule.start && rule.end ? `${rule.start}-${rule.end}` : 'Time not set'}
+                        {rule.start && rule.end
+                          ? `${rule.start}-${rule.end}`
+                          : 'Horário não definido'}
                       </strong>
                       <small>
                         {[...rule.venueIds, ...rule.preferredAreaIds].map(locationLabel).join(', ')}
@@ -298,7 +309,7 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
                       type="button"
                       onClick={() => void remove(rule.id)}
                     >
-                      Remove
+                      Remover
                     </button>
                   </div>
                 ))}

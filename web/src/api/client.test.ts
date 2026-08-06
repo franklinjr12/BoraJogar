@@ -24,7 +24,7 @@ describe('typed API client', () => {
       status: 409,
       code: 'game_full',
       requestId: 'req-123',
-      message: 'Game is full.',
+      message: 'Esta partida está lotada.',
     });
   });
 

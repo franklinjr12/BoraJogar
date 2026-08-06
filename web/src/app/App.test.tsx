@@ -51,10 +51,10 @@ describe('home screen', () => {
     mockCurrentUser(null);
     renderApp();
     expect(
-      screen.getByRole('heading', { name: /find people to play beach volleyball/i }),
+      screen.getByRole('heading', { name: /encontre pessoas para jogar vôlei de praia/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /get started/i })).toHaveAttribute('href', '/start');
-    expect(await screen.findByRole('link', { name: /already have an account/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /começar/i })).toHaveAttribute('href', '/start');
+    expect(await screen.findByRole('link', { name: /já tem uma conta/i })).toHaveAttribute(
       'href',
       '/login',
     );
@@ -64,10 +64,8 @@ describe('home screen', () => {
     mockCurrentUser(signedInUser);
     renderApp();
 
-    expect(
-      screen.queryByRole('link', { name: /already have an account/i }),
-    ).not.toBeInTheDocument();
-    expect(await screen.findByRole('link', { name: /go to dashboard/i })).toHaveAttribute(
+    expect(screen.queryByRole('link', { name: /já tem uma conta/i })).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /ir para o painel/i })).toHaveAttribute(
       'href',
       '/dashboard',
     );
@@ -77,13 +75,11 @@ describe('home screen', () => {
     mockCurrentUser({ ...signedInUser, onboardingComplete: false });
     renderApp();
 
-    expect(
-      screen.queryByRole('link', { name: /already have an account/i }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /já tem uma conta/i })).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.queryByRole('link', { name: /get started/i })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('link', { name: /começar/i })).not.toBeInTheDocument(),
     );
-    expect(await screen.findByRole('link', { name: /continue setup/i })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: /continuar configuração/i })).toHaveAttribute(
       'href',
       '/onboarding',
     );
@@ -92,7 +88,7 @@ describe('home screen', () => {
   it('persists the selected first goal', async () => {
     mockCurrentUser(null);
     renderApp(['/start']);
-    fireEvent.click(await screen.findByRole('link', { name: /create a game/i }));
+    fireEvent.click(await screen.findByRole('link', { name: /criar uma partida/i }));
     expect(localStorage.getItem('borajogar_onboarding_goal')).toBe('create_game');
   });
 
@@ -100,7 +96,7 @@ describe('home screen', () => {
     mockCurrentUser(signedInUser);
     renderApp(['/start']);
 
-    expect(await screen.findByRole('link', { name: /create a game/i })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: /criar uma partida/i })).toHaveAttribute(
       'href',
       '/games/new',
     );
@@ -110,7 +106,7 @@ describe('home screen', () => {
     mockCurrentUser({ ...signedInUser, onboardingComplete: false });
     renderApp(['/start']);
 
-    expect(await screen.findByRole('link', { name: /create a game/i })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: /criar uma partida/i })).toHaveAttribute(
       'href',
       '/onboarding?goal=create_game',
     );
@@ -120,7 +116,7 @@ describe('home screen', () => {
     mockCurrentUser(null);
     renderApp(['/start']);
 
-    expect(await screen.findByRole('link', { name: /create a game/i })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: /criar uma partida/i })).toHaveAttribute(
       'href',
       '/login?returnTo=/onboarding?goal=create_game',
     );
@@ -138,12 +134,12 @@ describe('login screen', () => {
     });
     renderApp(['/login?returnTo=/games/game-1?access=token']);
 
-    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'Local Player' } });
-    fireEvent.change(screen.getByLabelText(/email/i), {
+    fireEvent.change(screen.getByLabelText(/nome exibido/i), { target: { value: 'Local Player' } });
+    fireEvent.change(screen.getByLabelText(/e-mail/i), {
       target: { value: 'local@example.com' },
     });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'pw' } });
-    const createButtons = screen.getAllByRole('button', { name: /^create account$/i });
+    fireEvent.change(screen.getByLabelText(/senha/i), { target: { value: 'pw' } });
+    const createButtons = screen.getAllByRole('button', { name: /^criar conta$/i });
     const submitButton = createButtons[1];
     if (!submitButton) throw new Error('Create account submit button was not found.');
     fireEvent.click(submitButton);

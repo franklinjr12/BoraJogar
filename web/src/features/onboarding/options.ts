@@ -1,39 +1,40 @@
 import type { PlayingStyle, Profile, SkillLevel } from '../../api/client';
 import { getDeviceTimeZone } from '../../platform/timeZone';
+import { skillDescriptions, skillLabels, styleLabels } from '../../i18n/pt-BR';
 
 export const skills: Array<{ value: SkillLevel; label: string; description: string }> = [
   {
     value: 'learning',
-    label: 'Learning',
-    description: "I'm still learning the fundamentals.",
+    label: skillLabels.learning,
+    description: skillDescriptions.learning,
   },
   {
     value: 'beginner',
-    label: 'Beginner',
-    description: "I understand the game but I'm still inconsistent.",
+    label: skillLabels.beginner,
+    description: skillDescriptions.beginner,
   },
   {
     value: 'intermediate',
-    label: 'Intermediate',
-    description: 'I can pass, set, attack and position reliably.',
+    label: skillLabels.intermediate,
+    description: skillDescriptions.intermediate,
   },
   {
     value: 'advanced',
-    label: 'Advanced',
-    description: 'I play consistently and understand tactics well.',
+    label: skillLabels.advanced,
+    description: skillDescriptions.advanced,
   },
   {
     value: 'competitive',
-    label: 'Competitive',
-    description: 'I regularly play competitive games or tournaments.',
+    label: skillLabels.competitive,
+    description: skillDescriptions.competitive,
   },
 ];
 
 export const styles: Array<{ value: PlayingStyle; label: string }> = [
-  { value: 'mixed', label: 'No preference' },
-  { value: 'casual', label: 'Casual' },
-  { value: 'competitive', label: 'Competitive' },
-  { value: 'training_focused', label: 'Training-focused' },
+  { value: 'mixed', label: styleLabels.mixed },
+  { value: 'casual', label: styleLabels.casual },
+  { value: 'competitive', label: styleLabels.competitive },
+  { value: 'training_focused', label: styleLabels.training_focused },
 ];
 
 export const blankProfile: Omit<Profile, 'userId' | 'avatarUrl'> = {

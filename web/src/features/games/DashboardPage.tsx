@@ -1,21 +1,23 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { dashboardApi, type Dashboard, type Game } from '../../api/client';
+import { formatDate, weekdayShortLabels } from '../../i18n/pt-BR';
 
-const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const days = weekdayShortLabels;
 
-const dateLabel = (value: string) =>
-  new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+const dateLabel = (value: string) => formatDate(value, { dateStyle: 'medium', timeStyle: 'short' });
 
 function gameCard(game: Game) {
   return (
     <Link className="card game-card" key={game.id} to={`/games/${game.id}`}>
       <p className="eyebrow">
         {game.openSlots > 0
-          ? `${game.openSlots} open slot${game.openSlots === 1 ? '' : 's'}`
-          : 'Confirmed game'}
+          ? game.openSlots === 1
+            ? '1 vaga disponível'
+            : `${game.openSlots} vagas disponíveis`
+          : 'Partida confirmada'}
       </p>
-      <h3>{game.title || 'Beach volleyball game'}</h3>
+      <h3>{game.title || 'Partida de vôlei de praia'}</h3>
       <p>
         {dateLabel(game.startsAt)} - {game.venueName}
       </p>
@@ -31,7 +33,7 @@ export function DashboardPage() {
     dashboardApi
       .get()
       .then(setDashboard)
-      .catch(() => setError('Could not load your dashboard. Sign in and try again.'));
+      .catch(() => setError('Não foi possível carregar seu painel. Entre e tente novamente.'));
   }, []);
 
   if (error)
@@ -41,7 +43,7 @@ export function DashboardPage() {
           {error}
         </p>
         <Link className="text-link" to="/login">
-          Sign in
+          Entrar
         </Link>
       </main>
     );
@@ -49,7 +51,7 @@ export function DashboardPage() {
   if (!dashboard)
     return (
       <main className="shell">
-        <p>Loading dashboard...</p>
+        <p>Carregando painel...</p>
       </main>
     );
 
@@ -61,22 +63,22 @@ export function DashboardPage() {
 
   return (
     <main className="shell dashboard">
-      <p className="eyebrow">Your dashboard</p>
-      <h1>Good to see you, {firstName}</h1>
+      <p className="eyebrow">Seu painel</p>
+      <h1>Que bom ver você, {firstName}</h1>
 
       {dashboard.nextGame && (
         <section className="dashboard-section">
-          <h2>Your next game</h2>
+          <h2>Sua próxima partida</h2>
           <div className="card">
             <p className="lead">{dateLabel(dashboard.nextGame.startsAt)}</p>
             <p>
               <strong>{dashboard.nextGame.venueName}</strong>
               {dashboard.nextGame.addressLabel ? ` - ${dashboard.nextGame.addressLabel}` : ''}
             </p>
-            <p>{dashboard.nextGame.confirmedPlayers} players confirmed</p>
+            <p>{dashboard.nextGame.confirmedPlayers} jogadores confirmados</p>
             <div className="actions compact-actions">
               <Link className="button" to={`/games/${dashboard.nextGame.id}`}>
-                View game
+                Ver partida
               </Link>
               <a
                 className="text-link"
@@ -84,7 +86,7 @@ export function DashboardPage() {
                 target="_blank"
                 rel="noreferrer"
               >
-                Directions
+                Como chegar
               </a>
             </div>
           </div>
@@ -93,7 +95,7 @@ export function DashboardPage() {
 
       {dashboard.availabilitySummary.length > 0 && (
         <section className="dashboard-section">
-          <h2>Your availability</h2>
+          <h2>Sua disponibilidade</h2>
           <div className="card weekly-summary">
             {dashboard.availabilitySummary.map((rule) => (
               <p key={rule.id}>
@@ -102,7 +104,7 @@ export function DashboardPage() {
               </p>
             ))}
             <Link className="text-link" to="/availability">
-              Edit availability
+              Editar disponibilidade
             </Link>
           </div>
         </section>
@@ -110,24 +112,26 @@ export function DashboardPage() {
 
       {dashboard.openGames.length > 0 && (
         <section className="dashboard-section">
-          <h2>Games that may work</h2>
+          <h2>Partidas que podem funcionar</h2>
           <div className="game-list">{dashboard.openGames.map(gameCard)}</div>
         </section>
       )}
 
       {!hasValue && (
         <section className="card">
-          <h2>You're ready</h2>
-          <p>We do not have enough compatible players yet, but you can keep things moving.</p>
+          <h2>Você está pronto</h2>
+          <p>
+            Ainda não temos jogadores compatíveis suficientes, mas você pode continuar avançando.
+          </p>
           <div className="actions compact-actions">
             <Link className="button" to="/games/new">
-              Create a game
+              Criar uma partida
             </Link>
             <Link className="text-link" to="/availability">
-              Add more available times
+              Adicionar mais horários disponíveis
             </Link>
             <Link className="text-link" to="/start">
-              Invite friends
+              Convidar amigos
             </Link>
           </div>
         </section>
@@ -136,9 +140,9 @@ export function DashboardPage() {
       {hasValue && (
         <section className="dashboard-section create-game-strip">
           <Link className="button" to="/games/new">
-            Create a game
+            Criar uma partida
           </Link>
-          <p>Invite friends or open it to compatible players.</p>
+          <p>Convide amigos ou abra a partida para jogadores compatíveis.</p>
         </section>
       )}
     </main>

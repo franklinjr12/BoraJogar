@@ -59,9 +59,9 @@ describe('onboarding', () => {
 
   it('validates display name before saving profile', async () => {
     renderApp('/onboarding');
-    fireEvent.change(await screen.findByLabelText(/display name/i), { target: { value: 'A' } });
-    fireEvent.click(await screen.findByRole('button', { name: /continue/i }));
-    expect(screen.getByRole('alert')).toHaveTextContent(/at least 2 characters/i);
+    fireEvent.change(await screen.findByLabelText(/nome exibido/i), { target: { value: 'A' } });
+    fireEvent.click(await screen.findByRole('button', { name: /continuar/i }));
+    expect(screen.getByRole('alert')).toHaveTextContent(/pelo menos 2 caracteres/i);
   });
 
   it('prefills display name from current signed-in user', async () => {
@@ -75,7 +75,7 @@ describe('onboarding', () => {
       return json({});
     });
     renderApp('/onboarding');
-    const input = await screen.findByLabelText(/display name/i);
+    const input = await screen.findByLabelText(/nome exibido/i);
     await waitFor(() => expect(input).toHaveValue('Signup Name'));
   });
 
@@ -94,9 +94,9 @@ describe('onboarding', () => {
     renderApp('/onboarding');
 
     expect(
-      await screen.findByRole('heading', { name: /tell us about your game/i }),
+      await screen.findByRole('heading', { name: /conte sobre seu jogo/i }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/display name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/nome exibido/i)).toBeInTheDocument();
   });
 
   it('sends an existing incomplete user with a profile to the location step', async () => {
@@ -113,9 +113,9 @@ describe('onboarding', () => {
 
     renderApp('/onboarding');
 
-    expect((await screen.findAllByText(/playing locations/i)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/locais para jogar/i)).length).toBeGreaterThan(0);
     expect(
-      await screen.findByRole('button', { name: /add my first location/i }),
+      await screen.findByRole('button', { name: /adicionar meu primeiro local/i }),
     ).toBeInTheDocument();
   });
 
@@ -137,13 +137,15 @@ describe('onboarding', () => {
     });
 
     renderApp('/onboarding?goal=create_game');
-    fireEvent.change(await screen.findByLabelText(/display name/i), {
+    fireEvent.change(await screen.findByLabelText(/nome exibido/i), {
       target: { value: 'Signup Name' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
 
-    expect((await screen.findAllByText(/playing locations/i)).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('heading', { name: /set up a game/i })).not.toBeInTheDocument();
+    expect((await screen.findAllByText(/locais para jogar/i)).length).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole('heading', { name: /configure uma partida/i }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -175,9 +177,9 @@ describe('profile editing', () => {
     });
     renderApp('/profile');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Ana' })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /edit profile/i }));
-    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'Bia' } });
-    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    fireEvent.click(screen.getByRole('button', { name: /editar perfil/i }));
+    fireEvent.change(screen.getByLabelText(/nome exibido/i), { target: { value: 'Bia' } });
+    fireEvent.click(screen.getByRole('button', { name: /salvar alterações/i }));
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Bia' })).toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/me/profile',
@@ -215,7 +217,7 @@ describe('profile editing', () => {
 
     renderApp('/profile');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Ana' })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
+    fireEvent.click(screen.getByRole('button', { name: /sair/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -223,7 +225,7 @@ describe('profile editing', () => {
         expect.objectContaining({ method: 'POST' }),
       ),
     );
-    expect(await screen.findByRole('heading', { name: /sign in to play/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /entre para jogar/i })).toBeInTheDocument();
   });
 
   it('does not stay loading when profile response is empty', async () => {
@@ -234,7 +236,7 @@ describe('profile editing', () => {
       return new Response(null, { status: 204 });
     });
     renderApp('/profile');
-    expect(await screen.findByText(/sign in to view your profile/i)).toBeInTheDocument();
+    expect(await screen.findByText(/entre para ver seu perfil/i)).toBeInTheDocument();
   });
 
   it('sends signed-in users without a profile back to setup', async () => {
@@ -251,8 +253,8 @@ describe('profile editing', () => {
     });
     renderApp('/profile');
 
-    expect(await screen.findByText(/complete your profile setup/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /continue setup/i })).toHaveAttribute(
+    expect(await screen.findByText(/conclua a configuração do perfil/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /continuar configuração/i })).toHaveAttribute(
       'href',
       '/onboarding',
     );

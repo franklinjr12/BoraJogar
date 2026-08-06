@@ -53,10 +53,10 @@ describe('AvailabilityPage', () => {
       </MemoryRouter>,
     );
     expect(
-      await screen.findByRole('heading', { name: /when would you most like to play next/i }),
+      await screen.findByRole('heading', { name: /quando você mais gostaria de jogar/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /this weekend/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/any of my saved locations/i)).toBeChecked();
+    expect(screen.getByRole('button', { name: /neste fim de semana/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/qualquer um dos meus locais salvos/i)).toBeChecked();
   });
 
   it('creates a weekend availability rule for all saved locations', async () => {
@@ -106,8 +106,10 @@ describe('AvailabilityPage', () => {
         <AvailabilityPage />
       </MemoryRouter>,
     );
-    await screen.findByRole('button', { name: /this weekend/i });
-    fireEvent.submit(screen.getByRole('button', { name: /add available time/i }).closest('form')!);
+    await screen.findByRole('button', { name: /neste fim de semana/i });
+    fireEvent.submit(
+      screen.getByRole('button', { name: /adicionar horário disponível/i }).closest('form')!,
+    );
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/v1/me/availability/rules',
@@ -136,7 +138,7 @@ describe('AvailabilityPage', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/add a playing location first/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /add available time/i })).toBeDisabled();
+    expect(await screen.findByText(/adicione primeiro um local para jogar/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /adicionar horário disponível/i })).toBeDisabled();
   });
 });

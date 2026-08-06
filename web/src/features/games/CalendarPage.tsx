@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { gameApi, type Game } from '../../api/client';
+import { formatDate, formatDateOnly } from '../../i18n/pt-BR';
 
 type View = 'agenda' | 'month';
 type Filter = 'all' | 'confirmed' | 'organized' | 'joined' | 'pending' | 'cancelled';
-const dateLabel = (value: string) =>
-  new Date(value).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' });
-const monthLabel = (value: string) =>
-  new Date(value).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+const dateLabel = (value: string) => formatDate(value, { dateStyle: 'full', timeStyle: 'short' });
+const monthLabel = (value: string) => formatDateOnly(value, { month: 'long', year: 'numeric' });
 
 export function CalendarPage() {
   const [games, setGames] = useState<Game[]>([]);
@@ -18,7 +17,7 @@ export function CalendarPage() {
     gameApi
       .list(true)
       .then((page) => setGames(page.items))
-      .catch(() => setError('Could not load your calendar. Sign in and try again.'));
+      .catch(() => setError('Não foi possível carregar sua agenda. Entre e tente novamente.'));
   }, []);
   const filtered = useMemo(
     () =>
@@ -38,13 +37,15 @@ export function CalendarPage() {
   return (
     <main className="shell">
       <Link className="text-link" to="/">
-        ← Home
+        ← Início
       </Link>
-      <p className="eyebrow">Schedule</p>
-      <h1>Your calendar.</h1>
-      <p className="lead">Upcoming commitments, open games, and venue details in one place.</p>
+      <p className="eyebrow">Agenda</p>
+      <h1>Seu calendário.</h1>
+      <p className="lead">
+        Compromissos futuros, partidas abertas e detalhes dos locais em um só lugar.
+      </p>
       <div className="calendar-toolbar">
-        <div role="group" aria-label="Calendar view">
+        <div role="group" aria-label="Visualização do calendário">
           <button
             className={view === 'agenda' ? 'view-button selected' : 'view-button'}
             onClick={() => setView('agenda')}
@@ -55,18 +56,18 @@ export function CalendarPage() {
             className={view === 'month' ? 'view-button selected' : 'view-button'}
             onClick={() => setView('month')}
           >
-            Month
+            Mês
           </button>
         </div>
         <label className="filter-label">
-          Filter
+          Filtro
           <select value={filter} onChange={(event) => setFilter(event.target.value as Filter)}>
-            <option value="all">All games</option>
-            <option value="confirmed">Confirmed games</option>
-            <option value="organized">Organized games</option>
-            <option value="joined">Joined games</option>
-            <option value="pending">Pending proposals</option>
-            <option value="cancelled">Cancelled games</option>
+            <option value="all">Todas as partidas</option>
+            <option value="confirmed">Partidas confirmadas</option>
+            <option value="organized">Partidas organizadas</option>
+            <option value="joined">Partidas em que entrei</option>
+            <option value="pending">Propostas pendentes</option>
+            <option value="cancelled">Partidas canceladas</option>
           </select>
         </label>
       </div>
@@ -77,10 +78,10 @@ export function CalendarPage() {
       )}
       {filtered.length === 0 && !error && (
         <section className="card">
-          <h2>No games in this view.</h2>
-          <p className="hint">Create a game or join one to start building your schedule.</p>
+          <h2>Nenhuma partida nesta visualização.</h2>
+          <p className="hint">Crie ou entre em uma partida para começar a montar sua agenda.</p>
           <Link className="button" to="/games/new">
-            Create a game
+            Criar uma partida
           </Link>
         </section>
       )}
@@ -115,15 +116,17 @@ function CalendarCard({ game, compact = false }: { game: Game; compact?: boolean
     <article className={compact ? 'calendar-card compact' : 'card calendar-card'}>
       <p className="eyebrow">
         {game.status === 'cancelled'
-          ? 'Cancelled'
+          ? 'Cancelada'
           : game.currentUserRole === 'organizer'
-            ? 'Organized game'
+            ? 'Partida organizada'
             : game.openSlots > 0
-              ? `${game.openSlots} open slot${game.openSlots === 1 ? '' : 's'}`
-              : 'Confirmed game'}
+              ? game.openSlots === 1
+                ? '1 vaga disponível'
+                : `${game.openSlots} vagas disponíveis`
+              : 'Partida confirmada'}
       </p>
       <h2>
-        <Link to={`/games/${game.id}`}>{game.title || 'Beach volleyball game'}</Link>
+        <Link to={`/games/${game.id}`}>{game.title || 'Partida de vôlei de praia'}</Link>
       </h2>
       <p>
         <strong>{dateLabel(game.startsAt)}</strong>
@@ -134,11 +137,11 @@ function CalendarCard({ game, compact = false }: { game: Game; compact?: boolean
       </p>
       <div className="calendar-links">
         <a className="text-link" href={mapURL} target="_blank" rel="noreferrer">
-          Open venue map
+          Abrir mapa do local
         </a>
         {game.status !== 'cancelled' && (
           <a className="text-link" href={gameApi.calendarURL(game.id)}>
-            Add to calendar
+            Adicionar ao calendário
           </a>
         )}
       </div>
