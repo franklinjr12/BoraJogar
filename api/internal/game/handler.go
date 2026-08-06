@@ -314,7 +314,8 @@ func (h Handler) list(w http.ResponseWriter, r *http.Request, userID uuid.UUID) 
 	if r.URL.Query().Get("includeCancelled") == "true" {
 		statusClause = "g.status IN ('scheduled', 'cancelled')"
 	}
-	rows, err := h.DB.Query(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),''),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE `+statusClause+` AND g.ends_at > now() AND (g.visibility='public' OR g.created_by_user_id=$1 OR EXISTS (SELECT 1 FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1 AND gp.status='confirmed')) ORDER BY g.starts_at,g.id LIMIT $2 OFFSET $3`, userID, pageSize+1, (page-1)*pageSize)
+	now := h.now()
+	rows, err := h.DB.Query(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),''),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE `+statusClause+` AND g.ends_at > $4 AND (g.visibility='public' OR g.created_by_user_id=$1 OR EXISTS (SELECT 1 FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1 AND gp.status='confirmed')) ORDER BY (g.capacity - (SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed')) <= 0, ABS(EXTRACT(EPOCH FROM (g.starts_at - $4))), g.id LIMIT $2 OFFSET $3`, userID, pageSize+1, (page-1)*pageSize, now)
 	if err != nil {
 		http.Error(w, "game unavailable", 500)
 		return
@@ -427,7 +428,8 @@ func (h Handler) nextConfirmedGame(r *http.Request, userID uuid.UUID) (gameSumma
 }
 
 func (h Handler) dashboardOpenGames(r *http.Request, userID uuid.UUID) ([]gameSummary, error) {
-	rows, err := h.DB.Query(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),''),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.status='scheduled' AND g.ends_at > $2 AND g.visibility='public' AND NOT EXISTS (SELECT 1 FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1 AND gp.status='confirmed') ORDER BY g.starts_at,g.id LIMIT 3`, userID, h.now())
+	now := h.now()
+	rows, err := h.DB.Query(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),''),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.status='scheduled' AND g.ends_at > $2 AND g.visibility='public' AND NOT EXISTS (SELECT 1 FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1 AND gp.status='confirmed') ORDER BY (g.capacity - (SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed')) <= 0, ABS(EXTRACT(EPOCH FROM (g.starts_at - $2))), g.id LIMIT 3`, userID, now)
 	if err != nil {
 		return nil, err
 	}
@@ -439,9 +441,7 @@ func (h Handler) dashboardOpenGames(r *http.Request, userID uuid.UUID) ([]gameSu
 			return nil, err
 		}
 		x.OpenSlots = x.Capacity - x.ConfirmedPlayers
-		if x.OpenSlots > 0 {
-			out = append(out, x)
-		}
+		out = append(out, x)
 	}
 	return out, rows.Err()
 }

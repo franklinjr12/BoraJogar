@@ -55,6 +55,90 @@ describe('GamesPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/entre e tente novamente/i);
     expect(screen.queryByText(/nenhuma partida futura/i)).not.toBeInTheDocument();
   });
+
+  it('shows closest games first and full games at the bottom', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              items: [
+                {
+                  id: 'full-game',
+                  startsAt: '2099-08-01T12:05:00Z',
+                  endsAt: '2099-08-01T13:30:00Z',
+                  venueId: 'venue-1',
+                  venueName: 'Praia Central',
+                  latitude: -25.4,
+                  longitude: -49.3,
+                  capacity: 4,
+                  confirmedPlayers: 4,
+                  openSlots: 0,
+                  minimumSkillLevel: 'beginner',
+                  maximumSkillLevel: 'advanced',
+                  visibility: 'public',
+                  status: 'scheduled',
+                },
+                {
+                  id: 'far-open-game',
+                  startsAt: '2099-08-01T12:20:00Z',
+                  endsAt: '2099-08-01T13:45:00Z',
+                  venueId: 'venue-2',
+                  venueName: 'Praia Norte',
+                  latitude: -25.4,
+                  longitude: -49.3,
+                  capacity: 4,
+                  confirmedPlayers: 2,
+                  openSlots: 2,
+                  minimumSkillLevel: 'beginner',
+                  maximumSkillLevel: 'advanced',
+                  visibility: 'public',
+                  status: 'scheduled',
+                },
+                {
+                  id: 'near-open-game',
+                  startsAt: '2099-08-01T12:10:00Z',
+                  endsAt: '2099-08-01T13:35:00Z',
+                  venueId: 'venue-3',
+                  venueName: 'Praia Sul',
+                  latitude: -25.4,
+                  longitude: -49.3,
+                  capacity: 4,
+                  confirmedPlayers: 3,
+                  openSlots: 1,
+                  minimumSkillLevel: 'beginner',
+                  maximumSkillLevel: 'advanced',
+                  visibility: 'public',
+                  status: 'scheduled',
+                },
+              ],
+              page: 1,
+              pageSize: 30,
+              hasMore: false,
+            }),
+            { status: 200 },
+          ),
+        ),
+      ),
+    );
+    render(
+      <MemoryRouter>
+        <GamesPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/partida lotada/i);
+    const cards = screen.getAllByRole('link').filter((card) => {
+      const href = card.getAttribute('href');
+      return href?.startsWith('/games/') && href !== '/games/new';
+    });
+    expect(cards.map((card) => card.getAttribute('href'))).toEqual([
+      '/games/near-open-game',
+      '/games/far-open-game',
+      '/games/full-game',
+    ]);
+  });
 });
 
 describe('CreateGamePage', () => {

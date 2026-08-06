@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { dashboardApi, type Dashboard, type Game } from '../../api/client';
 import { formatDate, weekdayShortLabels } from '../../i18n/pt-BR';
+import { sortGamesForDisplay } from './gameOrdering';
 
 const days = weekdayShortLabels;
 
@@ -60,6 +61,7 @@ export function DashboardPage() {
     dashboard.openGames.length > 0 ||
     dashboard.availabilitySummary.length > 0;
   const firstName = dashboard.displayName.split(' ')[0] || dashboard.displayName;
+  const orderedOpenGames = sortGamesForDisplay(dashboard.openGames);
 
   return (
     <main className="shell dashboard">
@@ -113,7 +115,7 @@ export function DashboardPage() {
       {dashboard.openGames.length > 0 && (
         <section className="dashboard-section">
           <h2>Partidas que podem funcionar</h2>
-          <div className="game-list">{dashboard.openGames.map(gameCard)}</div>
+          <div className="game-list">{orderedOpenGames.map(gameCard)}</div>
         </section>
       )}
 

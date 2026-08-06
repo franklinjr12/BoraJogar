@@ -103,4 +103,44 @@ describe('DashboardPage', () => {
       '/games/new',
     );
   });
+
+  it('keeps full games after games with available slots', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              displayName: 'Franklin',
+              readiness,
+              openGames: [
+                { id: 'full-game', startsAt: '2099-08-01T12:05:00Z', openSlots: 0 },
+                { id: 'far-open-game', startsAt: '2099-08-01T12:20:00Z', openSlots: 2 },
+                { id: 'near-open-game', startsAt: '2099-08-01T12:10:00Z', openSlots: 1 },
+              ],
+              availabilitySummary: [],
+            }),
+            { status: 200 },
+          ),
+        ),
+      ),
+    );
+    render(
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: /partidas que podem funcionar/i });
+    const cards = screen.getAllByRole('link').filter((card) => {
+      const href = card.getAttribute('href');
+      return href?.startsWith('/games/') && href !== '/games/new';
+    });
+    expect(cards.map((card) => card.getAttribute('href'))).toEqual([
+      '/games/near-open-game',
+      '/games/far-open-game',
+      '/games/full-game',
+    ]);
+    expect(screen.getByText(/partida confirmada/i)).toBeInTheDocument();
+  });
 });

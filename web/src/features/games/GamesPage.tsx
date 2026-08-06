@@ -21,6 +21,7 @@ import {
 } from '../locations/venueDraft';
 import { markGameAlertPromptReady } from '../notifications/gameAlertPromptState';
 import { formatDate, gameVisibilityLabels, skillLabel } from '../../i18n/pt-BR';
+import { sortGamesForDisplay } from './gameOrdering';
 
 const levels: GameSkillLevel[] = [
   'learning',
@@ -47,7 +48,7 @@ export function GamesPage() {
   useEffect(() => {
     gameApi
       .list()
-      .then((page) => setGames(page.items))
+      .then((page) => setGames(sortGamesForDisplay(page.items)))
       .catch(() => setError('Não foi possível carregar as partidas. Entre e tente novamente.'));
   }, []);
   return (
@@ -80,8 +81,10 @@ export function GamesPage() {
               {localDate(game.startsAt)} · {game.venueName}
             </p>
             <p>
-              {game.openSlots} {game.openSlots === 1 ? 'vaga disponível' : 'vagas disponíveis'} ·{' '}
-              {label(game.minimumSkillLevel)}–{label(game.maximumSkillLevel)}
+              {game.openSlots > 0
+                ? `${game.openSlots} ${game.openSlots === 1 ? 'vaga disponível' : 'vagas disponíveis'}`
+                : 'Partida lotada'}{' '}
+              · {label(game.minimumSkillLevel)}–{label(game.maximumSkillLevel)}
             </p>
           </Link>
         ))}
