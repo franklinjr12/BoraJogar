@@ -37,7 +37,7 @@ describe('typed API client', () => {
     await locationApi.venues();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('city=S%C3%A3o+Paulo'),
+      expect.stringContaining('city=Curitiba'),
       expect.objectContaining({ credentials: 'include' }),
     );
   });

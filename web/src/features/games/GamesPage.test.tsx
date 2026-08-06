@@ -131,6 +131,8 @@ describe('CreateGamePage', () => {
     expect(
       await screen.findByRole('heading', { name: /configure uma partida/i }),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^data$/i)).toHaveAttribute('lang', 'pt-BR');
+    expect(screen.getByLabelText(/horário de início/i)).toHaveAttribute('lang', 'pt-BR');
     fireEvent.change(screen.getByLabelText(/^data$/i), { target: { value: futureGameDate } });
     fireEvent.change(screen.getByLabelText(/horário de início/i), { target: { value: '09:00' } });
     fireEvent.change(screen.getByLabelText(/nome personalizado/i), {
@@ -139,16 +141,15 @@ describe('CreateGamePage', () => {
     fireEvent.change(screen.getByLabelText(/endereço da quadra/i), {
       target: { value: 'Rua das Areias, 10' },
     });
-    fireEvent.change(screen.getByLabelText(/pesquisa de cidade/i), {
-      target: { value: 'Sao Paulo' },
-    });
-    fireEvent.click(await screen.findByRole('option', { name: /sao paulo/i }));
     fireEvent.click(screen.getByRole('button', { name: /^criar partida$/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/v1/me/venues',
-        expect.objectContaining({ method: 'POST' }),
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"city":"Curitiba"'),
+        }),
       ),
     );
     await waitFor(() =>

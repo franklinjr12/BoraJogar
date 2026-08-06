@@ -15,6 +15,7 @@ import { VenueForm } from '../locations/VenueForm';
 import {
   blankVenueDraft,
   createVenueFromDraft,
+  defaultCity,
   venueDraftReady,
   type VenueDraft,
 } from '../locations/venueDraft';
@@ -128,7 +129,7 @@ export function CreateGamePage() {
   const createVenueFromArea = async (area: PreferredArea) =>
     locationApi.createVenue({
       name: area.label.trim().length >= 2 ? area.label.trim() : 'Local da partida',
-      city: 'S\u00e3o Paulo',
+      city: defaultCity,
       latitude: area.latitude,
       longitude: area.longitude,
       lightingStatus: 'unknown',
@@ -211,6 +212,7 @@ export function CreateGamePage() {
           <input
             name="date"
             type="date"
+            lang="pt-BR"
             min={todayInputValue()}
             value={selectedDate}
             onChange={(event) => setSelectedDate(event.target.value)}
@@ -219,7 +221,7 @@ export function CreateGamePage() {
         </label>
         <label>
           Horário de início
-          <input name="time" type="time" required />
+          <input name="time" type="time" lang="pt-BR" required />
         </label>
         <label>
           Duração

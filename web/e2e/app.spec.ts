@@ -144,7 +144,7 @@ test.describe('Bora Jogar real backend E2E', () => {
       .getByRole('main')
       .getByRole('link', { name: /^início$/i })
       .click();
-    await expect(page.getByRole('link', { name: /continuar configuração/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /que bom ver você, returning/i })).toBeVisible();
     await page.evaluate(() =>
       localStorage.setItem(
         'borajogar_onboarding',
@@ -156,8 +156,7 @@ test.describe('Bora Jogar real backend E2E', () => {
     await expect(page.getByRole('heading', { name: displayName })).toBeVisible();
     await expect(page.getByText(/entre para ver seu perfil/i)).toHaveCount(0);
 
-    await page.goto('/');
-    await page.getByRole('link', { name: /continuar configuração/i }).click();
+    await page.goto('/onboarding');
     await saveAreaStep(page, 'Returning flow area');
     await saveAvailabilityStep(page);
     await page.getByRole('button', { name: /ir para o painel/i }).click();

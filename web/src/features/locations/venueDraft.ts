@@ -1,6 +1,7 @@
 import { locationApi } from '../../api/client';
 
-export const defaultVenuePoint = { latitude: -23.5505, longitude: -46.6333 };
+export const defaultVenuePoint = { latitude: -25.4284, longitude: -49.2733 };
+export const defaultCity = 'Curitiba';
 
 export interface VenueDraft {
   name: string;
@@ -13,7 +14,7 @@ export interface VenueDraft {
 export function blankVenueDraft(): VenueDraft {
   return {
     name: '',
-    city: 'S\u00e3o Paulo',
+    city: defaultCity,
     addressLabel: '',
     point: defaultVenuePoint,
     addressConfirmed: false,
@@ -25,7 +26,8 @@ export function venueDraftReady(draft: VenueDraft) {
     draft.name.trim().length >= 2 &&
     draft.city.trim().length > 0 &&
     draft.addressLabel.trim().length >= 4 &&
-    draft.addressConfirmed
+    Number.isFinite(draft.point.latitude) &&
+    Number.isFinite(draft.point.longitude)
   );
 }
 

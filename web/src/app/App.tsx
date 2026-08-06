@@ -64,6 +64,7 @@ function Home() {
         Já tem uma conta? Entrar
       </Link>
     );
+  if (user) return <Navigate replace to="/dashboard" />;
 
   return (
     <main className="shell">

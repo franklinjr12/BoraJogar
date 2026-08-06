@@ -373,7 +373,7 @@ export const userApi = {
 
 export const locationApi = {
   venues: (position?: { latitude: number; longitude: number }) => {
-    const params = new URLSearchParams({ city: 'São Paulo' });
+    const params = new URLSearchParams({ city: 'Curitiba' });
     if (position) {
       params.set('latitude', String(position.latitude));
       params.set('longitude', String(position.longitude));

@@ -25,6 +25,24 @@ function mockCurrentUser(user: CurrentUser | null) {
         return json({ error: { code: 'unauthorized', message: 'Sign in.', fields: {} } }, 401);
       return json(user);
     }
+    if (String(input).endsWith('/api/v1/me/dashboard')) {
+      return json({
+        displayName: user?.displayName ?? 'Local Player',
+        readiness: {
+          profile: true,
+          location: true,
+          availability: true,
+          profileCount: 1,
+          favoriteVenueCount: 1,
+          preferredAreaCount: 0,
+          availabilityCount: 1,
+          canComplete: true,
+          missing: [],
+        },
+        openGames: [],
+        availabilitySummary: [],
+      });
+    }
     throw new Error(`Unexpected request: ${String(input)}`);
   });
 }
@@ -60,29 +78,20 @@ describe('home screen', () => {
     );
   });
 
-  it('hides sign-in and links complete signed-in users to the dashboard', async () => {
+  it('redirects complete signed-in users to the dashboard', async () => {
     mockCurrentUser(signedInUser);
     renderApp();
 
-    expect(screen.queryByRole('link', { name: /já tem uma conta/i })).not.toBeInTheDocument();
-    expect(await screen.findByRole('link', { name: /ir para o painel/i })).toHaveAttribute(
-      'href',
-      '/dashboard',
-    );
+    expect(await screen.findByRole('heading', { name: /que bom ver/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /encontre pessoas/i })).not.toBeInTheDocument();
   });
 
-  it('hides sign-in and links incomplete signed-in users to setup', async () => {
+  it('redirects incomplete signed-in users to the dashboard', async () => {
     mockCurrentUser({ ...signedInUser, onboardingComplete: false });
     renderApp();
 
-    expect(screen.queryByRole('link', { name: /já tem uma conta/i })).not.toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.queryByRole('link', { name: /começar/i })).not.toBeInTheDocument(),
-    );
-    expect(await screen.findByRole('link', { name: /continuar configuração/i })).toHaveAttribute(
-      'href',
-      '/onboarding',
-    );
+    expect(await screen.findByRole('heading', { name: /que bom ver/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /encontre pessoas/i })).not.toBeInTheDocument();
   });
 
   it('persists the selected first goal', async () => {

@@ -86,7 +86,7 @@ VALUES
  ('20000000-0000-0000-0000-000000000101', 'Praia do Sol', 'Quadras públicas perto do calçadão.', 'Av. Atlântica, 100', 'Rio de Janeiro', ST_GeogFromText('SRID=4326;POINT(-43.1760 -22.9670)'), 'has_lighting', 'sand', 'public', true, '10000000-0000-0000-0000-000000000001', '2026-06-20 12:00:00+00', NULL),
  ('20000000-0000-0000-0000-000000000102', 'Arena Copacabana', 'Arena paga com quatro quadras.', 'Rua Xavier da Silveira, 50', 'Rio de Janeiro', ST_GeogFromText('SRID=4326;POINT(-43.1860 -22.9750)'), 'has_lighting', 'sand', 'paid_entry', true, '10000000-0000-0000-0000-000000000002', '2026-06-21 12:00:00+00', NULL),
  ('20000000-0000-0000-0000-000000000103', 'Quadra em avaliação', 'Sugestão aguardando moderação.', 'Rua das Flores, 20', 'Rio de Janeiro', ST_GeogFromText('SRID=4326;POINT(-43.1900 -22.9800)'), 'unknown', 'sand', 'unknown', false, '10000000-0000-0000-0000-000000000003', NULL, '2026-07-10 12:00:00+00'),
- ('20000000-0000-0000-0000-000000000104', 'E2E Praia Paulista', 'Quadra ativa usada nos testes Playwright.', 'Av. Paulista, 1000', 'São Paulo', ST_GeogFromText('SRID=4326;POINT(-46.6559 -23.5614)'), 'has_lighting', 'sand', 'public', true, '10000000-0000-0000-0000-000000000001', '2026-06-22 12:00:00+00', NULL);
+ ('20000000-0000-0000-0000-000000000104', 'E2E Praia Paulista', 'Quadra ativa usada nos testes Playwright.', 'Rua XV de Novembro, 100', 'Curitiba', ST_GeogFromText('SRID=4326;POINT(-49.2733 -25.4284)'), 'has_lighting', 'sand', 'public', true, '10000000-0000-0000-0000-000000000001', '2026-06-22 12:00:00+00', NULL);
 
 INSERT INTO preferred_areas (id, user_id, label, center, radius_meters, priority, active)
 VALUES
