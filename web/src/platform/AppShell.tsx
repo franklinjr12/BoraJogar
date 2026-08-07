@@ -6,6 +6,7 @@ import { OfflineStatus } from './OfflineStatus';
 const links = [
   ['/', 'Início'],
   ['/games', 'Partidas'],
+  ['/locations', 'Quadras'],
   ['/availability', 'Disponibilidade'],
   ['/notifications', 'Notificações'],
   ['/profile', 'Perfil'],

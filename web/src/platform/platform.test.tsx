@@ -18,6 +18,7 @@ describe('mobile platform experience', () => {
     );
     expect(screen.getByRole('navigation', { name: /navegação principal/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Partidas' })).toHaveAttribute('href', '/games');
+    expect(screen.getByRole('link', { name: 'Quadras' })).toHaveAttribute('href', '/locations');
     expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument();
   });
 

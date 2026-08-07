@@ -56,6 +56,7 @@ describe('AvailabilityPage', () => {
       await screen.findByRole('heading', { name: /quando você mais gostaria de jogar/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /neste fim de semana/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /escolher uma quadra/i })).not.toBeInTheDocument();
     expect(screen.getByLabelText(/qualquer um dos meus locais salvos/i)).toBeChecked();
   });
 
