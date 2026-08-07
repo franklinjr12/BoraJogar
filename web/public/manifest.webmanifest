@@ -9,9 +9,9 @@
   "background_color": "#f4f8f5",
   "icons": [
     {
-      "src": "/icons/app-icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icons/app-icon.png",
+      "sizes": "230x230",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

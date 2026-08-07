@@ -6,6 +6,8 @@ web/node_modules/
 dist/
 web/dist/
 coverage/
+deploy/
+deploy.zip
 
 # Local configuration and data
 .env

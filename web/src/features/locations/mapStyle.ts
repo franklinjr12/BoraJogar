@@ -2,14 +2,14 @@ import type { StyleSpecification } from 'maplibre-gl';
 
 export type MapStyle = string | StyleSpecification;
 
-const defaultDevMapStyle: StyleSpecification = {
+const defaultMapStyle: StyleSpecification = {
   version: 8,
   sources: {
     openstreetmap: {
       type: 'raster',
       tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
       tileSize: 256,
-      attribution: 'Colaboradores do OpenStreetMap',
+      attribution: '© OpenStreetMap contributors',
     },
   },
   layers: [
@@ -21,9 +21,8 @@ const defaultDevMapStyle: StyleSpecification = {
   ],
 };
 
-export function resolveMapStyle(env: ImportMetaEnv): MapStyle | undefined {
+export function resolveMapStyle(env: ImportMetaEnv): MapStyle {
   const configured = env.VITE_MAP_STYLE_URL?.trim();
   if (configured) return configured;
-  if (env.DEV) return defaultDevMapStyle;
-  return undefined;
+  return defaultMapStyle;
 }

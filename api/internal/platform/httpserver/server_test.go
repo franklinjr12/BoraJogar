@@ -40,6 +40,23 @@ func TestRequestIDIsReturned(t *testing.T) {
 	}
 }
 
+func TestRequestIDIsCopiedToRequest(t *testing.T) {
+	var received string
+	handler := requestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received = r.Header.Get("X-Request-ID")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	res := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusNoContent {
+		t.Fatalf("status = %d", res.Code)
+	}
+	if received == "" {
+		t.Fatal("request ID was not copied to request")
+	}
+}
+
 func TestMissingRouteDoesNotPanic(t *testing.T) {
 	server := New(slog.Default(), nil)
 	res := httptest.NewRecorder()

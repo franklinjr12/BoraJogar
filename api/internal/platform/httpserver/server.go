@@ -82,7 +82,9 @@ func requestID(next http.Handler) http.Handler {
 			id = uuid.NewString()
 		}
 		w.Header().Set("X-Request-ID", id)
-		next.ServeHTTP(&requestIDWriter{ResponseWriter: w, requestID: id}, r.WithContext(context.WithValue(r.Context(), requestIDKey, id)))
+		request := r.WithContext(context.WithValue(r.Context(), requestIDKey, id))
+		request.Header.Set("X-Request-ID", id)
+		next.ServeHTTP(&requestIDWriter{ResponseWriter: w, requestID: id}, request)
 	})
 }
 

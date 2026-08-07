@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -57,4 +59,34 @@ func TestPostAuthRedirectPreservesSafeReturnTo(t *testing.T) {
 	if got := postAuthRedirect(user, "https://evil.example"); got != "/onboarding" {
 		t.Fatalf("fallback redirect = %q", got)
 	}
+}
+
+func TestAuthErrorRedirectUsesStableCode(t *testing.T) {
+	h := Handler{}
+	res := httptest.NewRecorder()
+	h.authError(res, httptest.NewRequest(http.MethodGet, "/api/v1/auth/google/callback", nil), googleErrorProviderFailed)
+	if res.Code != http.StatusFound {
+		t.Fatalf("status = %d", res.Code)
+	}
+	if got := res.Header().Get("Location"); got != "/login?error=google_provider_failed" {
+		t.Fatalf("location = %q", got)
+	}
+}
+
+func TestStartGoogleClearsStaleInvitationWithoutCode(t *testing.T) {
+	h := Handler{Google: GoogleHTTPClient{ClientID: "client-id"}, RedirectURL: "https://example.com/callback"}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/google", nil)
+	req.AddCookie(&http.Cookie{Name: "borajogar_invitation", Value: "stale-code"})
+	res := httptest.NewRecorder()
+	h.startGoogle(res, req)
+
+	for _, cookie := range res.Result().Cookies() {
+		if cookie.Name == "borajogar_invitation" {
+			if cookie.MaxAge >= 0 || cookie.Value != "" {
+				t.Fatalf("stale invitation cookie was not cleared: %+v", cookie)
+			}
+			return
+		}
+	}
+	t.Fatal("expected stale invitation cookie deletion")
 }

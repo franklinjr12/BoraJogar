@@ -26,6 +26,7 @@ import { DashboardPage } from '../features/games/DashboardPage';
 import { NotificationsPage } from '../features/notifications/NotificationsPage';
 import { OnboardingPage } from '../features/onboarding/OnboardingPage';
 import { blankProfile, skills, styles } from '../features/onboarding/options';
+import { googleAuthErrorMessage } from '../i18n/pt-BR';
 import { AppShell } from '../platform/AppShell';
 import { getDeviceTimeZone } from '../platform/timeZone';
 
@@ -208,7 +209,7 @@ function Login() {
       <p className="lead">Use e-mail e senha ou continue com o Google.</p>
       {error && (
         <p className="error" role="alert">
-          Não foi possível concluir o acesso. Tente novamente.
+          {googleAuthErrorMessage(error)}
         </p>
       )}
       {formError && (

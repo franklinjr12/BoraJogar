@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -22,10 +23,38 @@ import (
 type Handler struct {
 	DB            *pgxpool.Pool
 	Google        GoogleClient
+	Logger        *slog.Logger
 	RedirectURL   string
 	SecureCookies bool
 	Now           func() time.Time
 	AdminEmails   string
+}
+
+const (
+	googleErrorStateInvalid       = "google_state_invalid"
+	googleErrorCancelled          = "google_cancelled"
+	googleErrorProviderFailed     = "google_provider_failed"
+	googleErrorInvalidInvitation  = "invalid_invitation"
+	googleErrorEmailAlreadyExists = "google_email_already_registered"
+	googleErrorInternal           = "google_internal_error"
+)
+
+func (h Handler) logger() *slog.Logger {
+	if h.Logger != nil {
+		return h.Logger
+	}
+	return slog.Default()
+}
+
+func requestID(r *http.Request) string {
+	return r.Header.Get("X-Request-ID")
+}
+
+func profileLogAttrs(profile GoogleProfile) []any {
+	return []any{
+		"email_hash", hash(strings.ToLower(strings.TrimSpace(profile.Email))),
+		"google_subject_hash", hash(profile.Subject),
+	}
 }
 
 func (h Handler) RequireAuth(next http.Handler) http.Handler {
@@ -129,6 +158,7 @@ func (h Handler) emailLogin(w http.ResponseWriter, r *http.Request) {
 func (h Handler) startGoogle(w http.ResponseWriter, r *http.Request) {
 	state, err := randomToken()
 	if err != nil {
+		h.logger().Error("google auth start failed", "request_id", requestID(r), "reason", "state_generation", "error", err)
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
@@ -138,20 +168,35 @@ func (h Handler) startGoogle(w http.ResponseWriter, r *http.Request) {
 	}
 	if invitation := r.URL.Query().Get("invitation"); invitation != "" {
 		http.SetCookie(w, &http.Cookie{Name: "borajogar_invitation", Value: invitation, Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: 600})
+	} else {
+		http.SetCookie(w, &http.Cookie{Name: "borajogar_invitation", Value: "", Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	}
+	h.logger().Info("google auth started", "request_id", requestID(r), "invitation_present", r.URL.Query().Get("invitation") != "", "return_to_present", r.URL.Query().Get("returnTo") != "")
 	http.Redirect(w, r, h.Google.AuthorizationURL(state, h.RedirectURL), http.StatusFound)
 }
 
 func (h Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 	stateCookieValue, err := r.Cookie(stateCookie)
-	if err != nil || !constantTimeEqual(stateCookieValue.Value, r.URL.Query().Get("state")) {
-		h.authError(w, r, "Invalid sign-in state. Please try again.")
+	if err != nil {
+		h.logger().Warn("google auth callback rejected", "request_id", requestID(r), "reason", "state_cookie_missing")
+		h.authError(w, r, googleErrorStateInvalid)
+		return
+	}
+	if !constantTimeEqual(stateCookieValue.Value, r.URL.Query().Get("state")) {
+		h.logger().Warn("google auth callback rejected", "request_id", requestID(r), "reason", "state_mismatch")
+		h.authError(w, r, googleErrorStateInvalid)
 		return
 	}
 	if oauthError := r.URL.Query().Get("error"); oauthError != "" {
-		h.authError(w, r, "Google sign-in was cancelled.")
+		h.logger().Warn("google auth callback rejected", "request_id", requestID(r), "reason", "provider_error", "provider_error", oauthError)
+		if oauthError == "access_denied" {
+			h.authError(w, r, googleErrorCancelled)
+		} else {
+			h.authError(w, r, googleErrorProviderFailed)
+		}
 		return
 	}
+	h.logger().Info("google auth callback received", "request_id", requestID(r), "authorization_code_present", r.URL.Query().Get("code") != "")
 	invitationCode := ""
 	if invitationCookie, cookieErr := r.Cookie("borajogar_invitation"); cookieErr == nil {
 		invitationCode = invitationCookie.Value
@@ -164,27 +209,47 @@ func (h Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	profile, err := h.Google.Exchange(r.Context(), r.URL.Query().Get("code"), h.RedirectURL)
 	if err != nil || profile.Subject == "" || !profile.EmailVerified {
-		h.authError(w, r, "Google could not verify this account.")
+		attrs := []any{"request_id", requestID(r), "reason", "profile_exchange_or_validation"}
+		if err != nil {
+			attrs = append(attrs, "error", err)
+		}
+		if profile.Email != "" {
+			attrs = append(attrs, profileLogAttrs(profile)...)
+		}
+		h.logger().Error("google profile validation failed", attrs...)
+		h.authError(w, r, googleErrorProviderFailed)
 		return
 	}
-	user, err := h.upsertUser(r.Context(), profile, invitationCode)
+	h.logger().Info("google profile validated", append([]any{"request_id", requestID(r), "invitation_present", invitationCode != ""}, profileLogAttrs(profile)...)...)
+	user, created, err := h.upsertUser(r.Context(), profile, invitationCode)
 	if err != nil {
 		if errors.Is(err, ErrInvalidInvitation) {
-			h.authError(w, r, "A valid invitation is required for new accounts.")
+			h.logger().Warn("google user validation rejected", append([]any{"request_id", requestID(r), "reason", "invalid_invitation"}, profileLogAttrs(profile)...)...)
+			h.authError(w, r, googleErrorInvalidInvitation)
 			return
 		}
-		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
+		if errors.Is(err, ErrGoogleEmailAlreadyRegistered) {
+			h.logger().Warn("google user validation rejected", append([]any{"request_id", requestID(r), "reason", "email_already_registered"}, profileLogAttrs(profile)...)...)
+			h.authError(w, r, googleErrorEmailAlreadyExists)
+			return
+		}
+		h.logger().Error("google user validation failed", append([]any{"request_id", requestID(r), "reason", "database", "error", err}, profileLogAttrs(profile)...)...)
+		h.authError(w, r, googleErrorInternal)
 		return
 	}
+	h.logger().Info("google user authenticated", "request_id", requestID(r), "user_id", user.ID, "created", created, "invitation_used", created && invitationCode != "")
 	token, err := randomToken()
 	if err != nil {
+		h.logger().Error("google session token generation failed", "request_id", requestID(r), "user_id", user.ID, "error", err)
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
 	if err := h.createSession(r.Context(), token, user.ID, r); err != nil {
+		h.logger().Error("google session creation failed", "request_id", requestID(r), "user_id", user.ID, "error", err)
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
+	h.logger().Info("google session created", "request_id", requestID(r), "user_id", user.ID)
 	http.SetCookie(w, &http.Cookie{Name: stateCookie, Value: "", Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	http.SetCookie(w, &http.Cookie{Name: "borajogar_invitation", Value: "", Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	http.SetCookie(w, &http.Cookie{Name: returnToCookie, Value: "", Path: "/", HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: -1})
@@ -192,10 +257,10 @@ func (h Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, postAuthRedirect(user, returnTo), http.StatusFound)
 }
 
-func (h Handler) upsertUser(ctx context.Context, profile GoogleProfile, invitationCode string) (User, error) {
+func (h Handler) upsertUser(ctx context.Context, profile GoogleProfile, invitationCode string) (User, bool, error) {
 	tx, err := h.DB.Begin(ctx)
 	if err != nil {
-		return User{}, err
+		return User{}, false, err
 	}
 	defer tx.Rollback(ctx)
 	var user User
@@ -204,32 +269,58 @@ func (h Handler) upsertUser(ctx context.Context, profile GoogleProfile, invitati
 	if err == nil {
 		_, err = tx.Exec(ctx, `UPDATE users SET email = $1, display_name = $2, avatar_url = $3, updated_at = now() WHERE id = $4`, profile.Email, profile.Name, nullable(profile.AvatarURL), user.ID)
 		if err != nil {
-			return User{}, err
+			if isGoogleEmailUniqueViolation(err) {
+				return User{}, false, ErrGoogleEmailAlreadyRegistered
+			}
+			return User{}, false, err
 		}
 		user.Email, user.DisplayName, user.AvatarURL = profile.Email, profile.Name, nullable(profile.AvatarURL)
-		return user, tx.Commit(ctx)
+		return user, false, tx.Commit(ctx)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return User{}, err
+		return User{}, false, err
 	}
-	var invitationID uuid.UUID
+	var existingEmailUserID uuid.UUID
+	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE lower(email) = lower($1) AND status = 'active' AND deleted_at IS NULL`, profile.Email).Scan(&existingEmailUserID)
+	if err == nil {
+		return User{}, false, ErrGoogleEmailAlreadyRegistered
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return User{}, false, err
+	}
+
+	var invitationID *uuid.UUID
 	var maxUses, currentUses int
 	var invitationEmail *string
 	var expiresAt, disabledAt *time.Time
-	err = tx.QueryRow(ctx, `SELECT id, email, max_uses, current_uses, expires_at, disabled_at FROM invitations WHERE code_hash = $1 FOR UPDATE`, hash(invitationCode)).Scan(&invitationID, &invitationEmail, &maxUses, &currentUses, &expiresAt, &disabledAt)
-	if err != nil || disabledAt != nil || currentUses >= maxUses || (expiresAt != nil && !h.now().Before(*expiresAt)) || (invitationEmail != nil && !strings.EqualFold(strings.TrimSpace(*invitationEmail), strings.TrimSpace(profile.Email))) {
-		return User{}, ErrInvalidInvitation
+	if strings.TrimSpace(invitationCode) != "" {
+		var id uuid.UUID
+		err = tx.QueryRow(ctx, `SELECT id, email, max_uses, current_uses, expires_at, disabled_at FROM invitations WHERE code_hash = $1 FOR UPDATE`, hash(invitationCode)).Scan(&id, &invitationEmail, &maxUses, &currentUses, &expiresAt, &disabledAt)
+		if err != nil || disabledAt != nil || currentUses >= maxUses || (expiresAt != nil && !h.now().Before(*expiresAt)) || (invitationEmail != nil && !strings.EqualFold(strings.TrimSpace(*invitationEmail), strings.TrimSpace(profile.Email))) {
+			return User{}, false, ErrInvalidInvitation
+		}
+		invitationID = &id
 	}
 	newID := uuid.New()
 	isAdmin := h.isAdminEmail(profile.Email)
 	if err = tx.QueryRow(ctx, `INSERT INTO users (id, google_subject, email, display_name, avatar_url) VALUES ($1, $2, $3, $4, $5) RETURNING id, display_name, email, avatar_url, time_zone, onboarding_completed, is_admin`, newID, profile.Subject, profile.Email, profile.Name, nullable(profile.AvatarURL)).Scan(&user.ID, &user.DisplayName, &user.Email, &user.AvatarURL, &user.TimeZone, &user.OnboardingComplete, &isAdmin); err != nil {
-		return User{}, err
+		if isGoogleEmailUniqueViolation(err) {
+			return User{}, false, ErrGoogleEmailAlreadyRegistered
+		}
+		return User{}, false, err
 	}
 	user.IsAdmin = isAdmin
-	if _, err = tx.Exec(ctx, `UPDATE invitations SET current_uses = current_uses + 1 WHERE id = $1`, invitationID); err != nil {
-		return User{}, err
+	if invitationID != nil {
+		if _, err = tx.Exec(ctx, `UPDATE invitations SET current_uses = current_uses + 1 WHERE id = $1`, *invitationID); err != nil {
+			return User{}, false, err
+		}
 	}
-	return user, tx.Commit(ctx)
+	return user, true, tx.Commit(ctx)
+}
+
+func isGoogleEmailUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "users_email_lower_unique_idx"
 }
 
 func (h Handler) createEmailUser(ctx context.Context, input emailAuthInput) (User, error) {
@@ -451,8 +542,8 @@ func (h Handler) adminInvitationAction(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h Handler) authError(w http.ResponseWriter, r *http.Request, message string) {
-	target := url.URL{Path: "/login", RawQuery: url.Values{"error": {message}}.Encode()}
+func (h Handler) authError(w http.ResponseWriter, r *http.Request, code string) {
+	target := url.URL{Path: "/login", RawQuery: url.Values{"error": {code}}.Encode()}
 	http.Redirect(w, r, target.String(), http.StatusFound)
 }
 func writeJSON(w http.ResponseWriter, status int, value any) {

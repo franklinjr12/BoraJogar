@@ -46,7 +46,7 @@ $env:DEV_HTTPS_CERT=(Resolve-Path ".\<LAN-IP>.pem")
 make dev-web-mobile
 ```
 
-Set `VITE_MAP_STYLE_URL` when testing a production map style. Local dev falls back to OpenStreetMap tiles when this value is empty.
+Set `VITE_MAP_STYLE_URL` to override the default OpenStreetMap raster style. The app falls back to OpenStreetMap tiles when this value is empty; confirm tile usage policy and attribution before production use.
 
 Send development email:
 

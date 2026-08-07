@@ -76,6 +76,20 @@ export function apiErrorMessage(code: string) {
   return apiErrorMessages[code] ?? 'Não foi possível concluir a solicitação.';
 }
 
+const googleAuthErrorMessages: Record<string, string> = {
+  google_state_invalid: 'A sessão de acesso expirou. Inicie o login novamente.',
+  google_cancelled: 'O acesso com Google foi cancelado.',
+  google_provider_failed: 'O Google não conseguiu validar esta conta. Tente novamente.',
+  invalid_invitation: 'O convite não é válido ou expirou.',
+  google_email_already_registered:
+    'Este e-mail já possui uma conta criada com e-mail e senha. Entre usando e-mail e senha.',
+  google_internal_error: 'Não foi possível criar sua conta agora. Tente novamente.',
+};
+
+export function googleAuthErrorMessage(code: string) {
+  return googleAuthErrorMessages[code] ?? 'Não foi possível concluir o acesso. Tente novamente.';
+}
+
 const readinessLabels: Record<string, string> = {
   profile: 'perfil',
   location: 'local',

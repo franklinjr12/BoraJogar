@@ -4,6 +4,7 @@ DATABASE_URL ?= postgres://borajogar:borajogar@localhost:5432/borajogar?sslmode=
 E2E_DATABASE_URL ?= postgres://borajogar:borajogar@localhost:5432/borajogar_e2e?sslmode=disable
 E2E_API_PORT ?= 18080
 E2E_WEB_PORT ?= 4173
+LINUX_GOARCH ?= amd64
 
 dev:
 	start "Bora Jogar API" cmd /C "make dev-api" && make dev-web
@@ -77,3 +78,7 @@ db-reset:
 
 build:
 	npm --prefix web run build && go -C api build -o bin/server ./cmd/server && go -C api build -o bin/worker ./cmd/worker
+
+build-linux:
+	set GOOS=linux&& set GOARCH=$(LINUX_GOARCH)&& go -C api build -trimpath -ldflags "-s -w" -o bin/server ./cmd/server
+	set GOOS=linux&& set GOARCH=$(LINUX_GOARCH)&& go -C api build -trimpath -ldflags "-s -w" -o bin/worker ./cmd/worker

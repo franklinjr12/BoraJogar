@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -25,6 +26,7 @@ const returnToCookie = "borajogar_return_to"
 
 var ErrInvalidInvitation = errors.New("invalid invitation")
 var ErrDuplicateEmail = errors.New("duplicate email")
+var ErrGoogleEmailAlreadyRegistered = errors.New("google email already registered")
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
 type User struct {
@@ -99,7 +101,14 @@ func (c GoogleHTTPClient) Exchange(ctx context.Context, code, redirectURL string
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return GoogleProfile{}, errors.New("google authorization failed")
+		var details struct {
+			Error            string `json:"error"`
+			ErrorDescription string `json:"error_description"`
+		}
+		if decodeErr := json.NewDecoder(io.LimitReader(res.Body, 4096)).Decode(&details); decodeErr == nil && details.Error != "" {
+			return GoogleProfile{}, fmt.Errorf("google token exchange failed: status=%d error=%s description=%s", res.StatusCode, details.Error, details.ErrorDescription)
+		}
+		return GoogleProfile{}, fmt.Errorf("google token exchange failed: status=%d", res.StatusCode)
 	}
 	var token struct {
 		AccessToken string `json:"access_token"`
@@ -118,7 +127,7 @@ func (c GoogleHTTPClient) Exchange(ctx context.Context, code, redirectURL string
 	}
 	defer profileRes.Body.Close()
 	if profileRes.StatusCode != http.StatusOK {
-		return GoogleProfile{}, errors.New("google profile unavailable")
+		return GoogleProfile{}, fmt.Errorf("google profile unavailable: status=%d", profileRes.StatusCode)
 	}
 	var profile struct {
 		Sub, Email, Name, Picture string

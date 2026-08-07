@@ -13,6 +13,7 @@ paths:
       parameters:
         - in: query
           name: invitation
+          description: Optional invitation code. Valid codes are consumed after a new account is created.
           schema: { type: string }
         - in: query
           name: returnTo
@@ -21,7 +22,8 @@ paths:
   /api/v1/auth/google/callback:
     get:
       summary: Complete Google OAuth login
-      responses: { '302': { description: Redirect to application } }
+      responses:
+        '302': { description: Redirect to application or login with an OAuth error code }
   /api/v1/auth/email/signup:
     post:
       summary: Create an account with email and password

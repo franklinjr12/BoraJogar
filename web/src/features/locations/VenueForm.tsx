@@ -53,6 +53,7 @@ function MapPicker({
         const instance = new maplibregl.Map({
           container: node.current,
           style,
+          attributionControl: {},
           center: [initialPoint.current.longitude, initialPoint.current.latitude],
           zoom: 11,
         });

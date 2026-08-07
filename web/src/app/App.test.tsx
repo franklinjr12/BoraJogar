@@ -135,6 +135,27 @@ describe('home screen', () => {
 describe('login screen', () => {
   beforeEach(() => localStorage.clear());
 
+  it('shows a specific Google account conflict error', async () => {
+    mockCurrentUser(null);
+    renderApp(['/login?error=google_email_already_registered']);
+
+    expect(
+      await screen.findByText(
+        /este e-mail já possui uma conta criada com e-mail e senha/i,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('starts Google login without requiring an invitation', async () => {
+    mockCurrentUser(null);
+    renderApp(['/login']);
+
+    const googleLink = await screen.findByRole('link', { name: /continuar com o google/i });
+    const googleURL = new URL(googleLink.getAttribute('href') ?? '', window.location.origin);
+    expect(googleURL.pathname).toBe('/api/v1/auth/google');
+    expect(googleURL.searchParams.has('invitation')).toBe(false);
+  });
+
   it('offers email account creation with returnTo', async () => {
     const fetchMock = vi.spyOn(window, 'fetch').mockImplementation(async (input) => {
       if (String(input).endsWith('/api/v1/me'))

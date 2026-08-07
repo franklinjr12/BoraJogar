@@ -56,14 +56,14 @@ Resolve or consciously accept these before treating the deployment as production
 - [ ] For Google login, register exactly `https://your-domain.example/api/v1/auth/google/callback`.
 - [ ] Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URL`.
 - [ ] Set `ADMIN_EMAILS` to controlled comma-separated addresses. Create first admin through email/password signup using one address, then verify admin access.
-- [ ] Remember: new Google accounts require valid invitation.
+- [ ] Google accounts may sign up without invitation; valid invitation codes remain optional and are consumed when supplied.
 - [ ] Test signup, login, logout, cookies, Google callback, invitation access, and admin authorization over HTTPS.
 
 ### Email, maps, and notifications
 
 - [ ] Choose transactional email provider. Configure verified sender/domain, SPF, DKIM, DMARC.
 - [ ] Do not assume SMTP configuration enables application email; current notification delivery code is incomplete. Track this as feature blocker if email alerts are required.
-- [ ] Configure production map style URL at build time with `VITE_MAP_STYLE_URL`. Frontend values are public; use provider restrictions and attribution.
+- [ ] Prefer configuring a production map style URL at build time with `VITE_MAP_STYLE_URL`. If empty, frontend falls back to OpenStreetMap raster tiles; verify OSM tile policy, attribution, and expected traffic first. Frontend values are public; use provider restrictions and attribution.
 - [ ] VAPID values are currently unused by running server. Do not promise Web Push until provider wiring/retries exist.
 - [ ] Confirm outbound HTTPS access to map provider and Google OAuth endpoints.
 
