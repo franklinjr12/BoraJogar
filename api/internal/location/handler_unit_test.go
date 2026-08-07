@@ -73,3 +73,49 @@ func TestAreaValidationCoversBoundsAndPriority(t *testing.T) {
 		}
 	}
 }
+
+func TestMapsConfigRequiresConfiguredKey(t *testing.T) {
+	u := auth.User{ID: uuid.New()}
+	for _, test := range []struct {
+		name   string
+		h      Handler
+		status int
+		code   string
+	}{
+		{name: "missing key", h: Handler{}, status: http.StatusServiceUnavailable, code: "maps_unavailable"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			w, r := locationRequest(http.MethodGet, "/api/v1/me/maps-config", "", u)
+			test.h.mapsConfig(w, r)
+			if w.Code != test.status {
+				t.Fatalf("status = %d, want %d", w.Code, test.status)
+			}
+			var response struct {
+				Error struct {
+					Code string `json:"code"`
+				} `json:"error"`
+			}
+			if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+				t.Fatal(err)
+			}
+			if response.Error.Code != test.code {
+				t.Fatalf("error code = %q, want %q", response.Error.Code, test.code)
+			}
+		})
+	}
+}
+
+func TestMapsConfigReturnsOnlyBrowserKey(t *testing.T) {
+	w, r := locationRequest(http.MethodGet, "/api/v1/me/maps-config", "", auth.User{ID: uuid.New()})
+	(Handler{GoogleMapsAPIKey: "browser-key"}).mapsConfig(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	var response map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if response["googleMapsApiKey"] != "browser-key" || len(response) != 1 {
+		t.Fatalf("unexpected maps config: %#v", response)
+	}
+}

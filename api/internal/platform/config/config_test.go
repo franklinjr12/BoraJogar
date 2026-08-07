@@ -42,12 +42,17 @@ func TestLoad(t *testing.T) {
 	t.Setenv("APP_PORT", "8080")
 	t.Setenv("DATABASE_URL", "postgres://example")
 	t.Setenv("SESSION_SECRET", "12345678901234567890123456789012")
+	t.Setenv("GOOGLE_MAPS_API_KEY", "maps-key")
+	t.Setenv("GOOGLE_MAPS_SECRET", "maps-secret")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.Address() != ":8080" {
 		t.Fatalf("address = %s", cfg.Address())
+	}
+	if cfg.GoogleMapsAPIKey != "maps-key" || cfg.GoogleMapsSecret != "maps-secret" {
+		t.Fatalf("unexpected Google Maps config: %#v", cfg)
 	}
 	if cfg.MatchLookaheadDays != 14 || cfg.MatchDefaultDurationMinutes != 90 || cfg.MatchDefaultPlayerCount != 4 || cfg.MatchSlotIncrementMinutes != 30 || cfg.MatchMaxSkillDifference != 1 || cfg.MatchMinimumNoticeMinutes != 720 || cfg.MatchProposalExpirationHours != 8 || cfg.MatchMaxProposalsPerUserPerDay != 2 || cfg.MatchRecentPairingLookbackDays != 14 {
 		t.Fatalf("unexpected matchmaking defaults: %+v", cfg)

@@ -41,6 +41,9 @@ export interface PreferredArea {
   priority: number;
   active: boolean;
 }
+export interface GoogleMapsConfig {
+  googleMapsApiKey: string;
+}
 export interface AvailabilityRule {
   id: string;
   weekday: number;
@@ -372,6 +375,7 @@ export const userApi = {
 };
 
 export const locationApi = {
+  mapsConfig: () => request<GoogleMapsConfig>('/api/v1/me/maps-config'),
   venues: (position?: { latitude: number; longitude: number }) => {
     const params = new URLSearchParams({ city: 'Curitiba' });
     if (position) {

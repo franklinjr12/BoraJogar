@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { ApiError, type Venue } from '../../api/client';
 import { requestBrowserLocation, type LocationMessages } from './browserLocation';
+import { GooglePlaceSearch } from './GooglePlaceSearch';
+import { loadGoogleMaps } from './googleMaps';
 import { resolveMapStyle } from './mapStyle';
 import {
   blankVenueDraft,
@@ -22,15 +24,87 @@ const locationMessages: LocationMessages = {
   timeout: 'A busca pela sua localização expirou. Pesquise por cidade.',
   unknown: 'Não foi possível usar sua localização atual. Pesquise por cidade.',
 };
-const addressMinimumCharacters = 4;
-const addressSearchDelayMs = 500;
 
-function MapPicker({
+type Point = { latitude: number; longitude: number };
+
+function GoogleMapPicker({
+  point,
+  onSelect,
+  onFailure,
+}: {
+  point: Point;
+  onSelect: (point: Point) => void;
+  onFailure: () => void;
+}) {
+  const node = useRef<HTMLDivElement>(null);
+  const map = useRef<google.maps.Map | null>(null);
+  const marker = useRef<google.maps.Marker | null>(null);
+  const clickListener = useRef<google.maps.MapsEventListener | null>(null);
+  const initialPoint = useRef(point);
+  const onSelectRef = useRef(onSelect);
+
+  useEffect(() => {
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
+
+  useEffect(() => {
+    if (!node.current) return;
+    let disposed = false;
+    void loadGoogleMaps()
+      .then(({ maps, marker: markerLibrary }) => {
+        if (disposed || !node.current) return;
+        const instance = new maps.Map(node.current, {
+          center: { lat: initialPoint.current.latitude, lng: initialPoint.current.longitude },
+          zoom: 12,
+          streetViewControl: false,
+          mapTypeControl: false,
+          fullscreenControl: false,
+          mapTypeId: 'roadmap',
+        });
+        const pin = new markerLibrary.Marker({
+          map: instance,
+          position: { lat: initialPoint.current.latitude, lng: initialPoint.current.longitude },
+        });
+        clickListener.current = instance.addListener(
+          'click',
+          (event: google.maps.MapMouseEvent) => {
+            if (!event.latLng) return;
+            onSelectRef.current({ latitude: event.latLng.lat(), longitude: event.latLng.lng() });
+          },
+        );
+        map.current = instance;
+        marker.current = pin;
+      })
+      .catch(() => {
+        if (!disposed) onFailure();
+      });
+
+    return () => {
+      disposed = true;
+      clickListener.current?.remove();
+      clickListener.current = null;
+      marker.current?.setMap(null);
+      marker.current = null;
+      map.current = null;
+    };
+  }, [onFailure]);
+
+  useEffect(() => {
+    map.current?.setCenter({ lat: point.latitude, lng: point.longitude });
+    marker.current?.setPosition({ lat: point.latitude, lng: point.longitude });
+  }, [point.latitude, point.longitude]);
+
+  return (
+    <div ref={node} className="map-panel compact-map" aria-label="Escolher local no Google Maps" />
+  );
+}
+
+function MapLibreMapPicker({
   point,
   onSelect,
 }: {
-  point: { latitude: number; longitude: number };
-  onSelect: (point: { latitude: number; longitude: number }) => void;
+  point: Point;
+  onSelect: (point: Point) => void;
 }) {
   const node = useRef<HTMLDivElement>(null);
   const map = useRef<import('maplibre-gl').Map | null>(null);
@@ -92,8 +166,15 @@ function MapPicker({
   }, [point.latitude, point.longitude]);
 
   if (!style || mapFailed)
-    return <p className="map-inline-hint">Mapa indisponível. Pesquise por cidade.</p>;
+    return <p className="map-inline-hint">Mapa indisponível. Informe o endereço manualmente.</p>;
   return <div ref={node} className="map-panel compact-map" aria-label="Escolher local no mapa" />;
+}
+
+function MapPicker({ point, onSelect }: { point: Point; onSelect: (point: Point) => void }) {
+  const [googleFailed, setGoogleFailed] = useState(false);
+  const onGoogleFailure = useCallback(() => setGoogleFailed(true), []);
+  if (googleFailed) return <MapLibreMapPicker point={point} onSelect={onSelect} />;
+  return <GoogleMapPicker point={point} onSelect={onSelect} onFailure={onGoogleFailure} />;
 }
 
 export function VenueForm({
@@ -117,28 +198,30 @@ export function VenueForm({
   const searchSequence = useRef(0);
   const searchController = useRef<AbortController | null>(null);
   const addressController = useRef<AbortController | null>(null);
-  const addressSearchSequence = useRef(0);
-  const addressSearchTimer = useRef<number | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const update = <K extends keyof VenueDraft>(key: K, value: VenueDraft[K]) =>
     onChange({ ...draft, [key]: value });
-  const cancelAddressSearch = () => {
-    addressController.current?.abort();
-    addressController.current = null;
-    if (addressSearchTimer.current !== null) {
-      window.clearTimeout(addressSearchTimer.current);
-      addressSearchTimer.current = null;
-    }
-    addressSearchSequence.current += 1;
-    setAddressResults([]);
-    setAddressSearching(false);
+  const selectGooglePlace = (place: PlaceSearchResult) => {
+    const currentDraft = draftRef.current;
+    onChange({
+      ...currentDraft,
+      name: currentDraft.name.trim() || place.displayName,
+      addressLabel: place.addressLabel ?? place.displayName,
+      city: place.city,
+      point: { latitude: place.latitude, longitude: place.longitude },
+      addressConfirmed: true,
+    });
+    setCityQuery(place.city);
+    setCitySearchTouched(false);
+    setResults([]);
+    setMessage('Local encontrado no Google Maps. Confira os dados antes de salvar.');
   };
   const selectAddress = (place: PlaceSearchResult) => {
-    const addressLabel = place.addressLabel ?? place.displayName;
+    const currentDraft = draftRef.current;
     onChange({
-      ...draftRef.current,
-      addressLabel,
+      ...currentDraft,
+      addressLabel: place.addressLabel ?? place.displayName,
       city: place.city,
       point: { latitude: place.latitude, longitude: place.longitude },
       addressConfirmed: true,
@@ -148,12 +231,10 @@ export function VenueForm({
     setCitySearchTouched(false);
     setMessage('Endereço marcado no mapa.');
   };
-  const searchAddressForDraft = async (): Promise<PlaceSearchResult[]> => {
+  const searchAddressForDraft = async () => {
     const currentDraft = draftRef.current;
-    if (currentDraft.addressLabel.trim().length < addressMinimumCharacters) return [];
+    if (currentDraft.addressLabel.trim().length < 4) return;
     addressController.current?.abort();
-    const sequence = addressSearchSequence.current + 1;
-    addressSearchSequence.current = sequence;
     const controller = new AbortController();
     addressController.current = controller;
     setAddressSearching(true);
@@ -161,44 +242,16 @@ export function VenueForm({
       const matches = await searchAddress(`${currentDraft.addressLabel}, ${currentDraft.city}`, {
         signal: controller.signal,
       });
-      if (sequence !== addressSearchSequence.current) return [];
       setAddressResults(matches);
       setMessage(matches.length > 0 ? 'Escolha um endereço da lista.' : 'Endereço não encontrado.');
-      return matches;
     } catch (cause: unknown) {
-      if (cause instanceof DOMException && cause.name === 'AbortError') return [];
-      if (sequence === addressSearchSequence.current)
-        setMessage('Não foi possível pesquisar o endereço. Tente novamente em instantes.');
-      return [];
+      if (cause instanceof DOMException && cause.name === 'AbortError') return;
+      setMessage('Não foi possível pesquisar o endereço. Tente novamente em instantes.');
     } finally {
-      if (sequence === addressSearchSequence.current) setAddressSearching(false);
+      if (addressController.current === controller) setAddressSearching(false);
     }
   };
-  const updateAddress = (value: string) => {
-    cancelAddressSearch();
-    onChange({ ...draft, addressLabel: value, addressConfirmed: false });
-    if (value.trim().length >= addressMinimumCharacters) {
-      addressSearchTimer.current = window.setTimeout(() => {
-        addressSearchTimer.current = null;
-        void searchAddressForDraft();
-      }, addressSearchDelayMs);
-    }
-  };
-  const resolveAddress = async () => {
-    const currentDraft = draftRef.current;
-    if (currentDraft.addressLabel.trim().length < addressMinimumCharacters) return;
-    if (addressSearchTimer.current !== null) {
-      window.clearTimeout(addressSearchTimer.current);
-      addressSearchTimer.current = null;
-    }
-    if (addressResults[0]) {
-      selectAddress(addressResults[0]);
-      return;
-    }
-    const matches = await searchAddressForDraft();
-    if (matches[0]) selectAddress(matches[0]);
-  };
-  const selectMapPoint = async (point: { latitude: number; longitude: number }) => {
+  const selectMapPoint = async (point: Point) => {
     onChange({ ...draftRef.current, point, addressConfirmed: false });
     try {
       const result = await reverseGeocode(point);
@@ -219,13 +272,6 @@ export function VenueForm({
       setMessage('Ponto marcado no mapa. Informe o endereço da quadra.');
     }
   };
-  useEffect(
-    () => () => {
-      addressController.current?.abort();
-      if (addressSearchTimer.current !== null) window.clearTimeout(addressSearchTimer.current);
-    },
-    [],
-  );
   const useCurrentLocation = async () => {
     const result = await requestBrowserLocation(locationMessages);
     if (!result.ok) {
@@ -235,12 +281,10 @@ export function VenueForm({
 
     onChange({
       ...draft,
-      point: {
-        latitude: result.latitude,
-        longitude: result.longitude,
-      },
+      point: { latitude: result.latitude, longitude: result.longitude },
+      addressConfirmed: false,
     });
-    setMessage('Ponto definido pelo seu dispositivo. Selecione a cidade antes de salvar.');
+    setMessage('Ponto definido pelo seu dispositivo. Pesquise o local ou informe o endereço.');
   };
   useEffect(() => {
     searchController.current?.abort();
@@ -277,12 +321,19 @@ export function VenueForm({
       controller.abort();
     };
   }, [cityQuery, citySearchTouched]);
+  useEffect(
+    () => () => {
+      searchController.current?.abort();
+      addressController.current?.abort();
+    },
+    [],
+  );
   const selectPlace = (place: PlaceSearchResult) => {
     onChange({
       ...draft,
       city: place.city,
       point: { latitude: place.latitude, longitude: place.longitude },
-      addressConfirmed: true,
+      addressConfirmed: false,
     });
     setCityQuery(place.displayName);
     setCitySearchTouched(false);
@@ -292,7 +343,7 @@ export function VenueForm({
   const save = async () => {
     setMessage('');
     if (!venueDraftReady(draft)) {
-      setMessage('Informe um nome e o endereço da quadra, depois pesquise e selecione uma cidade.');
+      setMessage('Informe um nome e o endereço da quadra, depois pesquise e selecione um local.');
       return;
     }
     try {
@@ -319,11 +370,26 @@ export function VenueForm({
         />
       </label>
       <label>
+        Pesquisar local no Google Maps
+        <GooglePlaceSearch
+          point={draft.point}
+          onSelected={selectGooglePlace}
+          onUnavailable={() =>
+            setMessage(
+              (current) =>
+                current || 'Pesquisa Google indisponível. Você pode informar o local manualmente.',
+            )
+          }
+        />
+      </label>
+      <label>
         Endereço da quadra
         <input
           value={draft.addressLabel}
-          onChange={(event) => updateAddress(event.target.value)}
-          onBlur={() => void resolveAddress()}
+          onChange={(event) =>
+            onChange({ ...draft, addressLabel: event.target.value, addressConfirmed: false })
+          }
+          onBlur={() => void searchAddressForDraft()}
           placeholder="Av. Atlantica, 100"
         />
       </label>
@@ -351,7 +417,6 @@ export function VenueForm({
           autoComplete="off"
           value={cityQuery}
           onChange={(event) => {
-            cancelAddressSearch();
             setCitySearchTouched(true);
             setCityQuery(event.target.value);
             onChange({ ...draft, city: event.target.value, addressConfirmed: false });

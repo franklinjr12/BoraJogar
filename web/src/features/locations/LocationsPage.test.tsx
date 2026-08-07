@@ -3,6 +3,9 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LocationsPage } from './LocationsPage';
 
+const googleMapsMock = vi.hoisted(() => ({ loadGoogleMaps: vi.fn() }));
+vi.mock('./googleMaps', () => googleMapsMock);
+
 type MockMapEvent = { lngLat: { lat: number; lng: number } };
 type MockMapHandler = (event?: MockMapEvent) => void;
 
@@ -74,6 +77,7 @@ function response(value: unknown) {
 describe('locations page', () => {
   beforeEach(() => {
     maplibreMock.instances.length = 0;
+    googleMapsMock.loadGoogleMaps.mockRejectedValue(new Error('Google Maps unavailable'));
     Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
   });
 
@@ -419,6 +423,87 @@ describe('locations page', () => {
       expect.objectContaining({
         body: expect.stringContaining('"longitude":-49.288'),
       }),
+    );
+  });
+
+  it('uses Google place selection to create a preferred area', async () => {
+    const autocompleteInstances: Array<{ emit: (event: Event) => void }> = [];
+    class MockAutocomplete extends HTMLElement {
+      private listener?: EventListener;
+
+      constructor() {
+        super();
+        autocompleteInstances.push({ emit: (event) => this.listener?.(event) });
+      }
+
+      addEventListener(type: string, listener: EventListenerOrEventListenerObject): void {
+        if (type === 'gmp-select' && typeof listener === 'function') this.listener = listener;
+      }
+    }
+    class MockSelectEvent extends Event {
+      constructor(public placePrediction: { toPlace: () => typeof place }) {
+        super('gmp-select');
+      }
+    }
+    customElements.define('gmp-place-autocomplete', MockAutocomplete);
+    googleMapsMock.loadGoogleMaps.mockResolvedValue({
+      places: { PlaceAutocompleteElement: MockAutocomplete },
+    });
+
+    const fetchMock = vi.fn((url: string | URL, init?: RequestInit) => {
+      if (init?.method === 'POST')
+        return Promise.resolve(
+          response({
+            id: 'area-1',
+            label: 'Perto de Curitiba',
+            latitude: -25.441,
+            longitude: -49.276,
+            radiusMeters: 4000,
+            priority: 0,
+            active: true,
+          }),
+        );
+      if (String(url).includes('favorite-venues') || String(url).includes('preferred-areas'))
+        return Promise.resolve(response([]));
+      return Promise.resolve(response([venue]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MemoryRouter>
+        <LocationsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/escolha onde você poderia jogar/i);
+    fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
+    fireEvent.click(screen.getByRole('button', { name: /pesquisar um bairro ou endereço/i }));
+    await waitFor(() => expect(autocompleteInstances).toHaveLength(1));
+
+    const place = {
+      id: 'google-place-1',
+      displayName: 'Praça Oswaldo Cruz',
+      formattedAddress: 'Praça Oswaldo Cruz, S/n - Centro, Curitiba - PR',
+      addressComponents: [{ types: ['administrative_area_level_2'], longText: 'Curitiba' }],
+      location: { lat: () => -25.4405, lng: () => -49.276 },
+      fetchFields: vi.fn(),
+    };
+    autocompleteInstances[0]?.emit(new MockSelectEvent({ toPlace: () => place }));
+
+    await waitFor(() => expect(place.fetchFields).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /salvar área/i }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/me/preferred-areas',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"latitude":-25.44'),
+        }),
+      ),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/me/preferred-areas',
+      expect.objectContaining({ body: expect.stringContaining('"longitude":-49.276') }),
     );
   });
 

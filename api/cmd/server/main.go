@@ -37,7 +37,7 @@ func main() {
 
 	google := auth.GoogleHTTPClient{Client: http.DefaultClient, ClientID: cfg.GoogleClientID, ClientSecret: cfg.GoogleClientSecret}
 	authHandler := auth.Handler{DB: db, Google: google, Logger: logger, RedirectURL: cfg.GoogleRedirectURL, SecureCookies: cfg.Environment == "production", AdminEmails: cfg.AdminEmails}
-	server := &http.Server{Addr: cfg.Address(), Handler: httpserver.New(logger, db, authHandler), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: cfg.Address(), Handler: httpserver.NewWithGoogleMaps(logger, db, cfg.GoogleMapsAPIKey, authHandler), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
 	go func() {
 		logger.Info("server started", "addr", server.Addr)
 		if serveErr := server.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {

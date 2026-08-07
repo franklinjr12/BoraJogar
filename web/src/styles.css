@@ -422,6 +422,13 @@ textarea:focus-visible {
   display: grid;
   gap: 0.5rem;
 }
+.google-place-search {
+  min-height: 2.75rem;
+}
+.google-place-search > gmp-place-autocomplete {
+  display: block;
+  width: 100%;
+}
 .place-result {
   display: grid;
   gap: 0.25rem;

@@ -31,12 +31,20 @@ func New(logger *slog.Logger, db *pgxpool.Pool, authHandlers ...auth.Handler) ht
 	return NewWithMetrics(logger, db, &metrics.Metrics{}, authHandlers...)
 }
 
+func NewWithGoogleMaps(logger *slog.Logger, db *pgxpool.Pool, googleMapsAPIKey string, authHandlers ...auth.Handler) http.Handler {
+	return newWithMetrics(logger, db, &metrics.Metrics{}, googleMapsAPIKey, authHandlers...)
+}
+
 func NewWithMetrics(logger *slog.Logger, db *pgxpool.Pool, requestMetrics *metrics.Metrics, authHandlers ...auth.Handler) http.Handler {
+	return newWithMetrics(logger, db, requestMetrics, "", authHandlers...)
+}
+
+func newWithMetrics(logger *slog.Logger, db *pgxpool.Pool, requestMetrics *metrics.Metrics, googleMapsAPIKey string, authHandlers ...auth.Handler) http.Handler {
 	mux := http.NewServeMux()
 	for _, authHandler := range authHandlers {
 		authHandler.Register(mux)
 		profile.Handler{DB: db}.Register(mux, authHandler.RequireAuth)
-		location.Handler{DB: db}.Register(mux, authHandler.RequireAuth, authHandler.RequireAdmin)
+		location.Handler{DB: db, GoogleMapsAPIKey: googleMapsAPIKey}.Register(mux, authHandler.RequireAuth, authHandler.RequireAdmin)
 		availability.Handler{DB: db}.Register(mux, authHandler.RequireAuth)
 		notification.Service{DB: db}.Register(mux, authHandler.RequireAuth)
 		publisher := notification.Service{DB: db}

@@ -3,6 +3,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { Link } from 'react-router-dom';
 import { locationApi, type PreferredArea, type Venue } from '../../api/client';
 import { requestBrowserLocation, type LocationMessages } from './browserLocation';
+import { GooglePlaceSearch } from './GooglePlaceSearch';
 import { resolveMapStyle } from './mapStyle';
 import { searchPlaces, type PlaceSearchResult } from './placeSearch';
 
@@ -435,6 +436,20 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
           </div>
           {areaSearchOpen && (
             <>
+              <label>
+                Pesquisar no Google Maps
+                <GooglePlaceSearch
+                  point={point}
+                  placeholder="Ex.: Praça Oswaldo Cruz"
+                  onSelected={selectAreaPlace}
+                  onUnavailable={() =>
+                    setMessage(
+                      (current) =>
+                        current || 'Pesquisa Google indisponível. Use a busca alternativa abaixo.',
+                    )
+                  }
+                />
+              </label>
               <label>
                 Pesquisa de bairro ou endereço
                 <input

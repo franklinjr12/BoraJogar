@@ -140,9 +140,7 @@ describe('login screen', () => {
     renderApp(['/login?error=google_email_already_registered']);
 
     expect(
-      await screen.findByText(
-        /este e-mail já possui uma conta criada com e-mail e senha/i,
-      ),
+      await screen.findByText(/este e-mail já possui uma conta criada com e-mail e senha/i),
     ).toBeInTheDocument();
   });
 

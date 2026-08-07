@@ -55,6 +55,7 @@ Resolve or consciously accept these before treating the deployment as production
 - [ ] Generate new `SESSION_SECRET` with at least 32 random characters. Keep stable across releases; rotation invalidates sessions.
 - [ ] For Google login, register exactly `https://your-domain.example/api/v1/auth/google/callback`.
 - [ ] Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URL`.
+- [ ] Set `GOOGLE_MAPS_API_KEY` with website restrictions for production/staging origins and API restrictions for Maps JavaScript API and Places API (New). Configure billing, quota limits, and budget alerts. `GOOGLE_MAPS_SECRET` is not required by the browser Places integration.
 - [ ] Set `ADMIN_EMAILS` to controlled comma-separated addresses. Create first admin through email/password signup using one address, then verify admin access.
 - [ ] Google accounts may sign up without invitation; valid invitation codes remain optional and are consumed when supplied.
 - [ ] Test signup, login, logout, cookies, Google callback, invitation access, and admin authorization over HTTPS.
@@ -64,6 +65,7 @@ Resolve or consciously accept these before treating the deployment as production
 - [ ] Choose transactional email provider. Configure verified sender/domain, SPF, DKIM, DMARC.
 - [ ] Do not assume SMTP configuration enables application email; current notification delivery code is incomplete. Track this as feature blocker if email alerts are required.
 - [ ] Prefer configuring a production map style URL at build time with `VITE_MAP_STYLE_URL`. If empty, frontend falls back to OpenStreetMap raster tiles; verify OSM tile policy, attribution, and expected traffic first. Frontend values are public; use provider restrictions and attribution.
+- [ ] Venue and preferred-location search load the restricted browser Maps key from authenticated `GET /api/v1/me/maps-config`; verify this endpoint returns `503` when the key is absent and never expose server-only secrets.
 - [ ] VAPID values are currently unused by running server. Do not promise Web Push until provider wiring/retries exist.
 - [ ] Confirm outbound HTTPS access to map provider and Google OAuth endpoints.
 
@@ -156,6 +158,8 @@ SESSION_SECRET=REPLACE_WITH_RANDOM_SECRET
 GOOGLE_CLIENT_ID=REPLACE
 GOOGLE_CLIENT_SECRET=REPLACE
 GOOGLE_REDIRECT_URL=https://your-domain.example/api/v1/auth/google/callback
+GOOGLE_MAPS_API_KEY=REPLACE_WITH_RESTRICTED_BROWSER_KEY
+GOOGLE_MAPS_SECRET=
 ADMIN_EMAILS=owner@example.com
 DEFAULT_CITY_NAME=Curitiba
 DEFAULT_TIMEZONE=America/Sao_Paulo

@@ -119,6 +119,14 @@ paths:
       security: [{ cookieAuth: [] }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VenueInput' } } } }
       responses: { '201': { description: Venue created, content: { application/json: { schema: { $ref: '#/components/schemas/Venue' } } } }, '422': { $ref: '#/components/responses/ValidationError' } }
+  /api/v1/me/maps-config:
+    get:
+      summary: Get restricted Google Maps browser configuration
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { description: Google Maps configuration, content: { application/json: { schema: { $ref: '#/components/schemas/MapsConfig' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { description: Google Maps is not configured }
   /api/v1/me/preferred-areas:
     get: { summary: List current user's preferred areas, security: [{ cookieAuth: [] }], responses: { '200': { description: Preferred areas } } }
     post:
@@ -387,6 +395,11 @@ components:
         lightingStatus: { type: string, enum: [unknown, no_lighting, has_lighting] }
         surfaceType: { type: string, enum: [unknown, sand, grass, hard_court, other] }
         accessType: { type: string, enum: [public, private, paid_entry, unknown] }
+    MapsConfig:
+      type: object
+      required: [googleMapsApiKey]
+      properties:
+        googleMapsApiKey: { type: string }
     AvailabilityRuleInput:
       type: object
       required: [weekday, start, end, timezone, validFrom]

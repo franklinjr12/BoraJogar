@@ -23,7 +23,14 @@ var (
 	validAccess   = map[string]bool{"unknown": true, "public": true, "private": true, "paid_entry": true}
 )
 
-type Handler struct{ DB *pgxpool.Pool }
+type Handler struct {
+	DB               *pgxpool.Pool
+	GoogleMapsAPIKey string
+}
+
+type mapsConfigResponse struct {
+	GoogleMapsAPIKey string `json:"googleMapsApiKey"`
+}
 
 type venue struct {
 	ID             string   `json:"id"`
@@ -73,12 +80,25 @@ func (h Handler) Register(mux *http.ServeMux, requireAuth, requireAdmin func(htt
 	mux.Handle("/api/v1/venues", requireAuth(http.HandlerFunc(h.venues)))
 	mux.Handle("/api/v1/venues/", requireAuth(http.HandlerFunc(h.venueByID)))
 	mux.Handle("/api/v1/me/venues", requireAuth(http.HandlerFunc(h.ownedVenues)))
+	mux.Handle("/api/v1/me/maps-config", requireAuth(http.HandlerFunc(h.mapsConfig)))
 	mux.Handle("/api/v1/me/preferred-areas", requireAuth(http.HandlerFunc(h.preferredAreas)))
 	mux.Handle("/api/v1/me/preferred-areas/", requireAuth(http.HandlerFunc(h.preferredAreaByID)))
 	mux.Handle("/api/v1/me/favorite-venues", requireAuth(http.HandlerFunc(h.favoriteVenues)))
 	mux.Handle("/api/v1/me/favorite-venues/", requireAuth(http.HandlerFunc(h.favoriteVenueByID)))
 	mux.Handle("/api/v1/admin/venues/suggestions", requireAdmin(http.HandlerFunc(h.adminSuggestions)))
 	mux.Handle("/api/v1/admin/venues/suggestions/", requireAdmin(http.HandlerFunc(h.adminSuggestionAction)))
+}
+
+func (h Handler) mapsConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if strings.TrimSpace(h.GoogleMapsAPIKey) == "" {
+		writeError(w, http.StatusServiceUnavailable, "maps_unavailable", "Map search is unavailable.")
+		return
+	}
+	writeJSON(w, http.StatusOK, mapsConfigResponse{GoogleMapsAPIKey: h.GoogleMapsAPIKey})
 }
 
 func currentUser(r *http.Request) (auth.User, bool) { return auth.UserFromContext(r.Context()) }
