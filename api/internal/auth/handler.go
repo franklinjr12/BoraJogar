@@ -280,10 +280,21 @@ func (h Handler) upsertUser(ctx context.Context, profile GoogleProfile, invitati
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return User{}, false, err
 	}
-	var existingEmailUserID uuid.UUID
-	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE lower(email) = lower($1) AND status = 'active' AND deleted_at IS NULL`, profile.Email).Scan(&existingEmailUserID)
+	var existingGoogleSubject *string
+	err = tx.QueryRow(ctx, `SELECT id, google_subject, display_name, email, avatar_url, time_zone, onboarding_completed, is_admin FROM users WHERE lower(email) = lower($1) AND status = 'active' AND deleted_at IS NULL FOR UPDATE`, profile.Email).Scan(&user.ID, &existingGoogleSubject, &user.DisplayName, &user.Email, &user.AvatarURL, &user.TimeZone, &user.OnboardingComplete, &user.IsAdmin)
 	if err == nil {
-		return User{}, false, ErrGoogleEmailAlreadyRegistered
+		if existingGoogleSubject != nil && *existingGoogleSubject != profile.Subject {
+			return User{}, false, ErrGoogleEmailAlreadyRegistered
+		}
+		_, err = tx.Exec(ctx, `UPDATE users SET google_subject = $1, email = $2, display_name = $3, avatar_url = $4, updated_at = now() WHERE id = $5`, profile.Subject, profile.Email, profile.Name, nullable(profile.AvatarURL), user.ID)
+		if err != nil {
+			if isGoogleEmailUniqueViolation(err) {
+				return User{}, false, ErrGoogleEmailAlreadyRegistered
+			}
+			return User{}, false, err
+		}
+		user.Email, user.DisplayName, user.AvatarURL = profile.Email, profile.Name, nullable(profile.AvatarURL)
+		return user, false, tx.Commit(ctx)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return User{}, false, err

@@ -3,6 +3,7 @@ package auth
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -89,4 +90,30 @@ func TestStartGoogleClearsStaleInvitationWithoutCode(t *testing.T) {
 		}
 	}
 	t.Fatal("expected stale invitation cookie deletion")
+}
+
+func TestStartGoogleUsesConfiguredClientAndRedirect(t *testing.T) {
+	h := Handler{Google: GoogleHTTPClient{ClientID: "production-client-id"}, RedirectURL: "https://borajogar.hobbyserver.com.br/api/v1/auth/google/callback"}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/google?returnTo=%2Fgames%2Fgame-id%3Faccess%3Dtoken", nil)
+	res := httptest.NewRecorder()
+	h.startGoogle(res, req)
+
+	location, err := url.Parse(res.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := location.Query().Get("client_id"); got != "production-client-id" {
+		t.Fatalf("client_id = %q", got)
+	}
+	if got := location.Query().Get("redirect_uri"); got != h.RedirectURL {
+		t.Fatalf("redirect_uri = %q", got)
+	}
+	if got := location.Query().Get("state"); got == "" {
+		t.Fatal("missing OAuth state")
+	}
+	for _, cookie := range res.Result().Cookies() {
+		if cookie.Name == returnToCookie && cookie.Value != "%2Fgames%2Fgame-id%3Faccess%3Dtoken" {
+			t.Fatalf("returnTo cookie = %q", cookie.Value)
+		}
+	}
 }

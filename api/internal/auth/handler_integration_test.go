@@ -175,7 +175,7 @@ func TestGoogleInvalidInvitationRollsBackIntegration(t *testing.T) {
 	}
 }
 
-func TestGoogleUserRejectsExistingEmailAccountIntegration(t *testing.T) {
+func TestGoogleUserLinksExistingEmailAccountIntegration(t *testing.T) {
 	h, db := integrationAuthHandler(t)
 	ctx := context.Background()
 	profile := integrationGoogleProfile("existing-email")
@@ -185,8 +185,19 @@ func TestGoogleUserRejectsExistingEmailAccountIntegration(t *testing.T) {
 	if _, err := h.createEmailUser(ctx, emailAuthInput{Email: profile.Email, Password: "password", DisplayName: "Email Player"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, created, err := h.upsertUser(ctx, profile, ""); err != ErrGoogleEmailAlreadyRegistered || created {
+	linked, created, err := h.upsertUser(ctx, profile, "")
+	if err != nil || created {
 		t.Fatalf("upsert with existing email: created=%t err=%v", created, err)
+	}
+	var googleSubject *string
+	if err := db.QueryRow(ctx, `SELECT google_subject FROM users WHERE email = $1`, profile.Email).Scan(&googleSubject); err != nil {
+		t.Fatal(err)
+	}
+	if googleSubject == nil || *googleSubject != profile.Subject {
+		t.Fatalf("google_subject = %v, want %q", googleSubject, profile.Subject)
+	}
+	if linked.Email != profile.Email || linked.DisplayName != profile.Name {
+		t.Fatalf("linked user = %+v", linked)
 	}
 }
 

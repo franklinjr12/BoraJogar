@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -45,6 +46,19 @@ func Load() (Config, error) {
 			if strings.TrimSpace(field) == "" {
 				return Config{}, fmt.Errorf("%s is required in production", key)
 			}
+		}
+		for key, field := range map[string]string{"GOOGLE_CLIENT_ID": cfg.GoogleClientID, "GOOGLE_CLIENT_SECRET": cfg.GoogleClientSecret, "GOOGLE_REDIRECT_URL": cfg.GoogleRedirectURL} {
+			if strings.TrimSpace(field) == "" {
+				return Config{}, fmt.Errorf("%s is required in production", key)
+			}
+		}
+		baseURL, err := url.Parse(cfg.BaseURL)
+		if err != nil || baseURL.Scheme != "https" || baseURL.Host == "" {
+			return Config{}, errors.New("APP_BASE_URL must be an HTTPS URL in production")
+		}
+		redirectURL, err := url.Parse(cfg.GoogleRedirectURL)
+		if err != nil || redirectURL.Scheme != "https" || redirectURL.Host == "" {
+			return Config{}, errors.New("GOOGLE_REDIRECT_URL must be an HTTPS URL in production")
 		}
 	}
 	if cfg.MatchLookaheadDays < 1 || cfg.MatchDefaultDurationMinutes < 1 || cfg.MatchDefaultPlayerCount < 2 || cfg.MatchSlotIncrementMinutes < 1 || cfg.MatchMaxSkillDifference < 0 || cfg.MatchMinimumNoticeMinutes < 0 || cfg.MatchProposalExpirationHours < 1 || cfg.MatchMaxProposalsPerUserPerDay < 1 || cfg.MatchRecentPairingLookbackDays < 0 {

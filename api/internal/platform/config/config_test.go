@@ -70,15 +70,68 @@ func TestLoad(t *testing.T) {
 
 func TestLoadRequiresSMTPConfigurationInProduction(t *testing.T) {
 	t.Setenv("APP_ENV", "production")
+	t.Setenv("APP_BASE_URL", "https://borajogar.example")
 	t.Setenv("APP_PORT", "8080")
 	t.Setenv("DATABASE_URL", "postgres://example")
 	t.Setenv("SESSION_SECRET", "12345678901234567890123456789012")
+	t.Setenv("GOOGLE_CLIENT_ID", "client-id")
+	t.Setenv("GOOGLE_CLIENT_SECRET", "client-secret")
+	t.Setenv("GOOGLE_REDIRECT_URL", "https://borajogar.example/api/v1/auth/google/callback")
 	t.Setenv("SMTP_HOST", "")
 	t.Setenv("SMTP_USERNAME", "")
 	t.Setenv("SMTP_PASSWORD", "")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected production SMTP configuration error")
+	}
+}
+
+func TestLoadRequiresGoogleConfigurationInProduction(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("APP_BASE_URL", "https://borajogar.example")
+	t.Setenv("APP_PORT", "8080")
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("SESSION_SECRET", "12345678901234567890123456789012")
+	t.Setenv("GOOGLE_CLIENT_ID", "")
+	t.Setenv("GOOGLE_CLIENT_SECRET", "")
+	t.Setenv("GOOGLE_REDIRECT_URL", "http://localhost:8080/api/v1/auth/google/callback")
+	t.Setenv("SMTP_HOST", "smtp.example")
+	t.Setenv("SMTP_USERNAME", "username")
+	t.Setenv("SMTP_PASSWORD", "password")
+	t.Setenv("SMTP_FROM_ADDRESS", "no-reply@example.com")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected production Google OAuth configuration error")
+	}
+}
+
+func TestLoadRejectsNonHTTPSProductionURLs(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		baseURL     string
+		redirectURL string
+	}{
+		{name: "base URL", baseURL: "http://borajogar.example", redirectURL: "https://borajogar.example/api/v1/auth/google/callback"},
+		{name: "redirect URL", baseURL: "https://borajogar.example", redirectURL: "http://borajogar.example/api/v1/auth/google/callback"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("APP_ENV", "production")
+			t.Setenv("APP_BASE_URL", test.baseURL)
+			t.Setenv("APP_PORT", "8080")
+			t.Setenv("DATABASE_URL", "postgres://example")
+			t.Setenv("SESSION_SECRET", "12345678901234567890123456789012")
+			t.Setenv("GOOGLE_CLIENT_ID", "client-id")
+			t.Setenv("GOOGLE_CLIENT_SECRET", "client-secret")
+			t.Setenv("GOOGLE_REDIRECT_URL", test.redirectURL)
+			t.Setenv("SMTP_HOST", "smtp.example")
+			t.Setenv("SMTP_USERNAME", "username")
+			t.Setenv("SMTP_PASSWORD", "password")
+			t.Setenv("SMTP_FROM_ADDRESS", "no-reply@example.com")
+
+			if _, err := Load(); err == nil {
+				t.Fatal("expected production HTTPS URL error")
+			}
+		})
 	}
 }
 
