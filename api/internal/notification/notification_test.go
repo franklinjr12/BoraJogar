@@ -40,6 +40,42 @@ func TestEndpointHashNotPlaintext(t *testing.T) {
 	}
 }
 
+func TestEventJSONUsesAPIFieldNames(t *testing.T) {
+	actionURL := "/games/game-1"
+	readAt := time.Date(2026, 8, 9, 14, 33, 12, 0, time.UTC)
+	createdAt := time.Date(2026, 8, 9, 13, 52, 37, 0, time.UTC)
+	event := Event{
+		ID:        uuid.MustParse("db836ee4-b539-407a-9fbb-02d4f3861d83"),
+		UserID:    uuid.MustParse("8954a0bb-6a0d-4e8e-a245-e1f0de92a595"),
+		Type:      AttendanceRequested,
+		Title:     "Record attendance",
+		Body:      "Your game is complete. Record player attendance.",
+		ActionURL: &actionURL,
+		Payload:   json.RawMessage(`{"gameId":"game-1"}`),
+		ReadAt:    &readAt,
+		CreatedAt: &createdAt,
+	}
+
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"id", "userId", "type", "title", "body", "actionUrl", "payload", "readAt", "createdAt"} {
+		if _, ok := fields[name]; !ok {
+			t.Errorf("missing API field %q in %s", name, encoded)
+		}
+	}
+	for _, name := range []string{"ID", "UserID", "Type", "Title", "Body", "ActionURL", "Payload", "ReadAt", "CreatedAt"} {
+		if _, ok := fields[name]; ok {
+			t.Errorf("unexpected Go field %q in %s", name, encoded)
+		}
+	}
+}
+
 func TestReminderTimesReturnsNoPastReminders(t *testing.T) {
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	if got := ReminderTimes(now.Add(time.Hour), now); len(got) != 0 {

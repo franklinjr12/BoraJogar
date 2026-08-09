@@ -132,9 +132,9 @@ export interface Notification {
   type: string;
   title: string;
   body: string;
-  actionUrl?: string;
+  actionUrl: string | null;
   payload: Record<string, unknown>;
-  readAt?: string;
+  readAt: string | null;
   createdAt: string;
 }
 export interface NotificationPage {

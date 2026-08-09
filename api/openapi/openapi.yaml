@@ -542,7 +542,7 @@ components:
         matchmakingValue: { type: number, format: double }
     Notification:
       type: object
-      required: [id, userId, type, title, body, payload, createdAt]
+      required: [id, userId, type, title, body, actionUrl, payload, readAt, createdAt]
       properties:
         id: { type: string, format: uuid }
         userId: { type: string, format: uuid }
@@ -553,6 +553,16 @@ components:
         payload: { type: object, additionalProperties: true }
         readAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
+      example:
+        id: db836ee4-b539-407a-9fbb-02d4f3861d83
+        userId: 8954a0bb-6a0d-4e8e-a245-e1f0de92a595
+        type: attendance_requested
+        title: Record attendance
+        body: Your game is complete. Record player attendance.
+        actionUrl: /games/0d3f5170-e3d2-44ac-8426-0dcdbbdaf044/attendance
+        payload: { gameId: 0d3f5170-e3d2-44ac-8426-0dcdbbdaf044 }
+        readAt: '2026-08-09T14:33:12.430505Z'
+        createdAt: '2026-08-09T13:52:37.136347Z'
     PageMeta:
       type: object
       required: [page, pageSize, hasMore]

@@ -38,12 +38,15 @@ const (
 )
 
 type Event struct {
-	ID, UserID        uuid.UUID
-	Type              Type
-	Title, Body       string
-	ActionURL         *string
-	Payload           json.RawMessage
-	ReadAt, CreatedAt *time.Time
+	ID        uuid.UUID       `json:"id"`
+	UserID    uuid.UUID       `json:"userId"`
+	Type      Type            `json:"type"`
+	Title     string          `json:"title"`
+	Body      string          `json:"body"`
+	ActionURL *string         `json:"actionUrl"`
+	Payload   json.RawMessage `json:"payload"`
+	ReadAt    *time.Time      `json:"readAt"`
+	CreatedAt *time.Time      `json:"createdAt"`
 }
 type Delivery struct {
 	ID, EventID                          uuid.UUID
