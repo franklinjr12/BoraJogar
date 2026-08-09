@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VenueForm } from './VenueForm';
@@ -38,7 +38,6 @@ const maplibreMock = vi.hoisted(() => {
   }
   return { instances, Map: MockMap, Marker: MockMarker, NavigationControl: vi.fn() };
 });
-
 vi.mock('maplibre-gl', () => ({
   default: {
     Map: maplibreMock.Map,
@@ -68,26 +67,7 @@ describe('VenueForm', () => {
   beforeEach(() => {
     maplibreMock.instances.length = 0;
     googleMapsMock.loadGoogleMaps.mockRejectedValue(new Error('Google Maps unavailable'));
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((url: string | URL) => {
-        if (String(url).includes('nominatim.openstreetmap.org/search')) {
-          return response([
-            {
-              place_id: 1,
-              display_name: 'Rua XV de Novembro, Curitiba',
-              lat: '-25.43',
-              lon: '-49.27',
-              address: { city: 'Curitiba' },
-            },
-          ]);
-        }
-        return response({
-          display_name: 'Rua XV, Curitiba',
-          address: { road: 'Rua XV de Novembro', house_number: '100', city: 'Curitiba' },
-        });
-      }),
-    );
+    vi.stubGlobal('fetch', vi.fn(() => response({})));
   });
 
   afterEach(() => {
@@ -96,43 +76,13 @@ describe('VenueForm', () => {
     vi.unstubAllGlobals();
   });
 
-  it('searches manually entered address after blur, then pins selection', async () => {
-    const onChange = vi.fn();
-    const fetchMock = vi.fn(() =>
-      response([
-        {
-          place_id: 1,
-          display_name: 'Rua XV de Novembro, Curitiba',
-          lat: '-25.43',
-          lon: '-49.27',
-          address: {
-            road: 'Rua XV de Novembro',
-            house_number: '100',
-            city: 'Curitiba',
-          },
-        },
-      ]),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-    render(<Harness onChange={onChange} />);
+  it('does not render manual address or city search fields', async () => {
+    render(<Harness onChange={vi.fn()} />);
     await waitFor(() => expect(maplibreMock.instances.length).toBe(1));
-    fetchMock.mockClear();
 
-    const addressInput = screen.getByLabelText(/quadra/i);
-    fireEvent.change(addressInput, { target: { value: 'Rua XV' } });
-    fireEvent.blur(addressInput);
-
-    const suggestion = await screen.findByRole('option', { name: /Rua XV de Novembro/i });
-    fireEvent.click(suggestion);
-
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        addressLabel: 'Rua XV de Novembro, 100',
-        city: 'Curitiba',
-        point: { latitude: -25.43, longitude: -49.27 },
-        addressConfirmed: true,
-      }),
-    );
+    expect(screen.getByText(/pesquisar local no google maps/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/endereço da quadra/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/pesquisa de cidade/i)).not.toBeInTheDocument();
   });
 
   it('uses Google place selection to fill venue details', async () => {
@@ -202,7 +152,7 @@ describe('VenueForm', () => {
     });
   });
 
-  it('reverse geocodes map click into address and city', async () => {
+  it('keeps map-picked coordinates unconfirmed until Google place selection', async () => {
     const onChange = vi.fn();
     render(<Harness onChange={onChange} />);
     await waitFor(() => expect(maplibreMock.instances.length).toBe(1));
@@ -212,13 +162,11 @@ describe('VenueForm', () => {
     await waitFor(() =>
       expect(onChange).toHaveBeenCalledWith(
         expect.objectContaining({
-          city: 'Curitiba',
-          addressLabel: 'Rua XV de Novembro, 100',
           point: { latitude: -25.44, longitude: -49.28 },
-          addressConfirmed: true,
+          addressConfirmed: false,
         }),
       ),
     );
-    expect(await screen.findByText(/preenchido pelo mapa/i)).toBeInTheDocument();
+    expect(await screen.findByText(/pesquise o local no Google Maps/i)).toBeInTheDocument();
   });
 });

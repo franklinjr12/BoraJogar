@@ -5,7 +5,7 @@ import { locationApi, type PreferredArea, type Venue } from '../../api/client';
 import { requestBrowserLocation, type LocationMessages } from './browserLocation';
 import { GooglePlaceSearch } from './GooglePlaceSearch';
 import { resolveMapStyle } from './mapStyle';
-import { searchPlaces, type PlaceSearchResult } from './placeSearch';
+import type { PlaceSearchResult } from './googlePlace';
 
 const defaultCenter = { latitude: -25.4284, longitude: -49.2733 };
 const locationMessages: LocationMessages = {
@@ -145,13 +145,6 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [areaSearchOpen, setAreaSearchOpen] = useState(false);
-  const [areaSearchTouched, setAreaSearchTouched] = useState(false);
-  const [areaQuery, setAreaQuery] = useState('');
-  const [areaResults, setAreaResults] = useState<PlaceSearchResult[]>([]);
-  const [areaSearching, setAreaSearching] = useState(false);
-  const areaSearchInput = useRef<HTMLInputElement>(null);
-  const areaSearchSequence = useRef(0);
-  const areaSearchController = useRef<AbortController | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -174,50 +167,6 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
     void load();
   }, []);
-
-  useEffect(() => {
-    if (areaSearchOpen) areaSearchInput.current?.focus();
-  }, [areaSearchOpen]);
-
-  useEffect(() => {
-    areaSearchController.current?.abort();
-    setAreaResults([]);
-    if (!areaSearchOpen || !areaSearchTouched) return;
-    if (areaQuery.trim().length < 3) {
-      setAreaSearching(false);
-      return;
-    }
-
-    const sequence = areaSearchSequence.current + 1;
-    areaSearchSequence.current = sequence;
-    const controller = new AbortController();
-    areaSearchController.current = controller;
-    const timeout = window.setTimeout(() => {
-      setAreaSearching(true);
-      searchPlaces(areaQuery, { signal: controller.signal })
-        .then((matches) => {
-          if (sequence !== areaSearchSequence.current) return;
-          setAreaResults(matches);
-          setMessage(
-            matches.length > 0
-              ? 'Escolha uma área da lista.'
-              : 'Bairro ou endereço não encontrado.',
-          );
-        })
-        .catch((cause: unknown) => {
-          if (cause instanceof DOMException && cause.name === 'AbortError') return;
-          setMessage('Não foi possível pesquisar a área. Tente novamente em instantes.');
-        })
-        .finally(() => {
-          if (sequence === areaSearchSequence.current) setAreaSearching(false);
-        });
-    }, 350);
-
-    return () => {
-      window.clearTimeout(timeout);
-      controller.abort();
-    };
-  }, [areaQuery, areaSearchOpen, areaSearchTouched]);
 
   const favoriteIds = new Set(favorites.map((venue) => venue.id));
   const savedLocations = favorites.length + areas.length;
@@ -250,7 +199,6 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
 
   const chooseMap = () => {
     setAreaSearchOpen(false);
-    setAreaResults([]);
     setMessage('Mova o mapa ou clique em um ponto para escolher uma área.');
   };
 
@@ -258,9 +206,6 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
     const rounded = roundPoint({ latitude: place.latitude, longitude: place.longitude });
     setPoint(rounded);
     setLabel(`Perto de ${place.city}`);
-    setAreaQuery(place.displayName);
-    setAreaSearchTouched(false);
-    setAreaResults([]);
     setMessage(`Área selecionada: ${place.city}.`);
   };
 
@@ -428,7 +373,7 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
               Usar minha localização atual
             </button>
             <button className="text-button" type="button" onClick={openAreaSearch}>
-              Pesquisar um bairro ou endereço
+              Pesquisar no Google Maps
             </button>
             <button className="text-button" type="button" onClick={chooseMap}>
               Escolher diretamente no mapa
@@ -445,44 +390,11 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
                   onUnavailable={() =>
                     setMessage(
                       (current) =>
-                        current || 'Pesquisa Google indisponível. Use a busca alternativa abaixo.',
+                        current || 'Pesquisa Google indisponível. Tente novamente ou escolha no mapa.',
                     )
                   }
                 />
               </label>
-              <label>
-                Pesquisa de bairro ou endereço
-                <input
-                  ref={areaSearchInput}
-                  type="search"
-                  autoComplete="off"
-                  value={areaQuery}
-                  onChange={(event) => {
-                    setAreaSearchTouched(true);
-                    setAreaQuery(event.target.value);
-                  }}
-                  placeholder="Batel, Curitiba"
-                />
-              </label>
-              {areaSearching && <p className="hint">Pesquisando área...</p>}
-              {areaResults.length > 0 && (
-                <div className="place-results" role="listbox" aria-label="Resultados de áreas">
-                  {areaResults.map((result) => (
-                    <button
-                      className="place-result"
-                      key={result.id}
-                      type="button"
-                      role="option"
-                      onClick={() => selectAreaPlace(result)}
-                    >
-                      <strong>{result.displayName}</strong>
-                      <span>
-                        {result.latitude.toFixed(3)}, {result.longitude.toFixed(3)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
             </>
           )}
           <MapPanel

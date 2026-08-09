@@ -3,6 +3,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CreateGamePage, GameDetailsPage, GamesPage } from './GamesPage';
 
+const googleMapsMock = vi.hoisted(() => ({ loadGoogleMaps: vi.fn() }));
+vi.mock('../locations/googleMaps', () => googleMapsMock);
+
 const futureGameDate = '2099-08-01';
 
 function todayForDateInput() {
@@ -177,26 +180,6 @@ describe('CreateGamePage', () => {
     };
     const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
       const requestUrl = String(url);
-      if (requestUrl.includes('geocoding-api.open-meteo.com')) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              results: [
-                {
-                  id: 123,
-                  name: 'Sao Paulo',
-                  admin1: 'Sao Paulo',
-                  country: 'Brasil',
-                  latitude: -23.5,
-                  longitude: -46.6,
-                  timezone: 'America/Sao_Paulo',
-                },
-              ],
-            }),
-            { status: 200 },
-          ),
-        );
-      }
       if (requestUrl.includes('/api/v1/me/venues')) {
         return Promise.resolve(new Response(JSON.stringify(createdVenue), { status: 201 }));
       }
@@ -206,6 +189,28 @@ describe('CreateGamePage', () => {
       return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
     });
     vi.stubGlobal('fetch', fetchMock);
+    const autocompleteInstances: Array<{ emit: (event: Event) => void }> = [];
+    class MockAutocomplete extends HTMLElement {
+      private listener?: EventListener;
+
+      constructor() {
+        super();
+        autocompleteInstances.push({ emit: (event) => this.listener?.(event) });
+      }
+
+      addEventListener(type: string, listener: EventListenerOrEventListenerObject): void {
+        if (type === 'gmp-select' && typeof listener === 'function') this.listener = listener;
+      }
+    }
+    class MockSelectEvent extends Event {
+      constructor(public placePrediction: { toPlace: () => typeof place }) {
+        super('gmp-select');
+      }
+    }
+    customElements.define('gmp-place-autocomplete', MockAutocomplete);
+    googleMapsMock.loadGoogleMaps.mockResolvedValue({
+      places: { PlaceAutocompleteElement: MockAutocomplete },
+    });
     render(
       <MemoryRouter initialEntries={['/games/new']}>
         <CreateGamePage />
@@ -222,9 +227,17 @@ describe('CreateGamePage', () => {
     fireEvent.change(screen.getByLabelText(/nome personalizado/i), {
       target: { value: 'Nova Quadra' },
     });
-    fireEvent.change(screen.getByLabelText(/endereço da quadra/i), {
-      target: { value: 'Rua das Areias, 10' },
-    });
+    await waitFor(() => expect(autocompleteInstances).toHaveLength(1));
+    const place = {
+      id: 'google-place-1',
+      displayName: 'Nova Quadra',
+      formattedAddress: 'Rua das Areias, 10, Sao Paulo - SP',
+      addressComponents: [{ types: ['administrative_area_level_2'], longText: 'Sao Paulo' }],
+      location: { lat: () => -23.5, lng: () => -46.6 },
+      fetchFields: vi.fn(),
+    };
+    autocompleteInstances[0]?.emit(new MockSelectEvent({ toPlace: () => place }));
+    await waitFor(() => expect(place.fetchFields).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: /^criar partida$/i }));
 
     await waitFor(() =>
@@ -232,7 +245,7 @@ describe('CreateGamePage', () => {
         '/api/v1/me/venues',
         expect.objectContaining({
           method: 'POST',
-          body: expect.stringContaining('"city":"Curitiba"'),
+          body: expect.stringContaining('"city":"Sao Paulo"'),
         }),
       ),
     );

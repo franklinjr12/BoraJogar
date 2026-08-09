@@ -1,4 +1,12 @@
-import type { PlaceSearchResult } from './placeSearch';
+export interface PlaceSearchResult {
+  id: string;
+  displayName: string;
+  addressLabel?: string;
+  city: string;
+  latitude: number;
+  longitude: number;
+  timezone?: string;
+}
 
 function componentText(
   components: google.maps.places.AddressComponent[] | undefined,

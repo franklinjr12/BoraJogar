@@ -155,7 +155,7 @@ export function CreateGamePage() {
       : '';
     if (!gameVenueId) {
       if (!selectedArea && !venueDraftReady(venueDraft)) {
-        setError('Informe o nome e a cidade do local ou escolha um local salvo.');
+        setError('Informe o nome e selecione um local no Google Maps ou escolha um local salvo.');
         return;
       }
       try {
@@ -170,7 +170,7 @@ export function CreateGamePage() {
         setError(
           cause instanceof ApiError
             ? `Não foi possível criar o local: ${cause.message}`
-            : 'Não foi possível criar o local. Verifique nome, cidade e endereço.',
+            : 'Não foi possível criar o local. Verifique o nome e a seleção no Google Maps.',
         );
         return;
       }

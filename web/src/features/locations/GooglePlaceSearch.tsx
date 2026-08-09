@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { loadGoogleMaps } from './googleMaps';
 import { googlePlaceToSearchResult } from './googlePlace';
-import type { PlaceSearchResult } from './placeSearch';
+import type { PlaceSearchResult } from './googlePlace';
 
 export function GooglePlaceSearch({
   point,
@@ -78,6 +78,6 @@ export function GooglePlaceSearch({
   }, [placeholder, point.latitude, point.longitude]);
 
   if (failed)
-    return <p className="hint">Pesquisa Google indisponível. Informe o local manualmente.</p>;
+    return <p className="hint">Pesquisa Google indisponível. Tente novamente ou escolha no mapa.</p>;
   return <div ref={node} className="google-place-search" />;
 }

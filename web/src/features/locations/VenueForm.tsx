@@ -11,18 +11,18 @@ import {
   venueDraftReady,
   type VenueDraft,
 } from './venueDraft';
-import { reverseGeocode, searchAddress, searchPlaces, type PlaceSearchResult } from './placeSearch';
+import type { PlaceSearchResult } from './googlePlace';
 
 const locationMessages: LocationMessages = {
-  unavailable: 'A permissão de localização está indisponível. Pesquise por cidade.',
+  unavailable: 'A permissão de localização está indisponível. Pesquise o local no Google Maps.',
   insecure:
     'A localização exige HTTPS em navegadores de celular. Use HTTPS local e tente novamente.',
   denied:
     'A permissão de localização está bloqueada. Ative-a nas configurações do navegador e tente novamente.',
   positionUnavailable:
-    'Não foi possível encontrar a localização do seu dispositivo. Pesquise por cidade.',
-  timeout: 'A busca pela sua localização expirou. Pesquise por cidade.',
-  unknown: 'Não foi possível usar sua localização atual. Pesquise por cidade.',
+    'Não foi possível encontrar a localização do seu dispositivo. Pesquise o local no Google Maps.',
+  timeout: 'A busca pela sua localização expirou. Pesquise o local no Google Maps.',
+  unknown: 'Não foi possível usar sua localização atual. Pesquise o local no Google Maps.',
 };
 
 type Point = { latitude: number; longitude: number };
@@ -166,7 +166,7 @@ function MapLibreMapPicker({
   }, [point.latitude, point.longitude]);
 
   if (!style || mapFailed)
-    return <p className="map-inline-hint">Mapa indisponível. Informe o endereço manualmente.</p>;
+    return <p className="map-inline-hint">Mapa indisponível. Pesquise o local no Google Maps.</p>;
   return <div ref={node} className="map-panel compact-map" aria-label="Escolher local no mapa" />;
 }
 
@@ -189,15 +189,6 @@ export function VenueForm({
   buttonLabel?: string;
 }) {
   const [message, setMessage] = useState('');
-  const [results, setResults] = useState<PlaceSearchResult[]>([]);
-  const [addressResults, setAddressResults] = useState<PlaceSearchResult[]>([]);
-  const [cityQuery, setCityQuery] = useState(draft.city);
-  const [citySearchTouched, setCitySearchTouched] = useState(false);
-  const [searching, setSearching] = useState(false);
-  const [addressSearching, setAddressSearching] = useState(false);
-  const searchSequence = useRef(0);
-  const searchController = useRef<AbortController | null>(null);
-  const addressController = useRef<AbortController | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const update = <K extends keyof VenueDraft>(key: K, value: VenueDraft[K]) =>
@@ -212,65 +203,11 @@ export function VenueForm({
       point: { latitude: place.latitude, longitude: place.longitude },
       addressConfirmed: true,
     });
-    setCityQuery(place.city);
-    setCitySearchTouched(false);
-    setResults([]);
     setMessage('Local encontrado no Google Maps. Confira os dados antes de salvar.');
   };
-  const selectAddress = (place: PlaceSearchResult) => {
-    const currentDraft = draftRef.current;
-    onChange({
-      ...currentDraft,
-      addressLabel: place.addressLabel ?? place.displayName,
-      city: place.city,
-      point: { latitude: place.latitude, longitude: place.longitude },
-      addressConfirmed: true,
-    });
-    setAddressResults([]);
-    setCityQuery(place.city);
-    setCitySearchTouched(false);
-    setMessage('Endereço marcado no mapa.');
-  };
-  const searchAddressForDraft = async () => {
-    const currentDraft = draftRef.current;
-    if (currentDraft.addressLabel.trim().length < 4) return;
-    addressController.current?.abort();
-    const controller = new AbortController();
-    addressController.current = controller;
-    setAddressSearching(true);
-    try {
-      const matches = await searchAddress(`${currentDraft.addressLabel}, ${currentDraft.city}`, {
-        signal: controller.signal,
-      });
-      setAddressResults(matches);
-      setMessage(matches.length > 0 ? 'Escolha um endereço da lista.' : 'Endereço não encontrado.');
-    } catch (cause: unknown) {
-      if (cause instanceof DOMException && cause.name === 'AbortError') return;
-      setMessage('Não foi possível pesquisar o endereço. Tente novamente em instantes.');
-    } finally {
-      if (addressController.current === controller) setAddressSearching(false);
-    }
-  };
-  const selectMapPoint = async (point: Point) => {
+  const selectMapPoint = (point: Point) => {
     onChange({ ...draftRef.current, point, addressConfirmed: false });
-    try {
-      const result = await reverseGeocode(point);
-      if (!result) {
-        setMessage('Ponto marcado no mapa. Informe o endereço da quadra.');
-        return;
-      }
-      onChange({
-        ...draftRef.current,
-        point,
-        city: result.city,
-        addressLabel: result.addressLabel,
-        addressConfirmed: true,
-      });
-      setCityQuery(result.city);
-      setMessage('Endereço preenchido pelo mapa.');
-    } catch {
-      setMessage('Ponto marcado no mapa. Informe o endereço da quadra.');
-    }
+    setMessage('Ponto marcado no mapa. Pesquise o local no Google Maps.');
   };
   const useCurrentLocation = async () => {
     const result = await requestBrowserLocation(locationMessages);
@@ -284,66 +221,12 @@ export function VenueForm({
       point: { latitude: result.latitude, longitude: result.longitude },
       addressConfirmed: false,
     });
-    setMessage('Ponto definido pelo seu dispositivo. Pesquise o local ou informe o endereço.');
-  };
-  useEffect(() => {
-    searchController.current?.abort();
-    setResults([]);
-    if (!citySearchTouched) return;
-    if (cityQuery.trim().length < 3) {
-      setSearching(false);
-      return;
-    }
-    const sequence = searchSequence.current + 1;
-    searchSequence.current = sequence;
-    const controller = new AbortController();
-    searchController.current = controller;
-    const timeout = window.setTimeout(() => {
-      setSearching(true);
-      searchPlaces(cityQuery, { signal: controller.signal })
-        .then((matches) => {
-          if (sequence !== searchSequence.current) return;
-          setResults(matches);
-          setMessage(
-            matches.length > 0 ? 'Escolha uma cidade da lista.' : 'Cidade não encontrada.',
-          );
-        })
-        .catch((cause: unknown) => {
-          if (cause instanceof DOMException && cause.name === 'AbortError') return;
-          setMessage('Não foi possível pesquisar a cidade. Tente novamente em instantes.');
-        })
-        .finally(() => {
-          if (sequence === searchSequence.current) setSearching(false);
-        });
-    }, 350);
-    return () => {
-      window.clearTimeout(timeout);
-      controller.abort();
-    };
-  }, [cityQuery, citySearchTouched]);
-  useEffect(
-    () => () => {
-      searchController.current?.abort();
-      addressController.current?.abort();
-    },
-    [],
-  );
-  const selectPlace = (place: PlaceSearchResult) => {
-    onChange({
-      ...draft,
-      city: place.city,
-      point: { latitude: place.latitude, longitude: place.longitude },
-      addressConfirmed: false,
-    });
-    setCityQuery(place.displayName);
-    setCitySearchTouched(false);
-    setResults([]);
-    setMessage(`Cidade selecionada: ${place.city}.`);
+    setMessage('Ponto definido pelo seu dispositivo. Pesquise o local no Google Maps.');
   };
   const save = async () => {
     setMessage('');
     if (!venueDraftReady(draft)) {
-      setMessage('Informe um nome e o endereço da quadra, depois pesquise e selecione um local.');
+      setMessage('Informe um nome e selecione um local no Google Maps.');
       return;
     }
     try {
@@ -355,7 +238,7 @@ export function VenueForm({
       setMessage(
         cause instanceof ApiError
           ? `Não foi possível criar o local: ${cause.message}`
-          : 'Não foi possível criar o local. Verifique nome, cidade e endereço.',
+          : 'Não foi possível criar o local. Verifique o nome e selecione um local no Google Maps.',
       );
     }
   };
@@ -377,72 +260,11 @@ export function VenueForm({
           onUnavailable={() =>
             setMessage(
               (current) =>
-                current || 'Pesquisa Google indisponível. Você pode informar o local manualmente.',
+                current || 'Pesquisa Google indisponível. Tente novamente ou escolha no mapa.',
             )
           }
         />
       </label>
-      <label>
-        Endereço da quadra
-        <input
-          value={draft.addressLabel}
-          onChange={(event) =>
-            onChange({ ...draft, addressLabel: event.target.value, addressConfirmed: false })
-          }
-          onBlur={() => void searchAddressForDraft()}
-          placeholder="Av. Atlantica, 100"
-        />
-      </label>
-      {addressSearching && <p className="hint">Pesquisando endereço...</p>}
-      {addressResults.length > 0 && (
-        <div className="place-results" role="listbox" aria-label="Sugestões de endereços">
-          {addressResults.map((result) => (
-            <button
-              className="place-result"
-              key={result.id}
-              type="button"
-              role="option"
-              onClick={() => selectAddress(result)}
-            >
-              <strong>{result.addressLabel ?? result.displayName}</strong>
-              <span>{result.city}</span>
-            </button>
-          ))}
-        </div>
-      )}
-      <label>
-        Pesquisa de cidade
-        <input
-          type="search"
-          autoComplete="off"
-          value={cityQuery}
-          onChange={(event) => {
-            setCitySearchTouched(true);
-            setCityQuery(event.target.value);
-            onChange({ ...draft, city: event.target.value, addressConfirmed: false });
-          }}
-          placeholder="Curitiba"
-        />
-      </label>
-      {searching && <p className="hint">Pesquisando cidade...</p>}
-      {results.length > 0 && (
-        <div className="place-results" role="listbox" aria-label="Resultados de cidades">
-          {results.map((result) => (
-            <button
-              className="place-result"
-              key={result.id}
-              type="button"
-              role="option"
-              onClick={() => selectPlace(result)}
-            >
-              <strong>{result.displayName}</strong>
-              <span>
-                {result.latitude.toFixed(3)}, {result.longitude.toFixed(3)}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
       {draft.addressConfirmed && <p className="hint">Cidade selecionada: {draft.city}</p>}
       <MapPicker point={draft.point} onSelect={(point) => void selectMapPoint(point)} />
       <button className="text-button" type="button" onClick={useCurrentLocation}>

@@ -46,7 +46,6 @@ const maplibreMock = vi.hoisted(() => {
     NavigationControl: vi.fn(),
   };
 });
-
 vi.mock('maplibre-gl', () => ({
   default: {
     Map: maplibreMock.Map,
@@ -279,7 +278,7 @@ describe('locations page', () => {
     expect(await screen.findByText(/ative-a nas configurações do navegador/i)).toBeInTheDocument();
   });
 
-  it('keeps search fallback available when geolocation is missing', async () => {
+  it('uses Google search without alternate address search when geolocation is missing', async () => {
     vi.stubGlobal('navigator', { ...navigator, geolocation: undefined });
     vi.stubGlobal(
       'fetch',
@@ -298,12 +297,10 @@ describe('locations page', () => {
     await screen.findByText(/escolha onde você poderia jogar/i);
     fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
     fireEvent.click(screen.getByRole('button', { name: /usar minha localização atual/i }));
-    fireEvent.click(screen.getByRole('button', { name: /pesquisar um bairro ou endereço/i }));
-
-    expect(
-      await screen.findByText(/a localização do navegador está indisponível/i),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText(/pesquisa de bairro ou endereço/i)).toBeInTheDocument();
+    expect(await screen.findByText(/a localização do navegador está indisponível/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /pesquisar no google maps/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/pesquisa google indisponível/i);
+    expect(screen.queryByLabelText(/pesquisa de bairro ou endereço/i)).not.toBeInTheDocument();
   });
 
   it('renders the dev map fallback when no map style URL is configured', async () => {
@@ -350,80 +347,6 @@ describe('locations page', () => {
     maplibreMock.instances[0]?.handlers.error?.();
 
     expect(await screen.findByText(/mapa indisponível/i)).toBeInTheDocument();
-  });
-
-  it('searches for an area and saves the selected result', async () => {
-    const fetchMock = vi.fn((url: string | URL, init?: RequestInit) => {
-      const href = String(url);
-      if (href.includes('geocoding-api.open-meteo.com'))
-        return Promise.resolve(
-          response({
-            results: [
-              {
-                id: 123,
-                name: 'Batel',
-                latitude: -25.4412,
-                longitude: -49.2877,
-                admin1: 'Parana',
-                country: 'Brazil',
-              },
-            ],
-          }),
-        );
-      if (init?.method === 'POST')
-        return Promise.resolve(
-          response({
-            id: 'area-1',
-            label: 'Near Batel',
-            latitude: -25.441,
-            longitude: -49.288,
-            radiusMeters: 4000,
-            priority: 0,
-            active: true,
-          }),
-        );
-      if (href.includes('favorite-venues') || href.includes('preferred-areas'))
-        return Promise.resolve(response([]));
-      return Promise.resolve(response([venue]));
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    render(
-      <MemoryRouter>
-        <LocationsPage />
-      </MemoryRouter>,
-    );
-
-    await screen.findByText(/escolha onde você poderia jogar/i);
-    fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
-    fireEvent.click(screen.getByRole('button', { name: /pesquisar um bairro ou endereço/i }));
-    fireEvent.change(screen.getByLabelText(/pesquisa de bairro ou endereço/i), {
-      target: { value: 'Batel' },
-    });
-
-    fireEvent.click(await screen.findByRole('option', { name: /batel/i }));
-    fireEvent.click(screen.getByRole('button', { name: /salvar área/i }));
-
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/v1/me/preferred-areas',
-        expect.objectContaining({
-          method: 'POST',
-          body: expect.stringContaining('"label":"Perto de Batel"'),
-        }),
-      ),
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/me/preferred-areas',
-      expect.objectContaining({
-        body: expect.stringContaining('"latitude":-25.441'),
-      }),
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/me/preferred-areas',
-      expect.objectContaining({
-        body: expect.stringContaining('"longitude":-49.288'),
-      }),
-    );
   });
 
   it('uses Google place selection to create a preferred area', async () => {
@@ -476,7 +399,7 @@ describe('locations page', () => {
 
     await screen.findByText(/escolha onde você poderia jogar/i);
     fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
-    fireEvent.click(screen.getByRole('button', { name: /pesquisar um bairro ou endereço/i }));
+    fireEvent.click(screen.getByRole('button', { name: /pesquisar no google maps/i }));
     await waitFor(() => expect(autocompleteInstances).toHaveLength(1));
 
     const place = {
@@ -507,55 +430,4 @@ describe('locations page', () => {
     );
   });
 
-  it('shows a message when area search has no matches', async () => {
-    const fetchMock = vi.fn((url: string | URL) => {
-      const href = String(url);
-      if (href.includes('geocoding-api.open-meteo.com'))
-        return Promise.resolve(response({ results: [] }));
-      if (href.includes('favorite-venues') || href.includes('preferred-areas'))
-        return Promise.resolve(response([]));
-      return Promise.resolve(response([venue]));
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    render(
-      <MemoryRouter>
-        <LocationsPage />
-      </MemoryRouter>,
-    );
-
-    await screen.findByText(/escolha onde você poderia jogar/i);
-    fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
-    fireEvent.click(screen.getByRole('button', { name: /pesquisar um bairro ou endereço/i }));
-    fireEvent.change(screen.getByLabelText(/pesquisa de bairro ou endereço/i), {
-      target: { value: 'Nopeville' },
-    });
-
-    expect(await screen.findByText(/bairro ou endereço não encontrado/i)).toBeInTheDocument();
-  });
-
-  it('shows a retry message when area search fails', async () => {
-    const fetchMock = vi.fn((url: string | URL) => {
-      const href = String(url);
-      if (href.includes('geocoding-api.open-meteo.com'))
-        return Promise.reject(new Error('search unavailable'));
-      if (href.includes('favorite-venues') || href.includes('preferred-areas'))
-        return Promise.resolve(response([]));
-      return Promise.resolve(response([venue]));
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    render(
-      <MemoryRouter>
-        <LocationsPage />
-      </MemoryRouter>,
-    );
-
-    await screen.findByText(/escolha onde você poderia jogar/i);
-    fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
-    fireEvent.click(screen.getByRole('button', { name: /pesquisar um bairro ou endereço/i }));
-    fireEvent.change(screen.getByLabelText(/pesquisa de bairro ou endereço/i), {
-      target: { value: 'Batel' },
-    });
-
-    expect(await screen.findByText(/não foi possível pesquisar a área/i)).toBeInTheDocument();
-  });
 });
