@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { dashboardApi, type Dashboard, type Game } from '../../api/client';
 import { formatDate, weekdayShortLabels } from '../../i18n/pt-BR';
 import { sortGamesForDisplay } from './gameOrdering';
+import { MapChooser } from './MapChooser';
 
 const days = weekdayShortLabels;
 
@@ -82,14 +83,12 @@ export function DashboardPage() {
               <Link className="button" to={`/games/${dashboard.nextGame.id}`}>
                 Ver partida
               </Link>
-              <a
-                className="text-link"
-                href={`https://www.openstreetmap.org/?mlat=${dashboard.nextGame.latitude}&mlon=${dashboard.nextGame.longitude}#map=18/${dashboard.nextGame.latitude}/${dashboard.nextGame.longitude}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Como chegar
-              </a>
+              <MapChooser
+                actionLabel="Como chegar"
+                latitude={dashboard.nextGame.latitude}
+                longitude={dashboard.nextGame.longitude}
+                label={`${dashboard.nextGame.venueName}${dashboard.nextGame.addressLabel ? `, ${dashboard.nextGame.addressLabel}` : ''}`}
+              />
             </div>
           </div>
         </section>

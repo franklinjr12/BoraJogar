@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { gameApi, type Game } from '../../api/client';
 import { formatDate, formatDateOnly } from '../../i18n/pt-BR';
+import { MapChooser } from './MapChooser';
 
 type View = 'agenda' | 'month';
 type Filter = 'all' | 'confirmed' | 'organized' | 'joined' | 'pending' | 'cancelled';
@@ -111,7 +112,6 @@ export function CalendarPage() {
 }
 
 function CalendarCard({ game, compact = false }: { game: Game; compact?: boolean }) {
-  const mapURL = `https://www.openstreetmap.org/?mlat=${game.latitude}&mlon=${game.longitude}#map=18/${game.latitude}/${game.longitude}`;
   return (
     <article className={compact ? 'calendar-card compact' : 'card calendar-card'}>
       <p className="eyebrow">
@@ -136,9 +136,11 @@ function CalendarCard({ game, compact = false }: { game: Game; compact?: boolean
         {game.addressLabel ? ` · ${game.addressLabel}` : ''}
       </p>
       <div className="calendar-links">
-        <a className="text-link" href={mapURL} target="_blank" rel="noreferrer">
-          Abrir mapa do local
-        </a>
+        <MapChooser
+          latitude={game.latitude}
+          longitude={game.longitude}
+          label={`${game.venueName}${game.addressLabel ? `, ${game.addressLabel}` : ''}`}
+        />
         {game.status !== 'cancelled' && (
           <a className="text-link" href={gameApi.calendarURL(game.id)}>
             Adicionar ao calendário

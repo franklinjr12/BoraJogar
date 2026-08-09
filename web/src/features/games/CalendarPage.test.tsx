@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CalendarPage } from './CalendarPage';
@@ -53,9 +53,10 @@ describe('CalendarPage', () => {
       expect(screen.getByRole('heading', { name: /saturday match/i })).toBeInTheDocument(),
     );
     expect(screen.getByRole('button', { name: 'Agenda' })).toHaveClass('selected');
-    expect(screen.getByRole('link', { name: /abrir mapa do local/i })).toHaveAttribute(
+    fireEvent.click(screen.getByText(/abrir mapa do local/i));
+    expect(screen.getByRole('link', { name: 'Google Maps' })).toHaveAttribute(
       'href',
-      expect.stringContaining('openstreetmap.org'),
+      expect.stringContaining('google.com/maps/dir'),
     );
     expect(screen.getByRole('link', { name: /adicionar ao calendário/i })).toHaveAttribute(
       'href',

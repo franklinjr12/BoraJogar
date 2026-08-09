@@ -12,6 +12,7 @@ import {
   type PreferredArea,
 } from '../../api/client';
 import { VenueForm } from '../locations/VenueForm';
+import { MapChooser } from './MapChooser';
 import {
   blankVenueDraft,
   createVenueFromDraft,
@@ -438,7 +439,6 @@ export function GameDetailsPage() {
     if (!window.confirm('Excluir esta partida para todos os jogadores?')) return;
     void action(() => gameApi.cancel(id));
   };
-  const mapURL = `https://www.openstreetmap.org/?mlat=${game.latitude}&mlon=${game.longitude}#map=18/${game.latitude}/${game.longitude}`;
   return (
     <main className="shell">
       <Link className="text-link" to="/games">
@@ -458,10 +458,12 @@ export function GameDetailsPage() {
           <strong>{game.venueName}</strong>
           {game.addressLabel ? ` · ${game.addressLabel}` : ''}
         </p>
-        <p className="calendar-links">
-          <a className="text-link" href={mapURL} target="_blank" rel="noreferrer">
-            Abrir mapa do local
-          </a>
+        <div className="calendar-links">
+          <MapChooser
+            latitude={game.latitude}
+            longitude={game.longitude}
+            label={`${game.venueName}${game.addressLabel ? `, ${game.addressLabel}` : ''}`}
+          />
           {game.status !== 'cancelled' && (
             <a
               className="text-link"
@@ -470,7 +472,7 @@ export function GameDetailsPage() {
               Adicionar ao calendário
             </a>
           )}
-        </p>
+        </div>
         <p>
           {label(game.minimumSkillLevel)}–{label(game.maximumSkillLevel)} · {game.openSlots}{' '}
           {game.openSlots === 1 ? 'vaga disponível' : 'vagas disponíveis'}

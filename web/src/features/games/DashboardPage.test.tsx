@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardPage } from './DashboardPage';
@@ -67,9 +67,10 @@ describe('DashboardPage', () => {
       expect(screen.getByRole('heading', { name: /sua próxima partida/i })).toBeInTheDocument(),
     );
     expect(screen.getByText(/que bom ver você, Franklin/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /como chegar/i })).toHaveAttribute(
+    fireEvent.click(screen.getByText(/como chegar/i));
+    expect(screen.getByRole('link', { name: 'Google Maps' })).toHaveAttribute(
       'href',
-      expect.stringContaining('openstreetmap'),
+      expect.stringContaining('google.com/maps/dir'),
     );
     expect(screen.getByText(/Seg/)).toBeInTheDocument();
   });

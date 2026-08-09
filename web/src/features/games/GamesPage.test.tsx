@@ -519,6 +519,11 @@ describe('GameDetailsPage', () => {
     expect(
       await screen.findByDisplayValue(`${window.location.origin}/games/game-1?access=secret`),
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/abrir mapa do local/i));
+    expect(screen.getByRole('link', { name: 'Google Maps' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('google.com/maps/dir'),
+    );
     expect(screen.getByRole('button', { name: 'Remover Bruno' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /excluir partida/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /sair da partida/i })).not.toBeInTheDocument();

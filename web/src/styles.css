@@ -317,6 +317,19 @@ textarea:focus-visible {
   gap: 1rem;
   margin-top: 1rem;
 }
+.map-chooser {
+  position: relative;
+}
+.map-chooser summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+.map-chooser-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
 @media (max-width: 480px) {
   .calendar-toolbar {
     align-items: stretch;
