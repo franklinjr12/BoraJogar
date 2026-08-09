@@ -46,8 +46,6 @@ $env:DEV_HTTPS_CERT=(Resolve-Path ".\<LAN-IP>.pem")
 make dev-web-mobile
 ```
 
-Set `VITE_MAP_STYLE_URL` to override the default OpenStreetMap raster style. The app falls back to OpenStreetMap tiles when this value is empty; confirm tile usage policy and attribution before production use.
-
 Venue creation and preferred-location setup use Google Maps JavaScript API and Places Autocomplete when `GOOGLE_MAPS_API_KEY` is configured. Restrict that key to the deployed website origins and Maps JavaScript API/Places API (New) in Google Cloud. `GOOGLE_MAPS_SECRET` is reserved for APIs that require request signing and is not used by Places Autocomplete.
 
 Send development email:

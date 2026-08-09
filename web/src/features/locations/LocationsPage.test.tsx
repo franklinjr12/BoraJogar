@@ -6,52 +6,42 @@ import { LocationsPage } from './LocationsPage';
 const googleMapsMock = vi.hoisted(() => ({ loadGoogleMaps: vi.fn() }));
 vi.mock('./googleMaps', () => googleMapsMock);
 
-type MockMapEvent = { lngLat: { lat: number; lng: number } };
+type MockMapEvent = {
+  lngLat?: { lat: number; lng: number };
+  latLng?: { lat: () => number; lng: () => number };
+};
 type MockMapHandler = (event?: MockMapEvent) => void;
 
 interface MockMapInstance {
   handlers: Record<string, MockMapHandler>;
-  remove: ReturnType<typeof vi.fn>;
   setCenter: ReturnType<typeof vi.fn>;
 }
 
-const maplibreMock = vi.hoisted(() => {
+const googleMapMock = vi.hoisted(() => {
   const instances: MockMapInstance[] = [];
   class MockMap implements MockMapInstance {
     handlers: Record<string, MockMapHandler> = {};
-    remove = vi.fn();
     setCenter = vi.fn();
 
     constructor() {
       instances.push(this);
     }
 
-    addControl() {
-      return undefined;
-    }
-
-    on(event: string, handler: MockMapHandler) {
+    addListener(event: string, handler: MockMapHandler) {
       this.handlers[event] = handler;
-      return this;
+      return { remove: vi.fn() };
     }
 
     getCenter() {
-      return { lat: -25.429, lng: -49.274 };
+      return { lat: () => -25.429, lng: () => -49.274 };
     }
   }
 
   return {
     instances,
     Map: MockMap,
-    NavigationControl: vi.fn(),
   };
 });
-vi.mock('maplibre-gl', () => ({
-  default: {
-    Map: maplibreMock.Map,
-    NavigationControl: maplibreMock.NavigationControl,
-  },
-}));
 
 const venue = {
   id: 'venue-1',
@@ -75,8 +65,8 @@ function response(value: unknown) {
 
 describe('locations page', () => {
   beforeEach(() => {
-    maplibreMock.instances.length = 0;
-    googleMapsMock.loadGoogleMaps.mockRejectedValue(new Error('Google Maps unavailable'));
+    googleMapMock.instances.length = 0;
+    googleMapsMock.loadGoogleMaps.mockResolvedValue({ maps: googleMapMock, places: {} });
     Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
   });
 
@@ -305,7 +295,7 @@ describe('locations page', () => {
     expect(screen.queryByLabelText(/pesquisa de bairro ou endereço/i)).not.toBeInTheDocument();
   });
 
-  it('renders the dev map fallback when no map style URL is configured', async () => {
+  it('renders Google map for preferred-area selection', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
@@ -324,10 +314,61 @@ describe('locations page', () => {
     fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
 
     expect(screen.getByLabelText(/mapa para selecionar área/i)).toBeInTheDocument();
+    await waitFor(() => expect(googleMapMock.instances).toHaveLength(1));
     expect(screen.queryByText(/mapa indisponível/i)).not.toBeInTheDocument();
   });
 
-  it('shows the map fallback message when map loading fails', async () => {
+  it('selects preferred-area coordinates from Google map clicks', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (init?.method === 'POST')
+          return Promise.resolve(
+            response({
+              id: 'area-1',
+              label: 'Perto de casa',
+              latitude: -25.44,
+              longitude: -49.28,
+              radiusMeters: 4000,
+              priority: 0,
+              active: true,
+            }),
+          );
+        if (url.includes('favorite-venues') || url.includes('preferred-areas'))
+          return Promise.resolve(response([]));
+        return Promise.resolve(response([venue]));
+      }),
+    );
+    render(
+      <MemoryRouter>
+        <LocationsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/escolha onde você poderia jogar/i);
+    fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
+    await waitFor(() => expect(googleMapMock.instances).toHaveLength(1));
+    googleMapMock.instances[0]?.handlers.click?.({
+      latLng: { lat: () => -25.44, lng: () => -49.28 },
+    });
+    await waitFor(() =>
+      expect(googleMapMock.instances[0]?.setCenter).toHaveBeenCalledWith({
+        lat: -25.44,
+        lng: -49.28,
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /salvar área/i }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        '/api/v1/me/preferred-areas',
+        expect.objectContaining({ body: expect.stringContaining('"latitude":-25.44') }),
+      ),
+    );
+  });
+
+  it('shows the map unavailable message when Google map loading fails', async () => {
+    googleMapsMock.loadGoogleMaps.mockRejectedValue(new Error('Google Maps unavailable'));
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
@@ -344,10 +385,6 @@ describe('locations page', () => {
 
     await screen.findByText(/escolha onde você poderia jogar/i);
     fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
-    await waitFor(() => expect(maplibreMock.instances.length).toBeGreaterThan(0));
-
-    maplibreMock.instances[0]?.handlers.error?.();
-
     expect(await screen.findByText(/mapa indisponível/i)).toBeInTheDocument();
   });
 

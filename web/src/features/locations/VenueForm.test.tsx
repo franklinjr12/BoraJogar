@@ -8,10 +8,10 @@ import type { VenueDraft } from './venueDraft';
 const googleMapsMock = vi.hoisted(() => ({ loadGoogleMaps: vi.fn() }));
 vi.mock('./googleMaps', () => googleMapsMock);
 
-type MapEvent = { lngLat: { lat: number; lng: number } };
+type MapEvent = { latLng?: { lat: () => number; lng: () => number } };
 type MapHandler = (event?: MapEvent) => void;
 
-const maplibreMock = vi.hoisted(() => {
+const googleMapMock = vi.hoisted(() => {
   const instances: MockMap[] = [];
   class MockMap {
     handlers: Record<string, MapHandler> = {};
@@ -22,29 +22,17 @@ const maplibreMock = vi.hoisted(() => {
       instances.push(this);
     }
 
-    addControl() {
-      return undefined;
-    }
-
-    on(event: string, handler: MapHandler) {
+    addListener(event: string, handler: MapHandler) {
       this.handlers[event] = handler;
-      return this;
+      return { remove: vi.fn() };
     }
   }
   class MockMarker {
-    setLngLat = vi.fn(() => this);
-    addTo = vi.fn(() => this);
-    remove = vi.fn();
+    setMap = vi.fn();
+    setPosition = vi.fn();
   }
-  return { instances, Map: MockMap, Marker: MockMarker, NavigationControl: vi.fn() };
+  return { instances, Map: MockMap, Marker: MockMarker };
 });
-vi.mock('maplibre-gl', () => ({
-  default: {
-    Map: maplibreMock.Map,
-    Marker: maplibreMock.Marker,
-    NavigationControl: maplibreMock.NavigationControl,
-  },
-}));
 
 function response(value: unknown) {
   return Promise.resolve(new Response(JSON.stringify(value), { status: 200 }));
@@ -65,8 +53,13 @@ function Harness({ onChange }: { onChange: (draft: VenueDraft) => void }) {
 
 describe('VenueForm', () => {
   beforeEach(() => {
-    maplibreMock.instances.length = 0;
-    googleMapsMock.loadGoogleMaps.mockRejectedValue(new Error('Google Maps unavailable'));
+    googleMapMock.instances.length = 0;
+    class DefaultAutocomplete extends HTMLElement {}
+    googleMapsMock.loadGoogleMaps.mockResolvedValue({
+      maps: googleMapMock,
+      marker: { Marker: googleMapMock.Marker },
+      places: { PlaceAutocompleteElement: DefaultAutocomplete },
+    });
     vi.stubGlobal(
       'fetch',
       vi.fn(() => response({})),
@@ -81,11 +74,18 @@ describe('VenueForm', () => {
 
   it('does not render manual address or city search fields', async () => {
     render(<Harness onChange={vi.fn()} />);
-    await waitFor(() => expect(maplibreMock.instances.length).toBe(1));
+    await waitFor(() => expect(googleMapMock.instances.length).toBe(1));
 
     expect(screen.getByText(/pesquisar local no google maps/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/endereço da quadra/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/pesquisa de cidade/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the map unavailable message when Google Maps fails', async () => {
+    googleMapsMock.loadGoogleMaps.mockRejectedValue(new Error('Google Maps unavailable'));
+    render(<Harness onChange={vi.fn()} />);
+
+    expect(await screen.findByText(/mapa indisponível/i)).toBeInTheDocument();
   });
 
   it('uses Google place selection to fill venue details', async () => {
@@ -158,9 +158,11 @@ describe('VenueForm', () => {
   it('keeps map-picked coordinates unconfirmed until Google place selection', async () => {
     const onChange = vi.fn();
     render(<Harness onChange={onChange} />);
-    await waitFor(() => expect(maplibreMock.instances.length).toBe(1));
+    await waitFor(() => expect(googleMapMock.instances.length).toBe(1));
 
-    maplibreMock.instances[0]?.handlers.click?.({ lngLat: { lat: -25.44, lng: -49.28 } });
+    googleMapMock.instances[0]?.handlers.click?.({
+      latLng: { lat: () => -25.44, lng: () => -49.28 },
+    });
 
     await waitFor(() =>
       expect(onChange).toHaveBeenCalledWith(

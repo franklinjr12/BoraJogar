@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import { Link } from 'react-router-dom';
 import { locationApi, type PreferredArea, type Venue } from '../../api/client';
 import { requestBrowserLocation, type LocationMessages } from './browserLocation';
 import { GooglePlaceSearch } from './GooglePlaceSearch';
-import { resolveMapStyle } from './mapStyle';
+import { loadGoogleMaps } from './googleMaps';
 import type { PlaceSearchResult } from './googlePlace';
 
 const defaultCenter = { latitude: -25.4284, longitude: -49.2733 };
@@ -41,10 +40,9 @@ function MapPanel({
   onSelect: (latitude: number, longitude: number) => void;
 }) {
   const node = useRef<HTMLDivElement>(null);
-  const map = useRef<import('maplibre-gl').Map | null>(null);
+  const map = useRef<google.maps.Map | null>(null);
   const initialCenter = useRef(center);
   const onSelectRef = useRef(onSelect);
-  const style = resolveMapStyle(import.meta.env);
   const [mapFailed, setMapFailed] = useState(false);
 
   useEffect(() => {
@@ -52,29 +50,36 @@ function MapPanel({
   }, [onSelect]);
 
   useEffect(() => {
-    if (!node.current || !style) return;
+    if (!node.current) return;
     let disposed = false;
-    void import('maplibre-gl')
-      .then(({ default: maplibregl }) => {
+    const listeners: google.maps.MapsEventListener[] = [];
+    void loadGoogleMaps()
+      .then(({ maps }) => {
         if (disposed || !node.current) return;
-        const instance = new maplibregl.Map({
-          container: node.current,
-          style,
-          center: [initialCenter.current.longitude, initialCenter.current.latitude],
+        const instance = new maps.Map(node.current, {
+          center: {
+            lat: initialCenter.current.latitude,
+            lng: initialCenter.current.longitude,
+          },
           zoom: 12,
+          streetViewControl: false,
+          mapTypeControl: false,
+          fullscreenControl: false,
+          mapTypeId: 'roadmap',
         });
-        instance.addControl(new maplibregl.NavigationControl(), 'top-right');
-        instance.on('moveend', () => {
-          const next = instance.getCenter();
-          onSelectRef.current(next.lat, next.lng);
-        });
-        instance.on('click', (event) => onSelectRef.current(event.lngLat.lat, event.lngLat.lng));
-        instance.on('error', () => {
-          if (disposed) return;
-          instance.remove();
-          map.current = null;
-          setMapFailed(true);
-        });
+        listeners.push(
+          instance.addListener('idle', () => {
+            const next = instance.getCenter();
+            if (!next) return;
+            onSelectRef.current(next.lat(), next.lng());
+          }),
+        );
+        listeners.push(
+          instance.addListener('click', (event: google.maps.MapMouseEvent) => {
+            if (!event.latLng) return;
+            onSelectRef.current(event.latLng.lat(), event.latLng.lng());
+          }),
+        );
         map.current = instance;
       })
       .catch(() => {
@@ -82,16 +87,16 @@ function MapPanel({
       });
     return () => {
       disposed = true;
-      map.current?.remove();
+      listeners.forEach((listener) => listener.remove());
       map.current = null;
     };
-  }, [style]);
+  }, []);
 
   useEffect(() => {
-    map.current?.setCenter([center.longitude, center.latitude]);
+    map.current?.setCenter({ lat: center.latitude, lng: center.longitude });
   }, [center.latitude, center.longitude]);
 
-  if (!style || mapFailed)
+  if (mapFailed)
     return (
       <p className="map-inline-hint">Mapa indisponível. Pesquise ou use sua localização atual.</p>
     );

@@ -64,7 +64,6 @@ Resolve or consciously accept these before treating the deployment as production
 
 - [ ] Choose transactional email provider. Configure verified sender/domain, SPF, DKIM, DMARC.
 - [ ] Do not assume SMTP configuration enables application email; current notification delivery code is incomplete. Track this as feature blocker if email alerts are required.
-- [ ] Prefer configuring a production map style URL at build time with `VITE_MAP_STYLE_URL`. If empty, frontend falls back to OpenStreetMap raster tiles; verify OSM tile policy, attribution, and expected traffic first. Frontend values are public; use provider restrictions and attribution.
 - [ ] Venue and preferred-location search load the restricted browser Maps key from authenticated `GET /api/v1/me/maps-config`; verify this endpoint returns `503` when the key is absent and never expose server-only secrets.
 - [ ] VAPID values are currently unused by running server. Do not promise Web Push until provider wiring/retries exist.
 - [ ] Confirm outbound HTTPS access to map provider and Google OAuth endpoints.
@@ -87,7 +86,7 @@ Resolve or consciously accept these before treating the deployment as production
 
 ## Build release artifacts on Windows
 
-Run from repository root. Replace map URL and target architecture as needed.
+Run from repository root. Replace target architecture as needed.
 
 ```powershell
 npm --prefix web ci
@@ -95,9 +94,7 @@ npm --prefix web ci
 make typecheck
 make test
 
-$env:VITE_MAP_STYLE_URL = "https://maps.example.com/styles/borajogar.json"
 npm --prefix web run build
-Remove-Item Env:VITE_MAP_STYLE_URL
 
 # Linux x86_64 target. Use arm64 when server architecture differs.
 $env:GOOS = "linux"

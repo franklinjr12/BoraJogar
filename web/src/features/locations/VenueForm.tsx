@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import { ApiError, type Venue } from '../../api/client';
 import { requestBrowserLocation, type LocationMessages } from './browserLocation';
 import { GooglePlaceSearch } from './GooglePlaceSearch';
 import { loadGoogleMaps } from './googleMaps';
-import { resolveMapStyle } from './mapStyle';
 import {
   blankVenueDraft,
   createVenueFromDraft,
@@ -99,82 +97,18 @@ function GoogleMapPicker({
   );
 }
 
-function MapLibreMapPicker({
-  point,
-  onSelect,
-}: {
-  point: Point;
-  onSelect: (point: Point) => void;
-}) {
-  const node = useRef<HTMLDivElement>(null);
-  const map = useRef<import('maplibre-gl').Map | null>(null);
-  const marker = useRef<import('maplibre-gl').Marker | null>(null);
-  const initialPoint = useRef(point);
-  const onSelectRef = useRef(onSelect);
-  const style = resolveMapStyle(import.meta.env);
-  const [mapFailed, setMapFailed] = useState(false);
-
-  useEffect(() => {
-    onSelectRef.current = onSelect;
-  }, [onSelect]);
-
-  useEffect(() => {
-    if (!node.current || !style) return;
-    let disposed = false;
-    void import('maplibre-gl')
-      .then(({ default: maplibregl }) => {
-        if (disposed || !node.current) return;
-        const instance = new maplibregl.Map({
-          container: node.current,
-          style,
-          attributionControl: {},
-          center: [initialPoint.current.longitude, initialPoint.current.latitude],
-          zoom: 11,
-        });
-        instance.addControl(new maplibregl.NavigationControl(), 'top-right');
-        marker.current = new maplibregl.Marker()
-          .setLngLat([initialPoint.current.longitude, initialPoint.current.latitude])
-          .addTo(instance);
-        instance.on('click', (event) =>
-          onSelectRef.current({ latitude: event.lngLat.lat, longitude: event.lngLat.lng }),
-        );
-        instance.on('error', () => {
-          if (disposed) return;
-          marker.current?.remove();
-          marker.current = null;
-          instance.remove();
-          map.current = null;
-          setMapFailed(true);
-        });
-        map.current = instance;
-      })
-      .catch(() => {
-        if (!disposed) setMapFailed(true);
-      });
-    return () => {
-      disposed = true;
-      marker.current?.remove();
-      marker.current = null;
-      map.current?.remove();
-      map.current = null;
-    };
-  }, [style]);
-
-  useEffect(() => {
-    map.current?.setCenter([point.longitude, point.latitude]);
-    marker.current?.setLngLat([point.longitude, point.latitude]);
-  }, [point.latitude, point.longitude]);
-
-  if (!style || mapFailed)
-    return <p className="map-inline-hint">Mapa indisponível. Pesquise o local no Google Maps.</p>;
-  return <div ref={node} className="map-panel compact-map" aria-label="Escolher local no mapa" />;
-}
-
 function MapPicker({ point, onSelect }: { point: Point; onSelect: (point: Point) => void }) {
   const [googleFailed, setGoogleFailed] = useState(false);
   const onGoogleFailure = useCallback(() => setGoogleFailed(true), []);
-  if (googleFailed) return <MapLibreMapPicker point={point} onSelect={onSelect} />;
-  return <GoogleMapPicker point={point} onSelect={onSelect} onFailure={onGoogleFailure} />;
+  if (googleFailed)
+    return <p className="map-inline-hint">Mapa indisponível. Pesquise o local no Google Maps.</p>;
+  return (
+    <GoogleMapPicker
+      point={point}
+      onSelect={onSelect}
+      onFailure={onGoogleFailure}
+    />
+  );
 }
 
 export function VenueForm({
