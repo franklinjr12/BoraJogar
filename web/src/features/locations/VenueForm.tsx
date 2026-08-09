@@ -102,13 +102,7 @@ function MapPicker({ point, onSelect }: { point: Point; onSelect: (point: Point)
   const onGoogleFailure = useCallback(() => setGoogleFailed(true), []);
   if (googleFailed)
     return <p className="map-inline-hint">Mapa indisponível. Pesquise o local no Google Maps.</p>;
-  return (
-    <GoogleMapPicker
-      point={point}
-      onSelect={onSelect}
-      onFailure={onGoogleFailure}
-    />
-  );
+  return <GoogleMapPicker point={point} onSelect={onSelect} onFailure={onGoogleFailure} />;
 }
 
 export function VenueForm({

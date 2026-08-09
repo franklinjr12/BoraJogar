@@ -4,7 +4,10 @@ interface MapChooserProps extends MapDestination {
   actionLabel?: string;
 }
 
-export function MapChooser({ actionLabel = 'Abrir mapa do local', ...destination }: MapChooserProps) {
+export function MapChooser({
+  actionLabel = 'Abrir mapa do local',
+  ...destination
+}: MapChooserProps) {
   const links = buildMapLinks(destination);
 
   return (

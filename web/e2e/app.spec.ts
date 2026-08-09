@@ -67,6 +67,33 @@ function futureDate(daysFromNow: number) {
   return date.toISOString().slice(0, 10);
 }
 
+async function chooseDate(page: Page, value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  const monthLabel = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(
+    new Date(year, month - 1, day),
+  );
+  const dateButton = page.getByRole('button', {
+    name: `${day} de ${monthLabel} de ${year}`,
+  });
+
+  await page.getByLabel(/data/i).click();
+  if ((await dateButton.count()) === 0) {
+    await page.locator('.date-time-icon-button').nth(1).click();
+  }
+  await dateButton.click();
+  await page.getByRole('button', { name: 'Concluído' }).click();
+}
+
+async function chooseTime(page: Page, hour: string, minute: string) {
+  await page.getByLabel(/horário de início/i).click();
+  await page.locator('.time-picker-hours').getByRole('button', { name: hour, exact: true }).click();
+  await page
+    .locator('.time-picker-minutes')
+    .getByRole('button', { name: minute, exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Concluído' }).click();
+}
+
 test.describe('Bora Jogar real backend E2E', () => {
   test('requires backend authentication for protected profile data', async ({ page }) => {
     await page.goto('/profile');
@@ -97,8 +124,8 @@ test.describe('Bora Jogar real backend E2E', () => {
     await expect(page.getByRole('heading', { name: 'E2E Open Game' })).toBeVisible();
 
     await page.getByRole('link', { name: /criar uma partida/i }).click();
-    await page.getByLabel(/data/i).fill(futureDate(5));
-    await page.getByLabel(/horário de início/i).fill('10:30');
+    await chooseDate(page, futureDate(5));
+    await chooseTime(page, '10', '30');
     await page.getByRole('combobox', { name: /^quadra$/i }).selectOption({
       label: 'E2E Praia Paulista',
     });
