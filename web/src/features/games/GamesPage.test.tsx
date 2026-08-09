@@ -540,6 +540,89 @@ describe('GameDetailsPage', () => {
     );
   });
 
+  it.each(['public', 'private'] as const)(
+    'shows %s match link to organizer',
+    async (visibility) => {
+      const game = {
+        id: 'game-1',
+        title: 'Saturday game',
+        startsAt: '2099-08-01T12:00:00Z',
+        endsAt: '2099-08-01T13:30:00Z',
+        venueId: 'venue-1',
+        venueName: 'Central court',
+        latitude: -23.5,
+        longitude: -46.6,
+        capacity: 4,
+        confirmedPlayers: 1,
+        openSlots: 3,
+        minimumSkillLevel: 'beginner',
+        maximumSkillLevel: 'advanced',
+        visibility,
+        status: 'scheduled',
+        currentUserStatus: 'confirmed',
+        currentUserRole: 'organizer',
+        players: [{ id: 'host-1', displayName: 'Host', role: 'organizer' }],
+      };
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => Promise.resolve(new Response(JSON.stringify(game), { status: 200 }))),
+      );
+
+      render(
+        <MemoryRouter initialEntries={['/games/game-1']}>
+          <Routes>
+            <Route path="/games/:id" element={<GameDetailsPage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      expect(
+        await screen.findByDisplayValue(`${window.location.origin}/games/game-1`),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it('hides match link from non-organizers', async () => {
+    const game = {
+      id: 'game-1',
+      title: 'Saturday game',
+      startsAt: '2099-08-01T12:00:00Z',
+      endsAt: '2099-08-01T13:30:00Z',
+      venueId: 'venue-1',
+      venueName: 'Central court',
+      latitude: -23.5,
+      longitude: -46.6,
+      capacity: 4,
+      confirmedPlayers: 2,
+      openSlots: 2,
+      minimumSkillLevel: 'beginner',
+      maximumSkillLevel: 'advanced',
+      visibility: 'public',
+      status: 'scheduled',
+      currentUserStatus: 'confirmed',
+      currentUserRole: 'player',
+      players: [
+        { id: 'host-1', displayName: 'Host', role: 'organizer' },
+        { id: 'player-1', displayName: 'Bruno', role: 'player' },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(game), { status: 200 }))),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/games/game-1']}>
+        <Routes>
+          <Route path="/games/:id" element={<GameDetailsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: 'Saturday game' });
+    expect(screen.queryByLabelText('Link da partida')).not.toBeInTheDocument();
+  });
+
   it('clearly marks cancelled games and hides active match actions', async () => {
     const game = {
       id: 'game-2',

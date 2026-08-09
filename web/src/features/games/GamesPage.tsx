@@ -415,13 +415,16 @@ export function GameDetailsPage() {
     }
   };
   const accessToken = params.get('access');
+  const sharePath =
+    game.shareUrl ??
+    (game.visibility === 'link-only'
+      ? accessToken
+        ? `${currentLocation.pathname}?access=${encodeURIComponent(accessToken)}`
+        : undefined
+      : currentLocation.pathname);
   const shareURL =
-    game.visibility === 'link-only' && (game.shareUrl || accessToken)
-      ? new URL(
-          game.shareUrl ??
-            `${currentLocation.pathname}?access=${encodeURIComponent(accessToken ?? '')}`,
-          window.location.origin,
-        ).toString()
+    game.currentUserRole === 'organizer' && sharePath
+      ? new URL(sharePath, window.location.origin).toString()
       : '';
   const copyShareURL = async () => {
     if (!shareURL || !navigator.clipboard) return;
