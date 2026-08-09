@@ -36,7 +36,7 @@ func main() {
 	notifications := notification.Service{
 		DB: db,
 		Channels: map[string]notification.NotificationChannel{
-			"email": notification.EmailChannel{Sender: email.SMTP{
+			"email": notification.EmailChannel{DefaultTimezone: cfg.DefaultTimezone, Sender: email.SMTP{
 				Host:        cfg.SMTPHost,
 				Port:        cfg.SMTPPort,
 				Username:    cfg.SMTPUsername,

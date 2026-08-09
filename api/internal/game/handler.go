@@ -952,7 +952,9 @@ func (h Handler) cancel(w http.ResponseWriter, r *http.Request, id, userID uuid.
 	defer tx.Rollback(r.Context())
 	var gameStatus string
 	var creatorID uuid.UUID
-	if err = tx.QueryRow(r.Context(), `SELECT status,created_by_user_id FROM games WHERE id=$1 FOR UPDATE`, id).Scan(&gameStatus, &creatorID); errors.Is(err, pgx.ErrNoRows) {
+	var cancellation notification.GameCancellationPayload
+	var startsAt, endsAt time.Time
+	if err = tx.QueryRow(r.Context(), `SELECT g.status,g.created_by_user_id,g.title,g.starts_at,g.ends_at,v.name,v.address_label FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.id=$1 FOR UPDATE`, id).Scan(&gameStatus, &creatorID, &cancellation.Title, &startsAt, &endsAt, &cancellation.VenueName, &cancellation.AddressLabel); errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, 404, "game_not_found", "Game not found.")
 		return
 	}
@@ -1006,8 +1008,25 @@ func (h Handler) cancel(w http.ResponseWriter, r *http.Request, id, userID uuid.
 		http.Error(w, "game unavailable", 500)
 		return
 	}
-	h.notifyGameUsers(r.Context(), recipients, notification.GameCancelled, "Partida excluída.", "O organizador excluiu esta partida.", id, uuid.Nil)
+	cancellation.GameID, cancellation.StartsAt, cancellation.EndsAt, cancellation.Reason = id.String(), startsAt, endsAt, nullableString(in.Reason)
+	h.notifyGameCancellation(r.Context(), recipients, cancellation)
 	w.WriteHeader(204)
+}
+
+func (h Handler) notifyGameCancellation(ctx context.Context, recipients []uuid.UUID, payload notification.GameCancellationPayload) {
+	if h.Notifications == nil {
+		return
+	}
+	for _, recipient := range recipients {
+		_ = h.Notifications.Publish(ctx, notification.EventInput{
+			UserID:    recipient,
+			Type:      notification.GameCancelled,
+			Title:     "Partida cancelada.",
+			Body:      "O organizador cancelou esta partida.",
+			ActionURL: "/games/" + payload.GameID,
+			Payload:   payload,
+		})
+	}
 }
 
 func (h Handler) notifyGameUsers(ctx context.Context, recipients []uuid.UUID, eventType notification.Type, title, body string, gameID, playerID uuid.UUID) {

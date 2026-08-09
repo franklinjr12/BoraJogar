@@ -63,6 +63,9 @@ func TestLoad(t *testing.T) {
 	if cfg.SMTPHost != "smtp.resend.com" || cfg.SMTPPort != 587 || cfg.SMTPUsername != "resend" || cfg.SMTPPassword != "smtp-key" || cfg.SMTPFromAddress != "no-reply@notify.example.com" || cfg.SMTPFromName != "Bora Jogar" {
 		t.Fatalf("unexpected SMTP config: %#v", cfg)
 	}
+	if cfg.DefaultTimezone != "America/Sao_Paulo" {
+		t.Fatalf("default timezone = %q", cfg.DefaultTimezone)
+	}
 	if cfg.MatchLookaheadDays != 14 || cfg.MatchDefaultDurationMinutes != 90 || cfg.MatchDefaultPlayerCount != 4 || cfg.MatchSlotIncrementMinutes != 30 || cfg.MatchMaxSkillDifference != 1 || cfg.MatchMinimumNoticeMinutes != 720 || cfg.MatchProposalExpirationHours != 8 || cfg.MatchMaxProposalsPerUserPerDay != 2 || cfg.MatchRecentPairingLookbackDays != 14 {
 		t.Fatalf("unexpected matchmaking defaults: %+v", cfg)
 	}

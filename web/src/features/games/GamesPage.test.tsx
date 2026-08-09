@@ -539,4 +539,52 @@ describe('GameDetailsPage', () => {
       ),
     );
   });
+
+  it('clearly marks cancelled games and hides active match actions', async () => {
+    const game = {
+      id: 'game-2',
+      title: 'Cancelled game',
+      startsAt: '2099-08-01T12:00:00Z',
+      endsAt: '2099-08-01T13:30:00Z',
+      venueId: 'venue-1',
+      venueName: 'Central court',
+      addressLabel: 'Beach entrance',
+      latitude: -23.5,
+      longitude: -46.6,
+      capacity: 4,
+      confirmedPlayers: 2,
+      openSlots: 2,
+      minimumSkillLevel: 'beginner',
+      maximumSkillLevel: 'advanced',
+      visibility: 'link-only',
+      status: 'cancelled',
+      currentUserStatus: 'confirmed',
+      currentUserRole: 'player',
+      players: [{ id: 'player-1', displayName: 'Bruno', role: 'player' }],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(game), { status: 200 }))),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/games/game-2']}>
+        <Routes>
+          <Route path="/games/:id" element={<GameDetailsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('alert', { name: 'Partida cancelada' })).toHaveTextContent(
+      'Esta partida não acontecerá.',
+    );
+    expect(screen.getByText('Central court')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /participar da partida/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /sair da partida/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /adicionar ao calendário/i }),
+    ).not.toBeInTheDocument();
+  });
 });

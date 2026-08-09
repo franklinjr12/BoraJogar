@@ -141,8 +141,8 @@ func (s Service) claimEmailDeliveries(ctx context.Context, batchSize int) ([]Del
 		return nil, err
 	}
 	rows, err = tx.Query(ctx, `
-		SELECT d.id, d.notification_event_id, e.user_id, d.channel, d.status, d.attempt_count,
-		       u.email, e.title, e.body, COALESCE(e.action_url, ''), e.payload
+		SELECT d.id, d.notification_event_id, e.user_id, e.type, d.channel, d.status, d.attempt_count,
+		       u.email, u.time_zone, e.title, e.body, COALESCE(e.action_url, ''), e.payload
 		FROM notification_deliveries AS d
 		JOIN notification_events AS e ON e.id = d.notification_event_id
 		JOIN users AS u ON u.id = e.user_id
@@ -154,7 +154,7 @@ func (s Service) claimEmailDeliveries(ctx context.Context, batchSize int) ([]Del
 	deliveries := make([]Delivery, 0, len(ids))
 	for rows.Next() {
 		var delivery Delivery
-		if err := rows.Scan(&delivery.ID, &delivery.EventID, &delivery.UserID, &delivery.Channel, &delivery.Status, &delivery.AttemptCount, &delivery.To, &delivery.Title, &delivery.Body, &delivery.ActionURL, &delivery.Payload); err != nil {
+		if err := rows.Scan(&delivery.ID, &delivery.EventID, &delivery.UserID, &delivery.Type, &delivery.Channel, &delivery.Status, &delivery.AttemptCount, &delivery.To, &delivery.TimeZone, &delivery.Title, &delivery.Body, &delivery.ActionURL, &delivery.Payload); err != nil {
 			rows.Close()
 			return nil, err
 		}

@@ -247,6 +247,19 @@ textarea:focus-visible {
   color: #a52424;
   font-weight: 700;
 }
+.cancellation-banner {
+  display: grid;
+  gap: 0.25rem;
+  margin: 1rem 0;
+  border: 2px solid #a52424;
+  border-radius: 1rem;
+  padding: 1rem 1.1rem;
+  color: #7f1d1d;
+  background: #fff1f1;
+}
+.cancellation-banner strong {
+  font-size: 1.1rem;
+}
 .hint {
   color: #476566;
 }

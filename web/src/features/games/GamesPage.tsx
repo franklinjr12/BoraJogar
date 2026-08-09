@@ -443,6 +443,12 @@ export function GameDetailsPage() {
       </Link>
       <p className="eyebrow">Detalhes da partida</p>
       <h1>{game.title || 'Partida de vôlei de praia'}</h1>
+      {game.status === 'cancelled' && (
+        <section className="cancellation-banner" role="alert" aria-label="Partida cancelada">
+          <strong>Partida cancelada</strong>
+          <span>Esta partida não acontecerá.</span>
+        </section>
+      )}
       <section className="card">
         <p className="lead">{localDate(game.startsAt)}</p>
         <p>
@@ -453,12 +459,14 @@ export function GameDetailsPage() {
           <a className="text-link" href={mapURL} target="_blank" rel="noreferrer">
             Abrir mapa do local
           </a>
-          <a
-            className="text-link"
-            href={gameApi.calendarURL(game.id, params.get('access') ?? undefined)}
-          >
-            Adicionar ao calendário
-          </a>
+          {game.status !== 'cancelled' && (
+            <a
+              className="text-link"
+              href={gameApi.calendarURL(game.id, params.get('access') ?? undefined)}
+            >
+              Adicionar ao calendário
+            </a>
+          )}
         </p>
         <p>
           {label(game.minimumSkillLevel)}–{label(game.maximumSkillLevel)} · {game.openSlots}{' '}
@@ -470,7 +478,7 @@ export function GameDetailsPage() {
             O organizador removeu você desta partida.
           </p>
         )}
-        {shareURL && game.currentUserRole === 'organizer' && (
+        {game.status !== 'cancelled' && shareURL && game.currentUserRole === 'organizer' && (
           <section className="inline-panel" aria-label="Link da partida">
             <h2>Link para convidar jogadores</h2>
             <input aria-label="Link da partida" readOnly value={shareURL} />
@@ -486,7 +494,8 @@ export function GameDetailsPage() {
             {player.role === 'organizer' ? ' · organizador' : ''}
           </p>
         ))}
-        {game.currentUserRole === 'organizer' &&
+        {game.status !== 'cancelled' &&
+          game.currentUserRole === 'organizer' &&
           game.players?.some((player) => player.role !== 'organizer') && (
             <section className="inline-panel" aria-label="Gerenciar jogadores">
               <h2>Gerenciar jogadores</h2>
@@ -513,21 +522,29 @@ export function GameDetailsPage() {
             ))}
           </>
         )}
-        {game.currentUserStatus !== 'confirmed' && game.currentUserStatus !== 'removed' && (
-          <button className="button" disabled={busy} onClick={() => action(() => gameApi.join(id))}>
-            Participar da partida
-          </button>
-        )}
-        {game.currentUserStatus === 'confirmed' && game.currentUserRole !== 'organizer' && (
-          <button
-            className="text-button"
-            disabled={busy}
-            onClick={() => action(() => gameApi.leave(id))}
-          >
-            Sair da partida
-          </button>
-        )}
-        {game.currentUserRole === 'organizer' && game.status === 'scheduled' && (
+        {game.status !== 'cancelled' &&
+          game.currentUserStatus !== 'confirmed' &&
+          game.currentUserStatus !== 'removed' && (
+            <button
+              className="button"
+              disabled={busy}
+              onClick={() => action(() => gameApi.join(id))}
+            >
+              Participar da partida
+            </button>
+          )}
+        {game.status !== 'cancelled' &&
+          game.currentUserStatus === 'confirmed' &&
+          game.currentUserRole !== 'organizer' && (
+            <button
+              className="text-button"
+              disabled={busy}
+              onClick={() => action(() => gameApi.leave(id))}
+            >
+              Sair da partida
+            </button>
+          )}
+        {game.status === 'scheduled' && game.currentUserRole === 'organizer' && (
           <button className="text-button danger" type="button" disabled={busy} onClick={cancelGame}>
             Excluir partida
           </button>

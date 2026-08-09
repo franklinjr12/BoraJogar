@@ -141,4 +141,13 @@ func TestCancelIntegrationClearsWaitlistAndNotifiesOtherPlayers(t *testing.T) {
 	if publisher.events[0].Type != notification.GameCancelled || publisher.events[1].Type != notification.GameCancelled {
 		t.Fatalf("notifications = %+v", publisher.events)
 	}
+	for _, event := range publisher.events {
+		payload, ok := event.Payload.(notification.GameCancellationPayload)
+		if !ok || payload.GameID != fixture.gameID.String() || payload.VenueName != "Game Test Court" || payload.StartsAt.IsZero() || payload.EndsAt.IsZero() {
+			t.Fatalf("cancellation payload = %#v", event.Payload)
+		}
+		if event.ActionURL != "/games/"+fixture.gameID.String() {
+			t.Fatalf("action URL = %q", event.ActionURL)
+		}
+	}
 }

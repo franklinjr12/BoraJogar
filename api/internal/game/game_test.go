@@ -129,3 +129,33 @@ func TestNotifyGameUsersPublishesRemovalEventWithSafeActionData(t *testing.T) {
 		t.Fatalf("payload = %#v", event.Payload)
 	}
 }
+
+func TestNotifyGameCancellationPublishesTypedMatchDetails(t *testing.T) {
+	publisher := &recordingPublisher{}
+	title := "Saturday game"
+	address := "Beach entrance"
+	reason := "Weather"
+	payload := notification.GameCancellationPayload{
+		GameID:       "game-1",
+		Title:        &title,
+		StartsAt:     time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC),
+		EndsAt:       time.Date(2026, 8, 2, 13, 30, 0, 0, time.UTC),
+		VenueName:    "Central court",
+		AddressLabel: &address,
+		Reason:       &reason,
+	}
+	recipient := uuid.New()
+	Handler{Notifications: publisher}.notifyGameCancellation(context.Background(), []uuid.UUID{recipient}, payload)
+
+	if len(publisher.events) != 1 {
+		t.Fatalf("events = %d, want 1", len(publisher.events))
+	}
+	event := publisher.events[0]
+	if event.UserID != recipient || event.Type != notification.GameCancelled || event.ActionURL != "/games/game-1" {
+		t.Fatalf("event = %+v", event)
+	}
+	got, ok := event.Payload.(notification.GameCancellationPayload)
+	if !ok || got.VenueName != payload.VenueName || got.StartsAt != payload.StartsAt || got.Reason == nil || *got.Reason != *payload.Reason {
+		t.Fatalf("payload = %#v", event.Payload)
+	}
+}
