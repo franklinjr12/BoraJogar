@@ -390,7 +390,8 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
                   onUnavailable={() =>
                     setMessage(
                       (current) =>
-                        current || 'Pesquisa Google indisponível. Tente novamente ou escolha no mapa.',
+                        current ||
+                        'Pesquisa Google indisponível. Tente novamente ou escolha no mapa.',
                     )
                   }
                 />

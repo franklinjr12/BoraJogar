@@ -78,6 +78,8 @@ export function GooglePlaceSearch({
   }, [placeholder, point.latitude, point.longitude]);
 
   if (failed)
-    return <p className="hint">Pesquisa Google indisponível. Tente novamente ou escolha no mapa.</p>;
+    return (
+      <p className="hint">Pesquisa Google indisponível. Tente novamente ou escolha no mapa.</p>
+    );
   return <div ref={node} className="google-place-search" />;
 }

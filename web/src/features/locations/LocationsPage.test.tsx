@@ -297,7 +297,9 @@ describe('locations page', () => {
     await screen.findByText(/escolha onde você poderia jogar/i);
     fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
     fireEvent.click(screen.getByRole('button', { name: /usar minha localização atual/i }));
-    expect(await screen.findByText(/a localização do navegador está indisponível/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/a localização do navegador está indisponível/i),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /pesquisar no google maps/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/pesquisa google indisponível/i);
     expect(screen.queryByLabelText(/pesquisa de bairro ou endereço/i)).not.toBeInTheDocument();
@@ -429,5 +431,4 @@ describe('locations page', () => {
       expect.objectContaining({ body: expect.stringContaining('"longitude":-49.276') }),
     );
   });
-
 });

@@ -21,7 +21,8 @@ export default defineConfig({
   webServer: [
     {
       name: 'api',
-      command: 'go -C ../api run ./cmd/server',
+      command: 'make dev-api',
+      cwd: '..',
       url: `${apiURL}/health/ready`,
       env: {
         ...process.env,

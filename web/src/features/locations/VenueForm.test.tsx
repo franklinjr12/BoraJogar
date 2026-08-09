@@ -67,7 +67,10 @@ describe('VenueForm', () => {
   beforeEach(() => {
     maplibreMock.instances.length = 0;
     googleMapsMock.loadGoogleMaps.mockRejectedValue(new Error('Google Maps unavailable'));
-    vi.stubGlobal('fetch', vi.fn(() => response({})));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => response({})),
+    );
   });
 
   afterEach(() => {

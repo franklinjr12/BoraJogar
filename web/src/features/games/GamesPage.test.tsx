@@ -271,6 +271,11 @@ describe('CreateGamePage', () => {
       accessType: 'unknown',
       active: true,
     };
+    const availableVenue = {
+      ...savedVenue,
+      id: 'venue-2',
+      name: 'Praia Paulista',
+    };
     const createdGame = {
       id: 'game-1',
       startsAt: '2026-08-01T12:00:00Z',
@@ -294,6 +299,9 @@ describe('CreateGamePage', () => {
       if (url.includes('/api/v1/me/favorite-venues')) {
         return Promise.resolve(new Response(JSON.stringify([savedVenue]), { status: 200 }));
       }
+      if (url.includes('/api/v1/venues')) {
+        return Promise.resolve(new Response(JSON.stringify([availableVenue]), { status: 200 }));
+      }
       if (url.includes('/api/v1/me/preferred-areas')) {
         return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
       }
@@ -309,13 +317,16 @@ describe('CreateGamePage', () => {
     await screen.findByRole('heading', { name: /configure uma partida/i });
     fireEvent.change(screen.getByLabelText(/^data$/i), { target: { value: futureGameDate } });
     fireEvent.change(screen.getByLabelText(/horário de início/i), { target: { value: '09:00' } });
-    fireEvent.change(screen.getByLabelText(/^quadra$/i), { target: { value: 'venue:venue-1' } });
+    fireEvent.change(screen.getByLabelText(/^quadra$/i), { target: { value: 'venue:venue-2' } });
     fireEvent.click(screen.getByRole('button', { name: /^criar partida$/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/v1/games',
-        expect.objectContaining({ method: 'POST' }),
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"venueId":"venue-2"'),
+        }),
       ),
     );
     expect(fetchMock).not.toHaveBeenCalledWith(

@@ -150,8 +150,9 @@ export function CreateGamePage() {
       setError('Escolha um horário de início com pelo menos 15 minutos de antecedência.');
       return;
     }
-    let gameVenueId = locationChoice.startsWith('venue:')
-      ? locationChoice.replace('venue:', '')
+    const submittedLocation = String(form.get('venueId') ?? locationChoice);
+    let gameVenueId = submittedLocation.startsWith('venue:')
+      ? submittedLocation.replace('venue:', '')
       : '';
     if (!gameVenueId) {
       if (!selectedArea && !venueDraftReady(venueDraft)) {
