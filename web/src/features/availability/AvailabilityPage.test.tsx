@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AvailabilityPage } from './AvailabilityPage';
@@ -122,6 +122,60 @@ describe('AvailabilityPage', () => {
     );
     expect(localStorage.getItem('borajogar_game_alert_prompt_ready')).toBe('true');
     expect(await screen.findByText('09:00-13:00')).toBeInTheDocument();
+  });
+
+  it('saves custom times selected through the time picker', async () => {
+    let savedBody = '';
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        savedBody = String(init.body);
+        return Promise.resolve(
+          response({
+            id: 'rule-1',
+            weekday: 6,
+            start: '06:00',
+            end: '08:00',
+            timezone: 'America/Sao_Paulo',
+            validFrom: '2026-08-09',
+            active: true,
+            venueIds: ['venue-1'],
+            preferredAreaIds: ['area-1'],
+          }),
+        );
+      }
+      if (url.includes('preferred-areas')) return Promise.resolve(response([area]));
+      if (url.includes('favorite-venues')) return Promise.resolve(response([venue]));
+      return Promise.resolve(response([]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MemoryRouter>
+        <AvailabilityPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('button', { name: /neste fim de semana/i });
+    fireEvent.click(screen.getByLabelText('Início'));
+    let dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: '06' }));
+    fireEvent.click(
+      within(dialog.querySelector('.time-picker-minutes')!).getByRole('button', { name: '00' }),
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Concluído' }));
+
+    fireEvent.click(screen.getByLabelText('Fim'));
+    dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: '08' }));
+    fireEvent.click(
+      within(dialog.querySelector('.time-picker-minutes')!).getByRole('button', { name: '00' }),
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Concluído' }));
+
+    fireEvent.submit(
+      screen.getByRole('button', { name: /adicionar hor.rio dispon.vel/i }).closest('form')!,
+    );
+    await waitFor(() => expect(savedBody).toContain('"start":"06:00"'));
+    expect(savedBody).toContain('"end":"08:00"');
   });
 
   it('requires a saved location before saving availability', async () => {

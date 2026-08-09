@@ -11,9 +11,15 @@ import {
 import { markGameAlertPromptReady } from '../notifications/gameAlertPromptState';
 import { getDeviceTimeZone } from '../../platform/timeZone';
 import { weekdayLabels } from '../../i18n/pt-BR';
+import { TimePickerField } from '../../components/DateTimePicker';
 
 const days = weekdayLabels;
-const today = new Date().toISOString().slice(0, 10);
+function localToday() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate(),
+  ).padStart(2, '0')}`;
+}
 const presets = [
   { id: 'weekend', label: 'Neste fim de semana', weekday: 6, start: '09:00', end: '13:00' },
   { id: 'mornings', label: 'Manhãs durante a semana', weekday: 1, start: '07:00', end: '09:00' },
@@ -104,7 +110,7 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
         start: String(form.get('start')),
         end: String(form.get('end')),
         timezone: getDeviceTimeZone(),
-        validFrom: today,
+        validFrom: localToday(),
         active: true,
         venueIds: selected.filter((location) => location.type === 'venue').map((item) => item.id),
         preferredAreaIds: selected
@@ -198,32 +204,26 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
           </select>
         </label>
         <div className="time-fields">
-          <label>
-            Início
-            <input
-              name="start"
-              type="time"
-              value={window.start}
-              onChange={(event) => {
-                setSelectedPresetId('custom');
-                setWindow((current) => ({ ...current, start: event.target.value }));
-              }}
-              required
-            />
-          </label>
-          <label>
-            Fim
-            <input
-              name="end"
-              type="time"
-              value={window.end}
-              onChange={(event) => {
-                setSelectedPresetId('custom');
-                setWindow((current) => ({ ...current, end: event.target.value }));
-              }}
-              required
-            />
-          </label>
+          <TimePickerField
+            name="start"
+            label="Início"
+            value={window.start}
+            onChange={(start) => {
+              setSelectedPresetId('custom');
+              setWindow((current) => ({ ...current, start }));
+            }}
+            required
+          />
+          <TimePickerField
+            name="end"
+            label="Fim"
+            value={window.end}
+            onChange={(end) => {
+              setSelectedPresetId('custom');
+              setWindow((current) => ({ ...current, end }));
+            }}
+            required
+          />
         </div>
         <fieldset>
           <legend>Onde você poderia jogar nesse horário?</legend>

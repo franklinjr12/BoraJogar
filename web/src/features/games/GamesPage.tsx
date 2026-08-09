@@ -23,6 +23,7 @@ import {
 import { markGameAlertPromptReady } from '../notifications/gameAlertPromptState';
 import { formatDate, gameVisibilityLabels, skillLabel } from '../../i18n/pt-BR';
 import { sortGamesForDisplay } from './gameOrdering';
+import { DatePickerField, TimePickerField } from '../../components/DateTimePicker';
 
 const levels: GameSkillLevel[] = [
   'learning',
@@ -98,6 +99,7 @@ export function CreateGamePage() {
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
+  const [selectedTime, setSelectedTime] = useState('');
   const [venues, setVenues] = useState<Array<{ id: string; name: string }>>([]);
   const [areas, setAreas] = useState<PreferredArea[]>([]);
   const [locationChoice, setLocationChoice] = useState('');
@@ -145,7 +147,13 @@ export function CreateGamePage() {
     event.preventDefault();
     setError('');
     const form = new FormData(event.currentTarget);
-    const starts = `${String(form.get('date'))}T${String(form.get('time'))}:00`;
+    const date = String(form.get('date') ?? '');
+    const time = String(form.get('time') ?? '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+      setError('Escolha uma data e um horÃ¡rio vÃ¡lidos.');
+      return;
+    }
+    const starts = `${date}T${time}:00`;
     const startsAt = new Date(starts);
     if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() <= Date.now() + minimumStartLeadMs) {
       setError('Escolha um horário de início com pelo menos 15 minutos de antecedência.');
@@ -212,22 +220,21 @@ export function CreateGamePage() {
       <p className="eyebrow">Nova partida</p>
       <h1>Configure uma partida.</h1>
       <form className="card" onSubmit={save}>
-        <label>
-          Data
-          <input
-            name="date"
-            type="date"
-            lang="pt-BR"
-            min={todayInputValue()}
-            value={selectedDate}
-            onChange={(event) => setSelectedDate(event.target.value)}
-            required
-          />
-        </label>
-        <label>
-          Horário de início
-          <input name="time" type="time" lang="pt-BR" required />
-        </label>
+        <DatePickerField
+          name="date"
+          label="Data"
+          min={todayInputValue()}
+          value={selectedDate}
+          onChange={setSelectedDate}
+          required
+        />
+        <TimePickerField
+          name="time"
+          label="Horário de início"
+          value={selectedTime}
+          onChange={setSelectedTime}
+          required
+        />
         <label>
           Duração
           <select name="duration" defaultValue="90">
