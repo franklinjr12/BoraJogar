@@ -114,9 +114,7 @@ describe('onboarding', () => {
     renderApp('/onboarding');
 
     expect((await screen.findAllByText(/locais para jogar/i)).length).toBeGreaterThan(0);
-    expect(
-      await screen.findByRole('button', { name: /adicionar meu primeiro local/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/pesquisar local no google maps/i)).toBeInTheDocument();
   });
 
   it('keeps create-game users in onboarding until location and availability are complete', async () => {

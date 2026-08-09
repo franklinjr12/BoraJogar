@@ -97,6 +97,30 @@ h2 {
 .compact-actions {
   margin: 1rem 0;
 }
+.location-mode-switcher {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  gap: 0.25rem;
+  margin: 1.25rem 0 1.5rem;
+  border: 1px solid #c8ddd6;
+  border-radius: 0.9rem;
+  padding: 0.25rem;
+  background: #eaf4f0;
+}
+.mode-tab {
+  border: 0;
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.9rem;
+  color: #476566;
+  background: transparent;
+  font-weight: 750;
+}
+.mode-tab.selected {
+  color: white;
+  background: #0b6b68;
+  box-shadow: 0 0.15rem 0.35rem #173b3b24;
+}
 .button {
   display: inline-block;
   border-radius: 999px;
@@ -208,6 +232,7 @@ progress {
 .button:focus-visible,
 .text-link:focus-visible,
 .text-button:focus-visible,
+.mode-tab:focus-visible,
 .choice:focus-visible,
 .view-button:focus-visible,
 .mobile-nav a:focus-visible,
@@ -379,6 +404,65 @@ textarea:focus-visible {
   border-radius: 1rem;
   overflow: hidden;
   background: #dce9e5;
+}
+.court-selection-card h2 {
+  margin-bottom: 0.35rem;
+}
+.section-intro {
+  margin: 0 0 1.25rem;
+  color: #476566;
+}
+.venue-form {
+  display: grid;
+  gap: 0.25rem;
+}
+.venue-form label {
+  margin: 0.85rem 0;
+}
+.optional-label {
+  color: #5c706b;
+  font-weight: 500;
+}
+.venue-confirmation {
+  margin: 0.25rem 0 0.5rem;
+}
+.compact-map {
+  min-height: 16rem;
+  height: 16rem;
+  margin-top: 0.35rem;
+  border-radius: 0.8rem;
+}
+.venue-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  border-top: 1px solid #dbe4df;
+  padding-top: 0.75rem;
+}
+.venue-form-actions .button {
+  margin-left: auto;
+}
+.venue-location-button {
+  padding: 0.5rem 0;
+  text-align: left;
+}
+.secondary-location-options {
+  margin-top: 1.5rem;
+  border-top: 1px solid #dbe4df;
+  padding-top: 1rem;
+}
+.secondary-location-options summary {
+  cursor: pointer;
+  color: #0b6b68;
+  font-weight: 800;
+}
+.secondary-location-content {
+  padding-top: 0.5rem;
+}
+.secondary-location-content h3 {
+  margin: 1.25rem 0 0.75rem;
 }
 .map-shell {
   position: relative;
@@ -784,5 +868,23 @@ textarea:focus-visible {
   }
   .location-summary {
     position: static;
+  }
+}
+@media (max-width: 480px) {
+  .location-mode-switcher {
+    width: 100%;
+  }
+  .mode-tab {
+    flex: 1;
+    padding-inline: 0.55rem;
+  }
+  .venue-form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .venue-form-actions .button {
+    width: 100%;
+    margin-left: 0;
+    text-align: center;
   }
 }

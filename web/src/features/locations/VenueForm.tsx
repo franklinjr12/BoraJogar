@@ -113,7 +113,7 @@ export function VenueForm({
 }: {
   draft: VenueDraft;
   onChange: (draft: VenueDraft) => void;
-  onCreated?: (venue: Venue) => void;
+  onCreated?: (venue: Venue) => void | Promise<void>;
   buttonLabel?: string;
 }) {
   const [message, setMessage] = useState('');
@@ -159,7 +159,7 @@ export function VenueForm({
     }
     try {
       const created = await createVenueFromDraft(draft);
-      onCreated?.(created);
+      await onCreated?.(created);
       onChange(blankVenueDraft());
       setMessage('Local criado e pronto para partidas.');
     } catch (cause: unknown) {
@@ -173,14 +173,6 @@ export function VenueForm({
   return (
     <div className="venue-form">
       <label>
-        Nome personalizado
-        <input
-          value={draft.name}
-          onChange={(event) => update('name', event.target.value)}
-          placeholder="Praia Central"
-        />
-      </label>
-      <label>
         Pesquisar local no Google Maps
         <GooglePlaceSearch
           point={draft.point}
@@ -193,16 +185,32 @@ export function VenueForm({
           }
         />
       </label>
+      <label>
+        <span>
+          Nome personalizado <span className="optional-label">(opcional)</span>
+        </span>
+        <input
+          value={draft.name}
+          onChange={(event) => update('name', event.target.value)}
+          placeholder="Preenchido ao escolher um local"
+        />
+      </label>
       {draft.addressConfirmed && <p className="hint">Cidade selecionada: {draft.city}</p>}
       <MapPicker point={draft.point} onSelect={(point) => void selectMapPoint(point)} />
-      <button className="text-button" type="button" onClick={useCurrentLocation}>
-        Usar minha localização atual
-      </button>
-      {onCreated && (
-        <button className="button" type="button" onClick={save}>
-          {buttonLabel}
+      <div className="venue-form-actions">
+        <button
+          className="text-button venue-location-button"
+          type="button"
+          onClick={useCurrentLocation}
+        >
+          Usar minha localização atual
         </button>
-      )}
+        {onCreated && (
+          <button className="button" type="button" onClick={save}>
+            {buttonLabel}
+          </button>
+        )}
+      </div>
       {message && (
         <p className="hint" role="status">
           {message}

@@ -37,9 +37,15 @@ const googleMapMock = vi.hoisted(() => {
     }
   }
 
+  class MockMarker {
+    setMap = vi.fn();
+    setPosition = vi.fn();
+  }
+
   return {
     instances,
     Map: MockMap,
+    Marker: MockMarker,
   };
 });
 
@@ -66,7 +72,11 @@ function response(value: unknown) {
 describe('locations page', () => {
   beforeEach(() => {
     googleMapMock.instances.length = 0;
-    googleMapsMock.loadGoogleMaps.mockResolvedValue({ maps: googleMapMock, places: {} });
+    googleMapsMock.loadGoogleMaps.mockResolvedValue({
+      maps: googleMapMock,
+      marker: { Marker: googleMapMock.Marker },
+      places: {},
+    });
     Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
   });
 
@@ -77,7 +87,7 @@ describe('locations page', () => {
     vi.unstubAllGlobals();
   });
 
-  it('starts list-first and hides coordinates', async () => {
+  it('starts with Google place search and map selection', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
@@ -108,8 +118,9 @@ describe('locations page', () => {
     expect(
       await screen.findByRole('heading', { name: /onde você pode jogar/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Parque Barigui' })).toBeInTheDocument();
-    expect(screen.getByText(/em um raio de 4 km/i)).toBeInTheDocument();
+    expect(screen.getByText(/pesquisar local no google maps/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/escolher local no google maps/i)).toBeInTheDocument();
+    expect(screen.getByText(/pesquise no google maps ou marque o local/i)).toBeInTheDocument();
     expect(screen.queryByText(/-25\.4/)).not.toBeInTheDocument();
   });
 
@@ -127,10 +138,10 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/escolha onde você poderia jogar/i);
-    fireEvent.click(screen.getByRole('button', { name: /escolher uma quadra/i }));
+    await screen.findByRole('heading', { name: /escolha uma quadra/i });
+    fireEvent.click(screen.getByText(/escolher entre quadras já cadastradas/i));
     fireEvent.click(screen.getByRole('button', { name: /parque barigui/i }));
-    fireEvent.click(screen.getByRole('button', { name: /salvar quadra/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /^Salvar quadra$/i }).at(-1)!);
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/v1/me/favorite-venues/venue-1',
@@ -173,7 +184,7 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/escolha onde você poderia jogar/i);
+    await screen.findByRole('heading', { name: /escolha uma quadra/i });
     expect(geolocation.getCurrentPosition).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
     fireEvent.click(screen.getByRole('button', { name: /usar minha localização atual/i }));
@@ -226,7 +237,7 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/escolha onde você poderia jogar/i);
+    await screen.findByRole('heading', { name: /escolha uma quadra/i });
     fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
     fireEvent.click(screen.getByRole('button', { name: /usar minha localização atual/i }));
 
@@ -261,7 +272,7 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/escolha onde você poderia jogar/i);
+    await screen.findByRole('heading', { name: /escolha uma quadra/i });
     fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
     fireEvent.click(screen.getByRole('button', { name: /usar minha localização atual/i }));
 
@@ -284,7 +295,7 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/escolha onde você poderia jogar/i);
+    await screen.findByRole('heading', { name: /escolha uma quadra/i });
     fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
     fireEvent.click(screen.getByRole('button', { name: /usar minha localização atual/i }));
     expect(
@@ -310,11 +321,11 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/escolha onde você poderia jogar/i);
+    await screen.findByRole('heading', { name: /escolha uma quadra/i });
     fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
 
     expect(screen.getByLabelText(/mapa para selecionar área/i)).toBeInTheDocument();
-    await waitFor(() => expect(googleMapMock.instances).toHaveLength(1));
+    await waitFor(() => expect(googleMapMock.instances).toHaveLength(2));
     expect(screen.queryByText(/mapa indisponível/i)).not.toBeInTheDocument();
   });
 
@@ -345,14 +356,14 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/escolha onde você poderia jogar/i);
+    await screen.findByRole('heading', { name: /escolha uma quadra/i });
     fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
-    await waitFor(() => expect(googleMapMock.instances).toHaveLength(1));
-    googleMapMock.instances[0]?.handlers.click?.({
+    await waitFor(() => expect(googleMapMock.instances).toHaveLength(2));
+    googleMapMock.instances[1]?.handlers.click?.({
       latLng: { lat: () => -25.44, lng: () => -49.28 },
     });
     await waitFor(() =>
-      expect(googleMapMock.instances[0]?.setCenter).toHaveBeenCalledWith({
+      expect(googleMapMock.instances[1]?.setCenter).toHaveBeenCalledWith({
         lat: -25.44,
         lng: -49.28,
       }),
@@ -383,7 +394,7 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/escolha onde você poderia jogar/i);
+    await screen.findByRole('heading', { name: /escolha uma quadra/i });
     fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
     expect(await screen.findByText(/mapa indisponível/i)).toBeInTheDocument();
   });
@@ -436,10 +447,10 @@ describe('locations page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText(/escolha onde você poderia jogar/i);
+    await screen.findByRole('heading', { name: /escolha uma quadra/i });
     fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
     fireEvent.click(screen.getByRole('button', { name: /pesquisar no google maps/i }));
-    await waitFor(() => expect(autocompleteInstances).toHaveLength(1));
+    await waitFor(() => expect(autocompleteInstances).toHaveLength(2));
 
     const place = {
       id: 'google-place-1',
@@ -449,7 +460,7 @@ describe('locations page', () => {
       location: { lat: () => -25.4405, lng: () => -49.276 },
       fetchFields: vi.fn(),
     };
-    autocompleteInstances[0]?.emit(new MockSelectEvent({ toPlace: () => place }));
+    autocompleteInstances[1]?.emit(new MockSelectEvent({ toPlace: () => place }));
 
     await waitFor(() => expect(place.fetchFields).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: /salvar área/i }));

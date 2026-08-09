@@ -4,6 +4,8 @@ import { locationApi, type PreferredArea, type Venue } from '../../api/client';
 import { requestBrowserLocation, type LocationMessages } from './browserLocation';
 import { GooglePlaceSearch } from './GooglePlaceSearch';
 import { loadGoogleMaps } from './googleMaps';
+import { blankVenueDraft, type VenueDraft } from './venueDraft';
+import { VenueForm } from './VenueForm';
 import type { PlaceSearchResult } from './googlePlace';
 
 const defaultCenter = { latitude: -25.4284, longitude: -49.2733 };
@@ -141,8 +143,9 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [favorites, setFavorites] = useState<Venue[]>([]);
   const [areas, setAreas] = useState<PreferredArea[]>([]);
-  const [mode, setMode] = useState<'list' | 'court' | 'area'>('list');
+  const [mode, setMode] = useState<'list' | 'court' | 'area'>('court');
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
+  const [venueDraft, setVenueDraft] = useState<VenueDraft>(blankVenueDraft());
   const [search, setSearch] = useState('');
   const [point, setPoint] = useState(defaultCenter);
   const [radius, setRadius] = useState(4000);
@@ -226,6 +229,18 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
     }
   };
 
+  const saveCreatedCourt = async (venue: Venue) => {
+    await locationApi.favoriteVenue(venue.id);
+    setFavorites((current) =>
+      current.some((item) => item.id === venue.id) ? current : [...current, venue],
+    );
+    setVenues((current) =>
+      current.some((item) => item.id === venue.id) ? current : [...current, venue],
+    );
+    setMode('list');
+    setMessage('Quadra salva.');
+  };
+
   const removeCourt = async (venue: Venue) => {
     try {
       await locationApi.unfavoriteVenue(venue.id);
@@ -272,11 +287,21 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
         Escolha quadras que você já frequenta ou marque uma área geral. Suas áreas privadas são
         usadas apenas para encontrar combinações.
       </p>
-      <div className="actions compact-actions">
-        <button className="button" type="button" onClick={() => setMode('court')}>
+      <div className="location-mode-switcher" role="group" aria-label="Escolha do local">
+        <button
+          className={mode === 'court' ? 'mode-tab selected' : 'mode-tab'}
+          type="button"
+          aria-pressed={mode === 'court'}
+          onClick={() => setMode('court')}
+        >
           Escolher uma quadra
         </button>
-        <button className="text-button" type="button" onClick={() => setMode('area')}>
+        <button
+          className={mode === 'area' ? 'mode-tab selected' : 'mode-tab'}
+          type="button"
+          aria-pressed={mode === 'area'}
+          onClick={() => setMode('area')}
+        >
           Escolher uma área
         </button>
       </div>
@@ -327,46 +352,63 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
       )}
 
       {mode === 'court' && (
-        <section className="card">
+        <section className="card court-selection-card">
           <h2>Escolha uma quadra</h2>
-          <label>
-            Pesquisar quadras ou bairros
-            <input value={search} onChange={(event) => setSearch(event.target.value)} />
-          </label>
-          {selectedVenue ? (
-            <div className="venue-preview">
-              <h3>{selectedVenue.name}</h3>
-              <p>{venueLabel(selectedVenue)}</p>
-              <p>{selectedVenue.addressLabel || selectedVenue.city}</p>
-              <div className="map-preview" aria-label={`Prévia do mapa de ${selectedVenue.name}`} />
-              <p>Quando você jogaria aqui?</p>
-              <label className="checks">
-                <span>
-                  <input type="checkbox" defaultChecked /> Sempre que eu estiver disponível
-                </span>
+          <p className="section-intro">
+            Pesquise no Google Maps ou marque o local diretamente no mapa.
+          </p>
+          <VenueForm
+            draft={venueDraft}
+            onChange={setVenueDraft}
+            onCreated={saveCreatedCourt}
+            buttonLabel="Adicionar quadra"
+          />
+          <details className="secondary-location-options">
+            <summary>Escolher entre quadras já cadastradas</summary>
+            <div className="secondary-location-content">
+              <label>
+                Pesquisar quadras ou bairros
+                <input value={search} onChange={(event) => setSearch(event.target.value)} />
               </label>
-              <button className="button" type="button" onClick={() => saveCourt(selectedVenue)}>
-                Salvar quadra
-              </button>
-            </div>
-          ) : (
-            <>
-              <h3>Próximas e populares</h3>
-              <div className="choice-list">
-                {filteredVenues.map((venue) => (
-                  <button
-                    className="choice"
-                    key={venue.id}
-                    type="button"
-                    onClick={() => setSelectedVenue(venue)}
-                  >
-                    <strong>{venue.name}</strong>
-                    <span>{venueLabel(venue)}</span>
+              {selectedVenue ? (
+                <div className="venue-preview">
+                  <h3>{selectedVenue.name}</h3>
+                  <p>{venueLabel(selectedVenue)}</p>
+                  <p>{selectedVenue.addressLabel || selectedVenue.city}</p>
+                  <div
+                    className="map-preview"
+                    aria-label={`Prévia do mapa de ${selectedVenue.name}`}
+                  />
+                  <p>Quando você jogaria aqui?</p>
+                  <label className="checks">
+                    <span>
+                      <input type="checkbox" defaultChecked /> Sempre que eu estiver disponível
+                    </span>
+                  </label>
+                  <button className="button" type="button" onClick={() => saveCourt(selectedVenue)}>
+                    Salvar quadra
                   </button>
-                ))}
-              </div>
-            </>
-          )}
+                </div>
+              ) : (
+                <>
+                  <h3>Próximas e populares</h3>
+                  <div className="choice-list">
+                    {filteredVenues.map((venue) => (
+                      <button
+                        className="choice"
+                        key={venue.id}
+                        type="button"
+                        onClick={() => setSelectedVenue(venue)}
+                      >
+                        <strong>{venue.name}</strong>
+                        <span>{venueLabel(venue)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </details>
         </section>
       )}
 
