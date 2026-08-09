@@ -85,12 +85,19 @@ async function chooseDate(page: Page, value: string) {
 }
 
 async function chooseTime(page: Page, hour: string, minute: string) {
-  await page.getByLabel(/horário de início/i).click();
-  await page.locator('.time-picker-hours').getByRole('button', { name: hour, exact: true }).click();
-  await page
-    .locator('.time-picker-minutes')
-    .getByRole('button', { name: minute, exact: true })
-    .click();
+  await page.getByRole('button', { name: /abrir seletor de horário/i }).click();
+  const hourWheel = page.getByRole('listbox', { name: 'Hora' });
+  const minuteWheel = page.getByRole('listbox', { name: 'Minutos' });
+  await hourWheel.getByRole('option', { name: hour, exact: true }).click();
+  await minuteWheel.getByRole('option', { name: minute, exact: true }).click();
+  await expect(hourWheel.getByRole('option', { name: hour, exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(minuteWheel.getByRole('option', { name: minute, exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await page.getByRole('button', { name: 'Concluído' }).click();
 }
 

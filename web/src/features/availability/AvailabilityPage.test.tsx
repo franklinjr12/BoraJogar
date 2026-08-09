@@ -155,19 +155,34 @@ describe('AvailabilityPage', () => {
     );
 
     await screen.findByRole('button', { name: /neste fim de semana/i });
-    fireEvent.click(screen.getByLabelText('Início'));
+    const pickerToggles = screen.getAllByRole('button', {
+      name: /abrir seletor de horário/i,
+    });
+    fireEvent.click(pickerToggles[0]!);
     let dialog = screen.getByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: '06' }));
     fireEvent.click(
-      within(dialog.querySelector('.time-picker-minutes')!).getByRole('button', { name: '00' }),
+      within(within(dialog).getByRole('listbox', { name: 'Hora' })).getByRole('option', {
+        name: '06',
+      }),
+    );
+    fireEvent.click(
+      within(within(dialog).getByRole('listbox', { name: 'Minutos' })).getByRole('option', {
+        name: '00',
+      }),
     );
     fireEvent.click(within(dialog).getByRole('button', { name: 'Concluído' }));
 
-    fireEvent.click(screen.getByLabelText('Fim'));
+    fireEvent.click(pickerToggles[1]!);
     dialog = screen.getByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: '08' }));
     fireEvent.click(
-      within(dialog.querySelector('.time-picker-minutes')!).getByRole('button', { name: '00' }),
+      within(within(dialog).getByRole('listbox', { name: 'Hora' })).getByRole('option', {
+        name: '08',
+      }),
+    );
+    fireEvent.click(
+      within(within(dialog).getByRole('listbox', { name: 'Minutos' })).getByRole('option', {
+        name: '00',
+      }),
     );
     fireEvent.click(within(dialog).getByRole('button', { name: 'Concluído' }));
 

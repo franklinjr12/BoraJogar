@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DatePickerField, TimePickerField } from './DateTimePicker';
 
@@ -60,25 +60,39 @@ describe('DatePickerField', () => {
 });
 
 describe('TimePickerField', () => {
-  it('selects 24-hour time in five-minute steps and keeps value in hidden form input', () => {
+  it('selects time with vertical wheels and defaults minute to zero', () => {
     const onChange = vi.fn();
     render(<TimePickerField label="Horário" name="time" value="" onChange={onChange} required />);
 
-    fireEvent.click(screen.getByLabelText('Horário'));
+    fireEvent.click(screen.getByRole('button', { name: /abrir seletor de horário/i }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '23' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '35' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '34' })).not.toBeInTheDocument();
+    const hourWheel = screen.getByRole('listbox', { name: 'Hora' });
+    const minuteWheel = screen.getByRole('listbox', { name: 'Minutos' });
+    expect(within(minuteWheel).getByRole('option', { name: '00' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
 
-    fireEvent.click(screen.getByRole('button', { name: '09' }));
-    fireEvent.click(screen.getByRole('button', { name: '35' }));
+    fireEvent.click(within(hourWheel).getByRole('option', { name: '09' }));
+    fireEvent.click(within(minuteWheel).getByRole('option', { name: '35' }));
     expect(onChange).toHaveBeenLastCalledWith('09:35');
 
     const hiddenInput = document.querySelector<HTMLInputElement>(
       'input[type="hidden"][name="time"]',
     );
-    expect(hiddenInput).toHaveValue('');
+    expect(hiddenInput).toHaveValue('09:35');
     fireEvent.click(screen.getByRole('button', { name: 'Concluído' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('accepts typed hours with or without a colon', () => {
+    const onChange = vi.fn();
+    render(<TimePickerField label="Horário" name="time" value="" onChange={onChange} />);
+
+    const input = screen.getByLabelText('Horário');
+    fireEvent.change(input, { target: { value: '1030' } });
+
+    expect(input).toHaveValue('10:30');
+    expect(onChange).toHaveBeenLastCalledWith('10:30');
   });
 });
