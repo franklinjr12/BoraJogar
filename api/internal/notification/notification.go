@@ -33,6 +33,7 @@ const (
 	GameCancelled        Type = "game_cancelled"
 	GameReminder         Type = "game_reminder"
 	ReportReceived       Type = "report_received"
+	AttendanceRequested  Type = "attendance_requested"
 )
 
 type Event struct {
@@ -44,12 +45,12 @@ type Event struct {
 	ReadAt, CreatedAt *time.Time
 }
 type Delivery struct {
-	ID, EventID            uuid.UUID
-	UserID                 uuid.UUID
-	Channel, Status        string
-	AttemptCount           int
-	Title, Body, ActionURL string
-	Payload                json.RawMessage
+	ID, EventID                uuid.UUID
+	UserID                     uuid.UUID
+	Channel, Status            string
+	AttemptCount               int
+	To, Title, Body, ActionURL string
+	Payload                    json.RawMessage
 }
 type NotificationChannel interface {
 	Send(context.Context, Delivery) error
@@ -197,11 +198,18 @@ func (c InAppChannel) Send(ctx context.Context, d Delivery) error {
 
 type EmailChannel struct{ Sender email.Sender }
 
-func (c EmailChannel) Send(context.Context, Delivery) error {
+func (c EmailChannel) Send(ctx context.Context, d Delivery) error {
 	if c.Sender == nil {
 		return errors.New("email sender unavailable")
 	}
-	return errors.New("email recipient resolution required")
+	if strings.TrimSpace(d.To) == "" {
+		return errors.New("email recipient unavailable")
+	}
+	body := strings.TrimSpace(d.Body)
+	if d.ActionURL != "" {
+		body += "\n\nOpen in Bora Jogar:\n" + d.ActionURL
+	}
+	return c.Sender.Send(ctx, email.Message{To: d.To, Subject: d.Title, Body: body, Headers: map[string]string{"Resend-Idempotency-Key": d.ID.String()}})
 }
 
 type WebPushChannel struct{}

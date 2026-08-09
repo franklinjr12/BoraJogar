@@ -44,6 +44,12 @@ func TestLoad(t *testing.T) {
 	t.Setenv("SESSION_SECRET", "12345678901234567890123456789012")
 	t.Setenv("GOOGLE_MAPS_API_KEY", "maps-key")
 	t.Setenv("GOOGLE_MAPS_SECRET", "maps-secret")
+	t.Setenv("SMTP_HOST", "smtp.resend.com")
+	t.Setenv("SMTP_PORT", "587")
+	t.Setenv("SMTP_USERNAME", "resend")
+	t.Setenv("SMTP_PASSWORD", "smtp-key")
+	t.Setenv("SMTP_FROM_ADDRESS", "no-reply@notify.example.com")
+	t.Setenv("SMTP_FROM_NAME", "Bora Jogar")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -54,8 +60,25 @@ func TestLoad(t *testing.T) {
 	if cfg.GoogleMapsAPIKey != "maps-key" || cfg.GoogleMapsSecret != "maps-secret" {
 		t.Fatalf("unexpected Google Maps config: %#v", cfg)
 	}
+	if cfg.SMTPHost != "smtp.resend.com" || cfg.SMTPPort != 587 || cfg.SMTPUsername != "resend" || cfg.SMTPPassword != "smtp-key" || cfg.SMTPFromAddress != "no-reply@notify.example.com" || cfg.SMTPFromName != "Bora Jogar" {
+		t.Fatalf("unexpected SMTP config: %#v", cfg)
+	}
 	if cfg.MatchLookaheadDays != 14 || cfg.MatchDefaultDurationMinutes != 90 || cfg.MatchDefaultPlayerCount != 4 || cfg.MatchSlotIncrementMinutes != 30 || cfg.MatchMaxSkillDifference != 1 || cfg.MatchMinimumNoticeMinutes != 720 || cfg.MatchProposalExpirationHours != 8 || cfg.MatchMaxProposalsPerUserPerDay != 2 || cfg.MatchRecentPairingLookbackDays != 14 {
 		t.Fatalf("unexpected matchmaking defaults: %+v", cfg)
+	}
+}
+
+func TestLoadRequiresSMTPConfigurationInProduction(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("APP_PORT", "8080")
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("SESSION_SECRET", "12345678901234567890123456789012")
+	t.Setenv("SMTP_HOST", "")
+	t.Setenv("SMTP_USERNAME", "")
+	t.Setenv("SMTP_PASSWORD", "")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected production SMTP configuration error")
 	}
 }
 

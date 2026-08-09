@@ -14,6 +14,7 @@ import (
 	"github.com/borajogar/borajogar/api/internal/notification"
 	"github.com/borajogar/borajogar/api/internal/platform/config"
 	"github.com/borajogar/borajogar/api/internal/platform/database"
+	"github.com/borajogar/borajogar/api/internal/platform/email"
 )
 
 func main() {
@@ -32,6 +33,19 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+	notifications := notification.Service{
+		DB: db,
+		Channels: map[string]notification.NotificationChannel{
+			"email": notification.EmailChannel{Sender: email.SMTP{
+				Host:        cfg.SMTPHost,
+				Port:        cfg.SMTPPort,
+				Username:    cfg.SMTPUsername,
+				Password:    cfg.SMTPPassword,
+				FromAddress: cfg.SMTPFromAddress,
+				FromName:    cfg.SMTPFromName,
+			}},
+		},
+	}
 	logger.Info("worker started")
 	cleanup := func() {
 		deleted, cleanupErr := auth.CleanupExpiredSessions(ctx, db)
@@ -43,7 +57,7 @@ func main() {
 	}
 	cleanup()
 	completeGames := func() {
-		completed, completeErr := attendance.CompleteFinishedGames(ctx, db, notification.Service{DB: db}, time.Now().UTC(), 15*time.Minute)
+		completed, completeErr := attendance.CompleteFinishedGames(ctx, db, notifications, time.Now().UTC(), 15*time.Minute)
 		if completeErr != nil {
 			logger.Error("finished game completion failed", "error", completeErr)
 			return
@@ -52,22 +66,37 @@ func main() {
 			logger.Info("finished games completed", "count", completed)
 		}
 	}
+	deliverEmails := func() {
+		result, deliveryErr := notifications.DeliverPendingEmail(ctx, cfg.BaseURL, 20)
+		if deliveryErr != nil {
+			logger.Error("email delivery run failed", "error", deliveryErr)
+			return
+		}
+		if result.Claimed > 0 {
+			logger.Info("email delivery run completed", "claimed", result.Claimed, "delivered", result.Delivered, "retried", result.Retried, "failed", result.Failed)
+		}
+	}
 	completeGames()
+	deliverEmails()
 	if err := availability.ExpandFuture(ctx, db, time.Now().UTC()); err != nil {
 		logger.Error("availability expansion failed", "error", err)
 	}
-	ticker := time.NewTicker(time.Hour)
-	defer ticker.Stop()
+	maintenanceTicker := time.NewTicker(time.Hour)
+	defer maintenanceTicker.Stop()
+	deliveryTicker := time.NewTicker(time.Minute)
+	defer deliveryTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-maintenanceTicker.C:
 			cleanup()
 			completeGames()
 			if err := availability.ExpandFuture(ctx, db, time.Now().UTC()); err != nil {
 				logger.Error("availability expansion failed", "error", err)
 			}
+		case <-deliveryTicker.C:
+			deliverEmails()
 		}
 	}
 }
