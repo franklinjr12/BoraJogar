@@ -37,19 +37,26 @@ function roundPoint(point: { latitude: number; longitude: number }) {
 function MapPanel({
   center,
   onSelect,
+  onPointSelected,
 }: {
   center: { latitude: number; longitude: number };
   onSelect: (latitude: number, longitude: number) => void;
+  onPointSelected?: (latitude: number, longitude: number) => void;
 }) {
   const node = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
   const initialCenter = useRef(center);
   const onSelectRef = useRef(onSelect);
+  const onPointSelectedRef = useRef(onPointSelected);
   const [mapFailed, setMapFailed] = useState(false);
 
   useEffect(() => {
     onSelectRef.current = onSelect;
   }, [onSelect]);
+
+  useEffect(() => {
+    onPointSelectedRef.current = onPointSelected;
+  }, [onPointSelected]);
 
   useEffect(() => {
     if (!node.current) return;
@@ -79,7 +86,10 @@ function MapPanel({
         listeners.push(
           instance.addListener('click', (event: google.maps.MapMouseEvent) => {
             if (!event.latLng) return;
-            onSelectRef.current(event.latLng.lat(), event.latLng.lng());
+            (onPointSelectedRef.current ?? onSelectRef.current)(
+              event.latLng.lat(),
+              event.latLng.lng(),
+            );
           }),
         );
         map.current = instance;
@@ -139,11 +149,17 @@ export function LocationsPage() {
   );
 }
 
-export function LocationSetup({ compact = false }: { compact?: boolean }) {
+export function LocationSetup({
+  compact = false,
+  onLocationSavingChange,
+}: {
+  compact?: boolean;
+  onLocationSavingChange?: (saving: boolean) => void;
+}) {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [favorites, setFavorites] = useState<Venue[]>([]);
   const [areas, setAreas] = useState<PreferredArea[]>([]);
-  const [mode, setMode] = useState<'list' | 'court' | 'area'>('court');
+  const [mode, setMode] = useState<'list' | 'court' | 'area'>(compact ? 'area' : 'court');
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
   const [venueDraft, setVenueDraft] = useState<VenueDraft>(blankVenueDraft());
   const [search, setSearch] = useState('');
@@ -153,6 +169,7 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [areaSearchOpen, setAreaSearchOpen] = useState(false);
+  const [savingArea, setSavingArea] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -184,9 +201,39 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
       .includes(search.toLowerCase()),
   );
 
+  const saveAreaAtPoint = async (selectedPoint: typeof point, selectedLabel: string) => {
+    if (areas.length >= 5) {
+      onLocationSavingChange?.(false);
+      setMessage('Você atingiu o limite de cinco áreas.');
+      return;
+    }
+    setSavingArea(true);
+    onLocationSavingChange?.(true);
+    try {
+      const created = await locationApi.createPreferredArea({
+        label: selectedLabel.trim() || 'Perto de você',
+        ...roundPoint(selectedPoint),
+        radiusMeters: radius,
+        priority: areas.length,
+      });
+      setAreas((current) => [...current, created]);
+      setMode('list');
+      setMessage(
+        selectedLabel.trim() === 'Perto de você' ? 'Área perto de você salva.' : 'Área salva.',
+      );
+    } catch {
+      setMessage('Não foi possível salvar a área. Você pode tentar novamente.');
+    } finally {
+      setSavingArea(false);
+      onLocationSavingChange?.(false);
+    }
+  };
+
   const useCurrentLocation = async () => {
+    if (compact) onLocationSavingChange?.(true);
     const result = await requestBrowserLocation(locationMessages);
     if (!result.ok) {
+      if (compact) onLocationSavingChange?.(false);
       setMessage(result.message);
       return;
     }
@@ -196,7 +243,12 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
       longitude: result.longitude,
     });
     setPoint(rounded);
-    setLabel('Perto da minha região');
+    const selectedLabel = compact ? 'Perto de você' : 'Perto da minha região';
+    setLabel(selectedLabel);
+    if (compact) {
+      await saveAreaAtPoint(rounded, selectedLabel);
+      return;
+    }
     setMessage('Área definida pela localização do seu dispositivo.');
   };
 
@@ -213,7 +265,12 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
   const selectAreaPlace = (place: PlaceSearchResult) => {
     const rounded = roundPoint({ latitude: place.latitude, longitude: place.longitude });
     setPoint(rounded);
-    setLabel(`Perto de ${place.city}`);
+    const selectedLabel = `Perto de ${place.city}`;
+    setLabel(selectedLabel);
+    if (compact) {
+      void saveAreaAtPoint(rounded, selectedLabel);
+      return;
+    }
     setMessage(`Área selecionada: ${place.city}.`);
   };
 
@@ -255,19 +312,13 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
       setMessage('Informe um nome para esta área.');
       return;
     }
-    try {
-      const created = await locationApi.createPreferredArea({
-        label: label.trim(),
-        ...roundPoint(point),
-        radiusMeters: radius,
-        priority: areas.length,
-      });
-      setAreas((current) => [...current, created]);
-      setMode('list');
-      setMessage('Área salva.');
-    } catch {
-      setMessage('Não foi possível salvar a área. Você pode ter atingido o limite de cinco.');
-    }
+    await saveAreaAtPoint(point, label);
+  };
+
+  const selectAreaPoint = (latitude: number, longitude: number, explicit = false) => {
+    const rounded = roundPoint({ latitude, longitude });
+    setPoint(rounded);
+    if (compact && explicit) void saveAreaAtPoint(rounded, 'Perto de você');
   };
 
   const removeArea = async (id: string) => {
@@ -284,8 +335,9 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
       <p className="eyebrow">Locais para jogar</p>
       {!compact && <h1>Onde você pode jogar?</h1>}
       <p className="lead">
-        Escolha quadras que você já frequenta ou marque uma área geral. Suas áreas privadas são
-        usadas apenas para encontrar combinações.
+        {compact
+          ? 'Comece por uma área perto de você. Use sua localização ou marque um ponto no mapa; quadras específicas podem ser adicionadas depois.'
+          : 'Escolha quadras que você já frequenta ou marque uma área geral. Suas áreas privadas são usadas apenas para encontrar combinações.'}
       </p>
       <div className="location-mode-switcher" role="group" aria-label="Escolha do local">
         <button
@@ -361,6 +413,11 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
             draft={venueDraft}
             onChange={setVenueDraft}
             onCreated={saveCreatedCourt}
+            onPointSelected={
+              compact
+                ? (selectedPoint) => saveAreaAtPoint(roundPoint(selectedPoint), 'Perto de você')
+                : undefined
+            }
             buttonLabel="Adicionar quadra"
           />
           <details className="secondary-location-options">
@@ -447,7 +504,8 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
           )}
           <MapPanel
             center={point}
-            onSelect={(latitude, longitude) => setPoint({ latitude, longitude })}
+            onSelect={(latitude, longitude) => selectAreaPoint(latitude, longitude)}
+            onPointSelected={(latitude, longitude) => selectAreaPoint(latitude, longitude, true)}
           />
           <p className="hint">Perto de {label || 'área selecionada'}</p>
           <fieldset>
@@ -473,8 +531,13 @@ export function LocationSetup({ compact = false }: { compact?: boolean }) {
           <p className="hint">
             Área privada. Outros jogadores verão apenas o local da partida proposta.
           </p>
-          <button className="button" type="button" onClick={saveArea} disabled={areas.length >= 5}>
-            Salvar área
+          <button
+            className="button"
+            type="button"
+            onClick={saveArea}
+            disabled={areas.length >= 5 || savingArea}
+          >
+            {savingArea ? 'Salvando área...' : 'Salvar área'}
           </button>
         </section>
       )}

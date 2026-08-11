@@ -86,6 +86,7 @@ export function OnboardingPage() {
   const [profile, setProfile] = useState(initial.profile);
   const [readiness, setReadiness] = useState<OnboardingReadiness | null>(null);
   const [error, setError] = useState('');
+  const [locationSaving, setLocationSaving] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('borajogar_onboarding_goal', goal);
@@ -236,9 +237,9 @@ export function OnboardingPage() {
       )}
       {step === 1 && (
         <>
-          <LocationSetup compact />
+          <LocationSetup compact onLocationSavingChange={setLocationSaving} />
           <div className="actions">
-            <button className="button" onClick={continueFromLocations}>
+            <button className="button" onClick={continueFromLocations} disabled={locationSaving}>
               Continuar
             </button>
             <button className="text-button" onClick={() => setStep(0)}>

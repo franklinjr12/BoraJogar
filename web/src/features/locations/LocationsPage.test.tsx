@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LocationsPage } from './LocationsPage';
+import { LocationSetup, LocationsPage } from './LocationsPage';
 
 const googleMapsMock = vi.hoisted(() => ({ loadGoogleMaps: vi.fn() }));
 vi.mock('./googleMaps', () => googleMapsMock);
@@ -122,6 +122,87 @@ describe('locations page', () => {
     expect(screen.getByLabelText(/escolher local no google maps/i)).toBeInTheDocument();
     expect(screen.getByText(/pesquise no google maps ou marque o local/i)).toBeInTheDocument();
     expect(screen.queryByText(/-25\.4/)).not.toBeInTheDocument();
+  });
+
+  it('starts onboarding with an area and saves current location automatically', async () => {
+    const geolocation = {
+      getCurrentPosition: vi.fn((success: PositionCallback) =>
+        success({
+          coords: { latitude: -25.4289, longitude: -49.2738 } as GeolocationCoordinates,
+        } as GeolocationPosition),
+      ),
+    };
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST')
+        return Promise.resolve(
+          response({
+            id: 'area-1',
+            label: 'Perto de você',
+            latitude: -25.429,
+            longitude: -49.274,
+            radiusMeters: 4000,
+            priority: 0,
+            active: true,
+          }),
+        );
+      if (url.includes('favorite-venues') || url.includes('preferred-areas'))
+        return Promise.resolve(response([]));
+      return Promise.resolve(response([venue]));
+    });
+    vi.stubGlobal('navigator', { ...navigator, geolocation });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<LocationSetup compact />);
+
+    expect(await screen.findByText(/comece por uma área perto de você/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /usar minha localização atual/i }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/me/preferred-areas',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"label":"Perto de você"'),
+        }),
+      ),
+    );
+    expect(await screen.findByText(/área perto de você salva/i)).toBeInTheDocument();
+  });
+
+  it('saves an onboarding area when the player clicks the map', async () => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST')
+        return Promise.resolve(
+          response({
+            id: 'area-1',
+            label: 'Perto de você',
+            latitude: -25.44,
+            longitude: -49.28,
+            radiusMeters: 4000,
+            priority: 0,
+            active: true,
+          }),
+        );
+      if (url.includes('favorite-venues') || url.includes('preferred-areas'))
+        return Promise.resolve(response([]));
+      return Promise.resolve(response([venue]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<LocationSetup compact />);
+
+    await waitFor(() => expect(googleMapMock.instances).toHaveLength(1));
+    googleMapMock.instances[0]?.handlers.click?.({
+      latLng: { lat: () => -25.44, lng: () => -49.28 },
+    });
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/me/preferred-areas',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"latitude":-25.44'),
+        }),
+      ),
+    );
   });
 
   it('saves a known court from the chooser', async () => {

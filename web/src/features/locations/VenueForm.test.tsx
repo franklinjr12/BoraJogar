@@ -1,9 +1,10 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VenueForm } from './VenueForm';
 import { blankVenueDraft } from './venueDraft';
 import type { VenueDraft } from './venueDraft';
+import type { Venue } from '../../api/client';
 
 const googleMapsMock = vi.hoisted(() => ({ loadGoogleMaps: vi.fn() }));
 vi.mock('./googleMaps', () => googleMapsMock);
@@ -38,7 +39,15 @@ function response(value: unknown) {
   return Promise.resolve(new Response(JSON.stringify(value), { status: 200 }));
 }
 
-function Harness({ onChange }: { onChange: (draft: VenueDraft) => void }) {
+function Harness({
+  onChange,
+  onPointSelected,
+  onCreated,
+}: {
+  onChange: (draft: VenueDraft) => void;
+  onPointSelected?: (point: { latitude: number; longitude: number }) => void;
+  onCreated?: (venue: Venue) => void | Promise<void>;
+}) {
   const [draft, setDraft] = useState(blankVenueDraft);
   return (
     <VenueForm
@@ -47,6 +56,8 @@ function Harness({ onChange }: { onChange: (draft: VenueDraft) => void }) {
         setDraft(nextDraft);
         onChange(nextDraft);
       }}
+      onPointSelected={onPointSelected}
+      onCreated={onCreated}
     />
   );
 }
@@ -167,11 +178,81 @@ describe('VenueForm', () => {
     await waitFor(() =>
       expect(onChange).toHaveBeenCalledWith(
         expect.objectContaining({
+          name: 'Quadra escolhida no mapa',
+          addressLabel: 'Localização escolhida no mapa',
           point: { latitude: -25.44, longitude: -49.28 },
           addressConfirmed: false,
         }),
       ),
     );
-    expect(await screen.findByText(/pesquise o local no Google Maps/i)).toBeInTheDocument();
+    expect(await screen.findByText(/ponto marcado.*nome padrão preenchido/i)).toBeInTheDocument();
+  });
+
+  it('reports explicit map points to onboarding location setup', async () => {
+    const onPointSelected = vi.fn();
+    render(<Harness onChange={vi.fn()} onPointSelected={onPointSelected} />);
+    await waitFor(() => expect(googleMapMock.instances.length).toBe(1));
+
+    googleMapMock.instances[0]?.handlers.click?.({
+      latLng: { lat: () => -25.44, lng: () => -49.28 },
+    });
+
+    expect(onPointSelected).toHaveBeenCalledWith({ latitude: -25.44, longitude: -49.28 });
+  });
+
+  it('fills a default court name and address from current location', async () => {
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+    const geolocation = {
+      getCurrentPosition: vi.fn((success: PositionCallback) =>
+        success({
+          coords: { latitude: -25.4289, longitude: -49.2738 } as GeolocationCoordinates,
+        } as GeolocationPosition),
+      ),
+    };
+    vi.stubGlobal('navigator', { ...navigator, geolocation });
+    const onChange = vi.fn();
+    render(<Harness onChange={onChange} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /usar minha localização atual/i }));
+
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Quadra perto de você',
+          addressLabel: 'Localização atual',
+          point: { latitude: -25.4289, longitude: -49.2738 },
+        }),
+      ),
+    );
+  });
+
+  it('allows adding the court immediately after using current location', async () => {
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      geolocation: {
+        getCurrentPosition: (success: PositionCallback) =>
+          success({
+            coords: { latitude: -25.4289, longitude: -49.2738 } as GeolocationCoordinates,
+          } as GeolocationPosition),
+      },
+    });
+    const fetchMock = vi.fn(() => response({}));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<Harness onChange={vi.fn()} onCreated={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /usar minha localização atual/i }));
+    await screen.findByText(/localização definida.*nome padrão preenchido/i);
+    fireEvent.click(screen.getByRole('button', { name: /criar local/i }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/me/venues',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"name":"Quadra perto de você"'),
+        }),
+      ),
+    );
   });
 });

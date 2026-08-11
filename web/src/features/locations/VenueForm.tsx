@@ -25,6 +25,21 @@ const locationMessages: LocationMessages = {
 
 type Point = { latitude: number; longitude: number };
 
+function draftForPoint(
+  draft: VenueDraft,
+  point: Point,
+  defaultName: string,
+  defaultAddress: string,
+): VenueDraft {
+  return {
+    ...draft,
+    name: draft.name.trim() || defaultName,
+    addressLabel: draft.addressLabel.trim() || defaultAddress,
+    point,
+    addressConfirmed: false,
+  };
+}
+
 function GoogleMapPicker({
   point,
   onSelect,
@@ -109,21 +124,28 @@ export function VenueForm({
   draft,
   onChange,
   onCreated,
+  onPointSelected,
   buttonLabel = 'Criar local',
 }: {
   draft: VenueDraft;
   onChange: (draft: VenueDraft) => void;
   onCreated?: (venue: Venue) => void | Promise<void>;
+  onPointSelected?: (point: Point) => void | Promise<void>;
   buttonLabel?: string;
 }) {
   const [message, setMessage] = useState('');
+  const [locating, setLocating] = useState(false);
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  const changeDraft = (nextDraft: VenueDraft) => {
+    draftRef.current = nextDraft;
+    onChange(nextDraft);
+  };
   const update = <K extends keyof VenueDraft>(key: K, value: VenueDraft[K]) =>
-    onChange({ ...draft, [key]: value });
+    changeDraft({ ...draftRef.current, [key]: value });
   const selectGooglePlace = (place: PlaceSearchResult) => {
     const currentDraft = draftRef.current;
-    onChange({
+    changeDraft({
       ...currentDraft,
       name: currentDraft.name.trim() || place.displayName,
       addressLabel: place.addressLabel ?? place.displayName,
@@ -134,39 +156,53 @@ export function VenueForm({
     setMessage('Local encontrado no Google Maps. Confira os dados antes de salvar.');
   };
   const selectMapPoint = (point: Point) => {
-    onChange({ ...draftRef.current, point, addressConfirmed: false });
-    setMessage('Ponto marcado no mapa. Pesquise o local no Google Maps.');
+    changeDraft(
+      draftForPoint(
+        draftRef.current,
+        point,
+        'Quadra escolhida no mapa',
+        'Localização escolhida no mapa',
+      ),
+    );
+    void onPointSelected?.(point);
+    setMessage('Ponto marcado. Nome padrão preenchido; edite os dados se quiser.');
   };
   const useCurrentLocation = async () => {
-    const result = await requestBrowserLocation(locationMessages);
-    if (!result.ok) {
-      setMessage(result.message);
-      return;
-    }
+    setLocating(true);
+    try {
+      const result = await requestBrowserLocation(locationMessages);
+      if (!result.ok) {
+        setMessage(result.message);
+        return;
+      }
 
-    onChange({
-      ...draft,
-      point: { latitude: result.latitude, longitude: result.longitude },
-      addressConfirmed: false,
-    });
-    setMessage('Ponto definido pelo seu dispositivo. Pesquise o local no Google Maps.');
+      const point = { latitude: result.latitude, longitude: result.longitude };
+      changeDraft(
+        draftForPoint(draftRef.current, point, 'Quadra perto de você', 'Localização atual'),
+      );
+      void onPointSelected?.(point);
+      setMessage('Localização definida. Nome padrão preenchido; edite antes de adicionar.');
+    } finally {
+      setLocating(false);
+    }
   };
   const save = async () => {
     setMessage('');
-    if (!venueDraftReady(draft)) {
-      setMessage('Informe um nome e selecione um local no Google Maps.');
+    const currentDraft = draftRef.current;
+    if (!venueDraftReady(currentDraft)) {
+      setMessage('Informe um nome e selecione um local no mapa ou use sua localização.');
       return;
     }
     try {
-      const created = await createVenueFromDraft(draft);
+      const created = await createVenueFromDraft(currentDraft);
       await onCreated?.(created);
-      onChange(blankVenueDraft());
+      changeDraft(blankVenueDraft());
       setMessage('Local criado e pronto para partidas.');
     } catch (cause: unknown) {
       setMessage(
         cause instanceof ApiError
           ? `Não foi possível criar o local: ${cause.message}`
-          : 'Não foi possível criar o local. Verifique o nome e selecione um local no Google Maps.',
+          : 'Não foi possível criar o local. Verifique o nome e selecione um local no mapa.',
       );
     }
   };
@@ -202,11 +238,12 @@ export function VenueForm({
           className="text-button venue-location-button"
           type="button"
           onClick={useCurrentLocation}
+          disabled={locating}
         >
-          Usar minha localização atual
+          {locating ? 'Localizando...' : 'Usar minha localização atual'}
         </button>
         {onCreated && (
-          <button className="button" type="button" onClick={save}>
+          <button className="button" type="button" onClick={save} disabled={locating}>
             {buttonLabel}
           </button>
         )}

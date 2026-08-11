@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OnboardingPage } from './OnboardingPage';
 
 function response(value: unknown) {
@@ -11,6 +11,8 @@ function response(value: unknown) {
 }
 
 describe('OnboardingPage', () => {
+  afterEach(() => cleanup());
+
   beforeEach(() => {
     localStorage.clear();
     vi.stubGlobal(
@@ -71,7 +73,7 @@ describe('OnboardingPage', () => {
       target: { value: 'Franklin' },
     });
     fireEvent.click(screen.getByRole('button', { name: /intermediário/i }));
-    fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /continuar/i }).at(-1)!);
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -88,5 +90,84 @@ describe('OnboardingPage', () => {
         body: expect.stringContaining('"minimumNoticeMinutes":120'),
       }),
     );
+  });
+
+  it('continues after choosing current location without manual area setup', async () => {
+    let locationReady = false;
+    const geolocation = {
+      getCurrentPosition: vi.fn((success: PositionCallback) =>
+        success({
+          coords: { latitude: -25.4289, longitude: -49.2738 } as GeolocationCoordinates,
+        } as GeolocationPosition),
+      ),
+    };
+    vi.stubGlobal('navigator', { ...navigator, geolocation });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/v1/me')
+        return Promise.resolve(
+          response({
+            id: 'user-1',
+            displayName: 'Franklin',
+            email: 'franklin@example.com',
+            timeZone: 'America/Sao_Paulo',
+            onboardingComplete: false,
+            isAdmin: false,
+          }),
+        );
+      if (url === '/api/v1/me/onboarding/readiness')
+        return Promise.resolve(
+          response({
+            profile: true,
+            location: locationReady,
+            availability: false,
+            profileCount: 1,
+            favoriteVenueCount: 0,
+            preferredAreaCount: locationReady ? 1 : 0,
+            availabilityCount: 0,
+            canComplete: false,
+            missing: locationReady ? ['availability'] : ['location', 'availability'],
+          }),
+        );
+      if (url === '/api/v1/me/preferred-areas' && init?.method === 'POST') {
+        locationReady = true;
+        return Promise.resolve(
+          response({
+            id: 'area-1',
+            label: 'Perto de você',
+            latitude: -25.429,
+            longitude: -49.274,
+            radiusMeters: 4000,
+            priority: 0,
+            active: true,
+          }),
+        );
+      }
+      if (url.includes('favorite-venues') || url.includes('preferred-areas'))
+        return Promise.resolve(response([]));
+      if (url.startsWith('/api/v1/venues')) return Promise.resolve(response([]));
+      return Promise.resolve(response({}));
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/onboarding']}>
+        <OnboardingPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /usar minha localização atual/i }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/me/preferred-areas',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: /continuar/i }).at(-1)!);
+
+    expect(await screen.findByText(/sua agenda/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/adicione uma quadra ou área antes de continuar/i),
+    ).not.toBeInTheDocument();
   });
 });
