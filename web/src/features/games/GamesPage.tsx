@@ -418,9 +418,7 @@ export function GameDetailsPage() {
       setGame(refreshed);
     } catch (cause: unknown) {
       setError(
-        cause instanceof ApiError
-          ? cause.message
-          : 'Não foi possível atualizar esta partida.',
+        cause instanceof ApiError ? cause.message : 'Não foi possível atualizar esta partida.',
       );
     } finally {
       setBusy(false);
