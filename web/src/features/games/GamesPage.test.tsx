@@ -628,6 +628,64 @@ describe('GameDetailsPage', () => {
     expect(screen.queryByLabelText('Link da partida')).not.toBeInTheDocument();
   });
 
+  it('shows the API reason when joining a shared-link game is rejected', async () => {
+    const game = {
+      id: 'game-1',
+      title: 'Saturday game',
+      startsAt: '2099-08-01T12:00:00Z',
+      endsAt: '2099-08-01T13:30:00Z',
+      venueId: 'venue-1',
+      venueName: 'Central court',
+      latitude: -23.5,
+      longitude: -46.6,
+      capacity: 4,
+      confirmedPlayers: 1,
+      openSlots: 3,
+      minimumSkillLevel: 'intermediate',
+      maximumSkillLevel: 'advanced',
+      visibility: 'link-only',
+      status: 'scheduled',
+      currentUserStatus: '',
+      players: [{ id: 'host-1', displayName: 'Host', role: 'organizer' }],
+    };
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && url.endsWith('/join')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: {
+                code: 'skill_out_of_range',
+                message: 'Your skill level is outside this game range.',
+                fields: {},
+              },
+            }),
+            { status: 409 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(game), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/games/game-1?access=secret']}>
+        <Routes>
+          <Route path="/games/:id" element={<GameDetailsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /participar da partida/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Seu nível está fora da faixa desta partida.',
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/games/game-1/join',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
   it('clearly marks cancelled games and hides active match actions', async () => {
     const game = {
       id: 'game-2',

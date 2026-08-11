@@ -416,8 +416,12 @@ export function GameDetailsPage() {
       markGameAlertPromptReady();
       const refreshed = await gameApi.get(id, params.get('access') ?? undefined);
       setGame(refreshed);
-    } catch {
-      setError('Não foi possível atualizar esta partida.');
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof ApiError
+          ? cause.message
+          : 'Não foi possível atualizar esta partida.',
+      );
     } finally {
       setBusy(false);
     }
