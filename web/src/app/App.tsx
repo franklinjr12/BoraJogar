@@ -200,7 +200,7 @@ function Login() {
   }
 
   return (
-    <main className="shell">
+    <main className="shell login-shell">
       <Link className="text-link" to="/">
         Início
       </Link>
@@ -217,7 +217,7 @@ function Login() {
           {formError}
         </p>
       )}
-      <div className="actions">
+      <div className="actions login-mode-actions">
         <button
           className={mode === 'signup' ? 'button' : 'text-button'}
           type="button"
@@ -233,7 +233,7 @@ function Login() {
           Entrar
         </button>
       </div>
-      <form className="card" onSubmit={submitEmail}>
+      <form className="card login-form" onSubmit={submitEmail}>
         {mode === 'signup' && (
           <label>
             Nome exibido
@@ -257,7 +257,7 @@ function Login() {
           {submitting ? 'Processando...' : mode === 'signup' ? 'Criar conta' : 'Entrar'}
         </button>
       </form>
-      <a className="button" href={url.toString()}>
+      <a className="button login-google-button" href={url.toString()}>
         Continuar com o Google
       </a>
       {invitation && <p className="hint">Código de convite pronto para entrar com o Google.</p>}

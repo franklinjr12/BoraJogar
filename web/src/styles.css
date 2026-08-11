@@ -65,6 +65,27 @@ body {
   margin: 0 auto;
   padding: 12vh 0 3rem;
 }
+.login-shell {
+  width: min(calc(100% - 2rem), 36rem);
+  padding-top: clamp(2rem, 8vh, 5rem);
+}
+.login-mode-actions {
+  margin: 1.5rem 0;
+}
+.login-form {
+  margin: 0;
+}
+.login-form .button {
+  width: 100%;
+  text-align: center;
+}
+.button.login-google-button {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 1.25rem auto 0;
+  text-align: center;
+}
 .eyebrow {
   color: #0b6b68;
   font-weight: 800;
@@ -379,8 +400,14 @@ textarea:focus-visible {
   .shell {
     padding-top: 8vh;
   }
+  .login-shell {
+    padding-top: 2rem;
+  }
   .actions {
     margin-bottom: 3rem;
+  }
+  .login-mode-actions {
+    margin-bottom: 1.5rem;
   }
 }
 .location-grid {

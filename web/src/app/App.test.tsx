@@ -149,6 +149,9 @@ describe('login screen', () => {
     renderApp(['/login']);
 
     const googleLink = await screen.findByRole('link', { name: /continuar com o google/i });
+    expect(screen.getByRole('main')).toHaveClass('login-shell');
+    expect(screen.getByLabelText(/e-mail/i).closest('form')).toHaveClass('login-form');
+    expect(googleLink).toHaveClass('login-google-button');
     const googleURL = new URL(googleLink.getAttribute('href') ?? '', window.location.origin);
     expect(googleURL.pathname).toBe('/api/v1/auth/google');
     expect(googleURL.searchParams.has('invitation')).toBe(false);
