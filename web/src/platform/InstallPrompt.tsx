@@ -56,11 +56,11 @@ export function InstallPrompt() {
       <p>{guide.text}</p>
       <div className="actions">
         {event && (
-          <button className="button" onClick={install}>
+          <button className="button" type="button" onClick={install}>
             Instalar aplicativo
           </button>
         )}
-        <button className="text-button" onClick={() => setOpen(false)}>
+        <button className="text-button" type="button" onClick={() => setOpen(false)}>
           Agora não
         </button>
       </div>

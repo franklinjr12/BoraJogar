@@ -11,6 +11,7 @@ import { AvailabilityEditor } from '../availability/AvailabilityPage';
 import { LocationSetup } from '../locations/LocationsPage';
 import { blankProfile, skills, styles } from './options';
 import { readinessLabel } from '../../i18n/pt-BR';
+import { useOnlineStatus } from '../../platform/useOnlineStatus';
 
 type OnboardingGoal = 'find_people' | 'create_game' | 'join_game';
 type OnboardingStep = 0 | 1 | 2;
@@ -87,6 +88,8 @@ export function OnboardingPage() {
   const [readiness, setReadiness] = useState<OnboardingReadiness | null>(null);
   const [error, setError] = useState('');
   const [locationSaving, setLocationSaving] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const isOnline = useOnlineStatus();
 
   useEffect(() => {
     localStorage.setItem('borajogar_onboarding_goal', goal);
@@ -118,18 +121,25 @@ export function OnboardingPage() {
 
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (saving) return;
     setError('');
+    if (!isOnline) {
+      setError('Você está offline. Conecte-se antes de continuar.');
+      return;
+    }
     if (profile.displayName.trim().length < 2) {
       setError('Escolha um nome com pelo menos 2 caracteres.');
       return;
     }
     if (profile.styles.length === 0) update('styles', ['mixed']);
+    setSaving(true);
     try {
       await profileApi.update({
         ...profile,
         displayName: profile.displayName.trim(),
         styles: profile.styles.length ? profile.styles : ['mixed'],
       });
+      localStorage.setItem('borajogar_timezone', profile.timeZone);
       await profileApi.saveProgress(1, [0]);
       const nextReadiness = await profileApi.readiness();
       setReadiness(nextReadiness);
@@ -143,27 +153,44 @@ export function OnboardingPage() {
       setStep(stepForReadiness(nextReadiness));
     } catch {
       setError('Não foi possível salvar o perfil. Verifique a conexão e tente novamente.');
+    } finally {
+      setSaving(false);
     }
   };
 
   const continueFromLocations = async () => {
+    if (saving) return;
     setError('');
+    if (!isOnline) {
+      setError('Você está offline. Conecte-se antes de continuar.');
+      return;
+    }
+    setSaving(true);
     const nextReadiness = await profileApi.readiness().catch(() => null);
     setReadiness(nextReadiness);
     if (!nextReadiness?.location) {
       setError('Adicione uma quadra ou área antes de continuar.');
+      setSaving(false);
       return;
     }
     await profileApi.saveProgress(2, [0, 1]).catch(() => undefined);
     setStep(2);
+    setSaving(false);
   };
 
   const finish = async () => {
+    if (saving) return;
     setError('');
+    if (!isOnline) {
+      setError('Você está offline. Conecte-se antes de concluir.');
+      return;
+    }
+    setSaving(true);
     const nextReadiness = await profileApi.readiness().catch(() => null);
     setReadiness(nextReadiness);
     if (!nextReadiness?.availability) {
       setError('Adicione um horário disponível antes de continuar.');
+      setSaving(false);
       return;
     }
     try {
@@ -175,12 +202,18 @@ export function OnboardingPage() {
       setError(
         'Não foi possível concluir a configuração. Adicione um local e um horário disponível.',
       );
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
     <main className="shell onboarding">
       <p className="eyebrow">Bora Jogar</p>
+      <p className="onboarding-progress" role="status">
+        Etapa {step + 1} de 3
+      </p>
+      <progress value={step + 1} max={3} aria-label={`Etapa ${step + 1} de 3`} />
       {step === 0 && (
         <>
           <h1>Conte sobre seu jogo.</h1>
@@ -229,8 +262,8 @@ export function OnboardingPage() {
                 {error}
               </p>
             )}
-            <button className="button" type="submit">
-              Continuar
+            <button className="button" type="submit" disabled={saving || !isOnline}>
+              {saving ? 'Salvando...' : 'Continuar'}
             </button>
           </form>
         </>
@@ -239,10 +272,15 @@ export function OnboardingPage() {
         <>
           <LocationSetup compact onLocationSavingChange={setLocationSaving} />
           <div className="actions">
-            <button className="button" onClick={continueFromLocations} disabled={locationSaving}>
-              Continuar
+            <button
+              className="button"
+              type="button"
+              onClick={() => void continueFromLocations()}
+              disabled={locationSaving || saving || !isOnline}
+            >
+              {saving ? 'Verificando...' : 'Continuar'}
             </button>
-            <button className="text-button" onClick={() => setStep(0)}>
+            <button className="text-button" type="button" onClick={() => setStep(0)}>
               Voltar
             </button>
           </div>
@@ -253,10 +291,15 @@ export function OnboardingPage() {
           <AvailabilityEditor compact />
           <p className="hint">Você pode adicionar mais horários depois.</p>
           <div className="actions">
-            <button className="button" onClick={finish}>
-              {finishLabel(goal)}
+            <button
+              className="button"
+              type="button"
+              onClick={() => void finish()}
+              disabled={saving || !isOnline}
+            >
+              {saving ? 'Concluindo...' : finishLabel(goal)}
             </button>
-            <button className="text-button" onClick={() => setStep(1)}>
+            <button className="text-button" type="button" onClick={() => setStep(1)}>
               Voltar
             </button>
           </div>

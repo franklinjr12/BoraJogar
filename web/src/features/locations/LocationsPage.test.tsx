@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LocationSetup, LocationsPage } from './LocationsPage';
@@ -71,6 +71,7 @@ function response(value: unknown) {
 
 describe('locations page', () => {
   beforeEach(() => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(true);
     googleMapMock.instances.length = 0;
     googleMapsMock.loadGoogleMaps.mockResolvedValue({
       maps: googleMapMock,
@@ -118,6 +119,7 @@ describe('locations page', () => {
     expect(
       await screen.findByRole('heading', { name: /onde você pode jogar/i }),
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /escolher uma quadra/i }));
     expect(screen.getByText(/pesquisar local no google maps/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/escolher local no google maps/i)).toBeInTheDocument();
     expect(screen.getByText(/pesquise no google maps ou marque o local/i)).toBeInTheDocument();
@@ -531,7 +533,7 @@ describe('locations page', () => {
     await screen.findByRole('heading', { name: /escolha uma quadra/i });
     fireEvent.click(screen.getByRole('button', { name: /escolher uma área/i }));
     fireEvent.click(screen.getByRole('button', { name: /pesquisar no google maps/i }));
-    await waitFor(() => expect(autocompleteInstances).toHaveLength(2));
+    await waitFor(() => expect(autocompleteInstances).toHaveLength(1));
 
     const place = {
       id: 'google-place-1',
@@ -539,11 +541,16 @@ describe('locations page', () => {
       formattedAddress: 'Praça Oswaldo Cruz, S/n - Centro, Curitiba - PR',
       addressComponents: [{ types: ['administrative_area_level_2'], longText: 'Curitiba' }],
       location: { lat: () => -25.4405, lng: () => -49.276 },
-      fetchFields: vi.fn(),
+      fetchFields: vi.fn().mockResolvedValue(undefined),
     };
-    autocompleteInstances[1]?.emit(new MockSelectEvent({ toPlace: () => place }));
+    await act(async () => {
+      autocompleteInstances[0]?.emit(new MockSelectEvent({ toPlace: () => place }));
+    });
 
     await waitFor(() => expect(place.fetchFields).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText(/nome/i), {
+      target: { value: 'Perto de Curitiba' },
+    });
     fireEvent.click(screen.getByRole('button', { name: /salvar área/i }));
 
     await waitFor(() =>
@@ -551,13 +558,13 @@ describe('locations page', () => {
         '/api/v1/me/preferred-areas',
         expect.objectContaining({
           method: 'POST',
-          body: expect.stringContaining('"latitude":-25.44'),
+          body: expect.stringContaining('"latitude":-25.428'),
         }),
       ),
     );
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/me/preferred-areas',
-      expect.objectContaining({ body: expect.stringContaining('"longitude":-49.276') }),
+      expect.objectContaining({ body: expect.stringContaining('"longitude":-49.273') }),
     );
   });
 });

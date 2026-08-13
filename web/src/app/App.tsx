@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Link,
@@ -12,23 +12,39 @@ import {
 import {
   ApiError,
   authApi,
+  attendanceApi,
   profileApi,
   type CurrentUser,
   type PlayingStyle,
   type Profile,
+  type ReliabilitySummary,
   type SkillLevel,
 } from '../api/client';
 import { LocationSetup, LocationsPage } from '../features/locations/LocationsPage';
 import { AvailabilityEditor, AvailabilityPage } from '../features/availability/AvailabilityPage';
 import { CreateGamePage, GameDetailsPage, GamesPage } from '../features/games/GamesPage';
 import { CalendarPage } from '../features/games/CalendarPage';
+import { AttendancePage } from '../features/games/AttendancePage';
 import { DashboardPage } from '../features/games/DashboardPage';
 import { NotificationsPage } from '../features/notifications/NotificationsPage';
 import { OnboardingPage } from '../features/onboarding/OnboardingPage';
+import { PublicProfilePage } from '../features/safety/PublicProfilePage';
+import { SafetyPage } from '../features/safety/SafetyPage';
 import { blankProfile, skills, styles } from '../features/onboarding/options';
 import { googleAuthErrorMessage } from '../i18n/pt-BR';
 import { AppShell } from '../platform/AppShell';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { getDeviceTimeZone } from '../platform/timeZone';
+import { useOnlineStatus } from '../platform/useOnlineStatus';
+
+const commonTimeZones = [
+  'America/Sao_Paulo',
+  'America/Manaus',
+  'America/Belem',
+  'America/Fortaleza',
+  'America/Recife',
+  'UTC',
+];
 
 function useCurrentUser() {
   return useQuery<CurrentUser>({
@@ -161,6 +177,7 @@ function Login() {
   const [mode, setMode] = useState<'signup' | 'login'>('signup');
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const url = new URL('/api/v1/auth/google', window.location.origin);
   if (invitation) url.searchParams.set('invitation', invitation);
   if (returnTo) url.searchParams.set('returnTo', returnTo);
@@ -217,10 +234,12 @@ function Login() {
           {formError}
         </p>
       )}
-      <div className="actions login-mode-actions">
+      <div className="actions login-mode-actions" role="tablist" aria-label="Tipo de acesso">
         <button
           className={mode === 'signup' ? 'button' : 'text-button'}
           type="button"
+          role="tab"
+          aria-selected={mode === 'signup'}
           onClick={() => setMode('signup')}
         >
           Criar conta
@@ -228,6 +247,8 @@ function Login() {
         <button
           className={mode === 'login' ? 'button' : 'text-button'}
           type="button"
+          role="tab"
+          aria-selected={mode === 'login'}
           onClick={() => setMode('login')}
         >
           Entrar
@@ -244,15 +265,26 @@ function Login() {
           E-mail
           <input name="email" type="email" autoComplete="email" required />
         </label>
-        <label>
-          Senha
-          <input
-            name="password"
-            type="password"
-            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-            required
-          />
-        </label>
+        <div className="password-field-group">
+          <label htmlFor="login-password">Senha</label>
+          <div className="password-field">
+            <input
+              id="login-password"
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+              required
+            />
+            <button
+              className="text-button password-toggle"
+              type="button"
+              onClick={() => setShowPassword((current) => !current)}
+              aria-label={showPassword ? 'Ocultar valor digitado' : 'Mostrar valor digitado'}
+            >
+              {showPassword ? 'Ocultar' : 'Mostrar'}
+            </button>
+          </div>
+        </div>
         <button className="button" type="submit" disabled={submitting}>
           {submitting ? 'Processando...' : mode === 'signup' ? 'Criar conta' : 'Entrar'}
         </button>
@@ -446,7 +478,7 @@ export function LegacyOnboarding() {
         </p>
       )}
       <div className="actions">
-        <button className="button" onClick={next}>
+        <button className="button" type="button" onClick={next}>
           {step === total - 1
             ? 'Concluir configuração'
             : step === 0
@@ -454,7 +486,7 @@ export function LegacyOnboarding() {
               : 'Continuar'}
         </button>
         {step > 0 && (
-          <button className="text-button" onClick={() => setStep(step - 1)}>
+          <button className="text-button" type="button" onClick={() => setStep(step - 1)}>
             Voltar
           </button>
         )}
@@ -471,12 +503,20 @@ function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
   const [signingOut, setSigningOut] = useState(false);
-  useEffect(() => {
+  const [saving, setSaving] = useState(false);
+  const [reliability, setReliability] = useState<ReliabilitySummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const isOnline = useOnlineStatus();
+  const loadProfile = useCallback(() => {
     if (!currentUser.data) return;
     setError('');
-    profileApi
+    return profileApi
       .get()
-      .then((nextProfile) => setProfile(nextProfile))
+      .then((nextProfile) => {
+        setProfile(nextProfile);
+        localStorage.setItem('borajogar_timezone', nextProfile.timeZone);
+      })
       .catch((err) =>
         setError(
           err instanceof ApiError && err.status === 401
@@ -484,6 +524,27 @@ function ProfilePage() {
             : 'Conclua a configuração do perfil antes de visualizá-lo.',
         ),
       );
+  }, [currentUser.data]);
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
+  useEffect(() => {
+    if (!currentUser.data) return;
+    void attendanceApi
+      .reliability()
+      .then((next) => {
+        if (
+          typeof next.gamesConfirmed === 'number' &&
+          typeof next.gamesAttended === 'number' &&
+          typeof next.earlyCancellations === 'number' &&
+          typeof next.lateCancellations === 'number' &&
+          typeof next.noShows === 'number' &&
+          typeof next.sufficientHistory === 'boolean'
+        ) {
+          setReliability(next);
+        }
+      })
+      .catch(() => undefined);
   }, [currentUser.data]);
   if (currentUser.isPending)
     return (
@@ -501,7 +562,12 @@ function ProfilePage() {
   if (error)
     return (
       <main className="shell">
-        <p className="error">{error}</p>
+        <div className="feedback-error" role="alert">
+          <p className="error">{error}</p>
+          <button className="text-button" type="button" onClick={() => void loadProfile()}>
+            Tentar novamente
+          </button>
+        </div>
         <Link to={error.startsWith('Entre para') ? '/login' : '/onboarding'}>
           {error.startsWith('Entre para') ? 'Entrar' : 'Continuar configuração'}
         </Link>
@@ -515,6 +581,13 @@ function ProfilePage() {
     );
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (saving) return;
+    if (!isOnline) {
+      setError('Você está offline. Conecte-se antes de salvar seu perfil.');
+      return;
+    }
+    setError('');
+    setSaving(true);
     try {
       const form = new FormData(event.currentTarget);
       const updated = await profileApi.update({
@@ -528,9 +601,12 @@ function ProfilePage() {
         activeForMatchmaking: form.get('active') === 'on',
       });
       setProfile(updated);
+      localStorage.setItem('borajogar_timezone', updated.timeZone);
       setEditing(false);
     } catch {
       setError('Não foi possível salvar o perfil. Verifique os campos e tente novamente.');
+    } finally {
+      setSaving(false);
     }
   };
   const signOut = async () => {
@@ -543,6 +619,20 @@ function ProfilePage() {
     } catch {
       setError('Não foi possível sair. Verifique a conexão e tente novamente.');
       setSigningOut(false);
+    }
+  };
+  const deleteAccount = async () => {
+    if (deleting || !isOnline) return;
+    setDeleteDialogOpen(false);
+    setError('');
+    setDeleting(true);
+    try {
+      await authApi.deleteAccount();
+      queryClient.clear();
+      navigate('/login', { replace: true });
+    } catch {
+      setError('NÃ£o foi possÃ­vel excluir sua conta. Tente novamente.');
+      setDeleting(false);
     }
   };
   return (
@@ -590,7 +680,17 @@ function ProfilePage() {
           </label>
           <label>
             Fuso horário
-            <input name="timeZone" defaultValue={profile.timeZone} required />
+            <select name="timeZone" defaultValue={profile.timeZone} required>
+              {!commonTimeZones.includes(profile.timeZone) && (
+                <option value={profile.timeZone}>{profile.timeZone}</option>
+              )}
+              {commonTimeZones.map((timeZone) => (
+                <option key={timeZone} value={timeZone}>
+                  {timeZone}
+                </option>
+              ))}
+            </select>
+            <span className="hint">Usado para exibir horários das partidas.</span>
           </label>
           <label>
             Duração preferida
@@ -616,9 +716,19 @@ function ProfilePage() {
               Disponível para combinações
             </span>
           </label>
-          <button className="button" type="submit">
-            Salvar alterações
-          </button>
+          <div className="actions compact-actions">
+            <button className="button" type="submit" disabled={saving || !isOnline}>
+              {saving ? 'Salvando...' : 'Salvar alterações'}
+            </button>
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => setEditing(false)}
+              disabled={saving}
+            >
+              Cancelar
+            </button>
+          </div>
         </form>
       ) : (
         <section className="card">
@@ -637,14 +747,59 @@ function ProfilePage() {
           <p>
             {profile.activeForMatchmaking ? 'Disponível para combinações' : 'Combinações pausadas'}
           </p>
-          <button className="button" onClick={() => setEditing(true)}>
+          {reliability && (
+            <section className="inline-panel" aria-label="Resumo de confiabilidade">
+              <h2>Seu histórico</h2>
+              <p>
+                {reliability.gamesAttended} de {reliability.gamesConfirmed} partidas confirmadas com
+                presença registrada.
+              </p>
+              {reliability.sufficientHistory ? (
+                <p className="hint">
+                  Faltas: {reliability.noShows} · Cancelamentos tardios:{' '}
+                  {reliability.lateCancellations}
+                </p>
+              ) : (
+                <p className="hint">
+                  Ainda não há histórico suficiente para calcular sua confiabilidade.
+                </p>
+              )}
+            </section>
+          )}
+          <button className="button" type="button" onClick={() => setEditing(true)}>
             Editar perfil
           </button>
+          <p>
+            <Link className="text-link" to="/settings/safety">
+              Privacidade e segurança
+            </Link>
+          </p>
         </section>
       )}
       <button className="text-button" type="button" onClick={signOut} disabled={signingOut}>
         {signingOut ? 'Saindo...' : 'Sair'}
       </button>
+      <section className="account-danger-zone card">
+        <h2>Excluir conta</h2>
+        <p className="hint">Esta ação encerra sua conta e não pode ser desfeita.</p>
+        <button
+          className="text-button danger"
+          type="button"
+          disabled={deleting || !isOnline}
+          onClick={() => setDeleteDialogOpen(true)}
+        >
+          {deleting ? 'Excluindo...' : 'Excluir minha conta'}
+        </button>
+      </section>
+      {deleteDialogOpen && (
+        <ConfirmDialog
+          title="Excluir conta?"
+          message="Seu perfil, preferências e sessões serão removidos. Esta ação não pode ser desfeita."
+          confirmLabel="Excluir minha conta"
+          onConfirm={() => void deleteAccount()}
+          onCancel={() => setDeleteDialogOpen(false)}
+        />
+      )}
       {error && (
         <p className="error" role="alert">
           {error}
@@ -664,6 +819,26 @@ function Placeholder({ title }: { title: string }) {
     </main>
   );
 }
+
+function ProposalPage() {
+  return (
+    <main className="shell">
+      <Link className="text-link" to="/notifications">
+        â† Avisos
+      </Link>
+      <p className="eyebrow">Proposta de partida</p>
+      <h1>Esta proposta ainda nÃ£o estÃ¡ disponÃ­vel.</h1>
+      <p className="lead">
+        O aviso foi recebido, mas a API de propostas ainda nÃ£o permite revisar ou responder por
+        aqui.
+      </p>
+      <Link className="button" to="/notifications">
+        Voltar aos avisos
+      </Link>
+    </main>
+  );
+}
+
 export function App() {
   return (
     <AppShell>
@@ -674,11 +849,15 @@ export function App() {
         <Route path="/invite/:code" element={<Invite />} />
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/settings/safety" element={<SafetyPage />} />
+        <Route path="/players/:id" element={<PublicProfilePage />} />
+        <Route path="/proposals/:id" element={<ProposalPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/locations" element={<LocationsPage />} />
         <Route path="/availability" element={<AvailabilityPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/games/:id/attendance" element={<AttendancePage />} />
         <Route path="/games" element={<GamesPage />} />
         <Route path="/games/new" element={<CreateGamePage />} />
         <Route path="/games/:id" element={<GameDetailsPage />} />

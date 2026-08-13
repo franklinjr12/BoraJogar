@@ -104,6 +104,54 @@ export function readinessLabel(value: string) {
 }
 
 const notificationMessages: Record<string, { title: string; body: string }> = {
+  welcome: {
+    title: 'Bem-vindo ao Bora Jogar',
+    body: 'Seu perfil está pronto para encontrar partidas compatíveis.',
+  },
+  match_proposal: {
+    title: 'Nova proposta de partida',
+    body: 'Você recebeu uma proposta de partida. Confira os detalhes e responda.',
+  },
+  proposal_confirmed: {
+    title: 'Partida confirmada',
+    body: 'Sua proposta foi confirmada. Confira data, horário e local.',
+  },
+  proposal_expired: {
+    title: 'Proposta expirada',
+    body: 'Uma proposta de partida expirou sem confirmação.',
+  },
+  manual_game_invitation: {
+    title: 'Convite para uma partida',
+    body: 'Você recebeu um convite para participar de uma partida.',
+  },
+  user_joined_game: {
+    title: 'Novo jogador na partida',
+    body: 'Um jogador entrou em uma partida que você organiza.',
+  },
+  user_left_game: {
+    title: 'Jogador saiu da partida',
+    body: 'Uma vaga foi liberada em uma partida que você organiza.',
+  },
+  waitlist_promotion: {
+    title: 'Você saiu da lista de espera',
+    body: 'Uma vaga abriu e você foi confirmado na partida.',
+  },
+  game_changed: {
+    title: 'Partida atualizada',
+    body: 'Data, horário, local ou participantes da partida mudaram.',
+  },
+  game_cancelled: {
+    title: 'Partida cancelada',
+    body: 'Uma partida da sua agenda foi cancelada.',
+  },
+  game_reminder: {
+    title: 'Lembrete de partida',
+    body: 'Sua partida está chegando. Confira os detalhes antes de sair.',
+  },
+  report_received: {
+    title: 'Relato recebido',
+    body: 'Recebemos seu relato e vamos analisar a situação.',
+  },
   attendance_requested: {
     title: 'Registre a presença',
     body: 'Sua partida terminou. Registre a presença dos jogadores.',
@@ -118,10 +166,28 @@ export function skillLabel(value: GameSkillLevel | SkillLevel) {
   return skillLabels[value];
 }
 
+function preferredTimeZone() {
+  if (typeof globalThis.window === 'undefined') return undefined;
+  const value = globalThis.window.localStorage.getItem('borajogar_timezone');
+  if (!value) return undefined;
+  try {
+    new Intl.DateTimeFormat(locale, { timeZone: value }).format();
+    return value;
+  } catch {
+    return undefined;
+  }
+}
+
+function localizedOptions(options: Intl.DateTimeFormatOptions) {
+  if (options.timeZone) return options;
+  const timeZone = preferredTimeZone();
+  return timeZone ? { ...options, timeZone } : options;
+}
+
 export function formatDate(value: string, options: Intl.DateTimeFormatOptions) {
-  return new Date(value).toLocaleString(locale, options);
+  return new Date(value).toLocaleString(locale, localizedOptions(options));
 }
 
 export function formatDateOnly(value: string, options: Intl.DateTimeFormatOptions) {
-  return new Date(value).toLocaleDateString(locale, options);
+  return new Date(value).toLocaleDateString(locale, localizedOptions(options));
 }

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { gameApi, type Game } from '../../api/client';
 import { formatDate, formatDateOnly } from '../../i18n/pt-BR';
 import { MapChooser } from './MapChooser';
 
 type View = 'agenda' | 'month';
-type Filter = 'all' | 'confirmed' | 'organized' | 'joined' | 'pending' | 'cancelled';
+type Filter = 'all' | 'confirmed' | 'organized' | 'joined' | 'cancelled';
 const dateLabel = (value: string) => formatDate(value, { dateStyle: 'full', timeStyle: 'short' });
 const monthLabel = (value: string) => formatDateOnly(value, { month: 'long', year: 'numeric' });
 
@@ -14,12 +14,29 @@ export function CalendarPage() {
   const [view, setView] = useState<View>('agenda');
   const [filter, setFilter] = useState<Filter>('all');
   const [error, setError] = useState('');
-  useEffect(() => {
-    gameApi
-      .list(true)
-      .then((page) => setGames(page.items))
-      .catch(() => setError('Não foi possível carregar sua agenda. Entre e tente novamente.'));
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const load = useCallback(async (nextPage = 1, append = false) => {
+    if (append) setLoadingMore(true);
+    else setLoading(true);
+    setError('');
+    try {
+      const result = await gameApi.list(true, nextPage);
+      setGames((current) => (append ? [...current, ...result.items] : result.items));
+      setPage(result.page);
+      setHasMore(result.hasMore);
+    } catch {
+      setError('Não foi possível carregar sua agenda. Verifique sua conexão e tente novamente.');
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
   }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
   const filtered = useMemo(
     () =>
       games.filter((game) => {
@@ -29,7 +46,6 @@ export function CalendarPage() {
         if (filter === 'organized') return game.currentUserRole === 'organizer';
         if (filter === 'joined')
           return game.currentUserStatus === 'confirmed' && game.currentUserRole !== 'organizer';
-        if (filter === 'pending') return false;
         return true;
       }),
     [games, filter],
@@ -49,12 +65,14 @@ export function CalendarPage() {
         <div role="group" aria-label="Visualização do calendário">
           <button
             className={view === 'agenda' ? 'view-button selected' : 'view-button'}
+            type="button"
             onClick={() => setView('agenda')}
           >
             Agenda
           </button>
           <button
             className={view === 'month' ? 'view-button selected' : 'view-button'}
+            type="button"
             onClick={() => setView('month')}
           >
             Mês
@@ -67,17 +85,20 @@ export function CalendarPage() {
             <option value="confirmed">Partidas confirmadas</option>
             <option value="organized">Partidas organizadas</option>
             <option value="joined">Partidas em que entrei</option>
-            <option value="pending">Propostas pendentes</option>
             <option value="cancelled">Partidas canceladas</option>
           </select>
         </label>
       </div>
       {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
+        <div className="feedback-error" role="alert">
+          <p className="error">{error}</p>
+          <button className="text-button" type="button" onClick={() => void load()}>
+            Tentar novamente
+          </button>
+        </div>
       )}
-      {filtered.length === 0 && !error && (
+      {loading && <p role="status">Carregando agenda...</p>}
+      {!loading && filtered.length === 0 && !error && (
         <section className="card">
           <h2>Nenhuma partida nesta visualização.</h2>
           <p className="hint">Crie ou entre em uma partida para começar a montar sua agenda.</p>
@@ -86,14 +107,14 @@ export function CalendarPage() {
           </Link>
         </section>
       )}
-      {view === 'agenda' && (
+      {!loading && view === 'agenda' && (
         <div className="calendar-list">
           {filtered.map((game) => (
             <CalendarCard game={game} key={game.id} />
           ))}
         </div>
       )}
-      {view === 'month' && (
+      {!loading && view === 'month' && (
         <div className="month-grid">
           {months.map((month) => (
             <section className="card" key={month}>
@@ -106,6 +127,16 @@ export function CalendarPage() {
             </section>
           ))}
         </div>
+      )}
+      {hasMore && (
+        <button
+          className="button load-more-button"
+          type="button"
+          disabled={loadingMore}
+          onClick={() => void load(page + 1, true)}
+        >
+          {loadingMore ? 'Carregando...' : 'Carregar mais partidas'}
+        </button>
       )}
     </main>
   );

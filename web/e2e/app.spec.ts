@@ -208,7 +208,9 @@ test.describe('Bora Jogar real backend E2E', () => {
 
     await expect(page.getByRole('heading', { name: 'E2E Full Game' })).toBeVisible();
     await expect(page.getByText(/0 vagas disponíveis/i)).toBeVisible();
-    await page.getByRole('button', { name: /participar da partida/i }).click();
+    await page
+      .getByRole('button', { name: /participar da partida|entrar na lista de espera/i })
+      .click();
 
     await expect(page.getByRole('heading', { name: /lista de espera/i })).toBeVisible();
     await expect(page.getByText('Carla Lima')).toBeVisible();

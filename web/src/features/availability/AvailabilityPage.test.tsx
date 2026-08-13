@@ -211,4 +211,52 @@ describe('AvailabilityPage', () => {
     expect(await screen.findByText(/adicione primeiro um local para jogar/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /adicionar horário disponível/i })).toBeDisabled();
   });
+
+  it('creates and removes a date-specific availability exception', async () => {
+    const exception = {
+      id: 'exception-1',
+      date: '2026-08-20',
+      type: 'unavailable_all_day',
+      timezone: 'America/Sao_Paulo',
+    };
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/exceptions') && init?.method === 'POST')
+        return Promise.resolve(response(exception));
+      if (url.includes('/exceptions') && init?.method === 'DELETE')
+        return Promise.resolve(response(null));
+      if (url.includes('/exceptions')) return Promise.resolve(response([]));
+      if (url.includes('preferred-areas')) return Promise.resolve(response([area]));
+      if (url.includes('favorite-venues')) return Promise.resolve(response([venue]));
+      return Promise.resolve(response([]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MemoryRouter>
+        <AvailabilityPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: /exce.*disponibilidade/i });
+    fireEvent.change(screen.getByLabelText('Data'), { target: { value: '2026-08-20' } });
+    fireEvent.click(screen.getByRole('button', { name: /salvar exce/i }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/me/availability/exceptions',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"date":"2026-08-20"'),
+        }),
+      ),
+    );
+    expect(await screen.findByText('2026-08-20')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remover' }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/me/availability/exceptions/exception-1',
+        expect.objectContaining({ method: 'DELETE' }),
+      ),
+    );
+    await waitFor(() => expect(screen.queryByText('2026-08-20')).not.toBeInTheDocument());
+  });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { dashboardApi, type Dashboard, type Game } from '../../api/client';
 import { formatDate, weekdayShortLabels } from '../../i18n/pt-BR';
@@ -30,30 +30,44 @@ function gameCard(game: Game) {
 export function DashboardPage() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    dashboardApi
-      .get()
-      .then(setDashboard)
-      .catch(() => setError('Não foi possível carregar seu painel. Entre e tente novamente.'));
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setDashboard(await dashboardApi.get());
+    } catch {
+      setError('Não foi possível carregar seu painel. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   if (error)
     return (
       <main className="shell">
-        <p className="error" role="alert">
-          {error}
-        </p>
-        <Link className="text-link" to="/login">
-          Entrar
-        </Link>
+        <div className="feedback-error" role="alert">
+          <p className="error">{error}</p>
+          <div className="actions compact-actions">
+            <button className="text-button" type="button" onClick={() => void load()}>
+              Tentar novamente
+            </button>
+            <Link className="text-link" to="/login">
+              Entrar
+            </Link>
+          </div>
+        </div>
       </main>
     );
 
-  if (!dashboard)
+  if (loading || !dashboard)
     return (
       <main className="shell">
-        <p>Carregando painel...</p>
+        <p role="status">Carregando painel...</p>
       </main>
     );
 

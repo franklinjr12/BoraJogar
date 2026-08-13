@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -170,10 +170,9 @@ describe('login screen', () => {
       target: { value: 'local@example.com' },
     });
     fireEvent.change(screen.getByLabelText(/senha/i), { target: { value: 'pw' } });
-    const createButtons = screen.getAllByRole('button', { name: /^criar conta$/i });
-    const submitButton = createButtons[1];
-    if (!submitButton) throw new Error('Create account submit button was not found.');
-    fireEvent.click(submitButton);
+    const loginForm = screen.getByLabelText(/e-mail/i).closest('form');
+    if (!loginForm) throw new Error('Login form was not found.');
+    fireEvent.click(within(loginForm).getByRole('button', { name: /^criar conta$/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -183,6 +182,20 @@ describe('login screen', () => {
           body: expect.stringContaining('"returnTo":"/games/game-1?access=token"'),
         }),
       ),
+    );
+  });
+});
+
+describe('notification destinations', () => {
+  it('shows an honest fallback for proposal links without proposal API support', async () => {
+    mockCurrentUser(signedInUser);
+    renderApp(['/proposals/proposal-1']);
+    expect(
+      await screen.findByRole('heading', { name: /esta proposta ainda nÃ£o estÃ¡ disponÃ­vel/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /voltar aos avisos/i })).toHaveAttribute(
+      'href',
+      '/notifications',
     );
   });
 });

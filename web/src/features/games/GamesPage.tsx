@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   gameApi,
@@ -24,6 +24,8 @@ import { markGameAlertPromptReady } from '../notifications/gameAlertPromptState'
 import { formatDate, gameVisibilityLabels, skillLabel } from '../../i18n/pt-BR';
 import { sortGamesForDisplay } from './gameOrdering';
 import { DatePickerField, TimePickerField } from '../../components/DateTimePicker';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useOnlineStatus } from '../../platform/useOnlineStatus';
 
 const levels: GameSkillLevel[] = [
   'learning',
@@ -36,6 +38,13 @@ const label = skillLabel;
 const localDate = (value: string) => formatDate(value, { dateStyle: 'medium', timeStyle: 'short' });
 const minimumStartLeadMs = 15 * 60 * 1000;
 
+interface ConfirmationRequest {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+}
+
 function todayInputValue() {
   const now = new Date();
   const year = now.getFullYear();
@@ -47,12 +56,31 @@ function todayInputValue() {
 export function GamesPage() {
   const [games, setGames] = useState<Game[]>([]);
   const [error, setError] = useState('');
-  useEffect(() => {
-    gameApi
-      .list()
-      .then((page) => setGames(sortGamesForDisplay(page.items)))
-      .catch(() => setError('Não foi possível carregar as partidas. Entre e tente novamente.'));
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const load = useCallback(async (nextPage = 1, append = false) => {
+    if (append) setLoadingMore(true);
+    else setLoading(true);
+    setError('');
+    try {
+      const result = await gameApi.list(false, nextPage);
+      setGames((current) =>
+        sortGamesForDisplay(append ? [...current, ...result.items] : result.items),
+      );
+      setPage(result.page);
+      setHasMore(result.hasMore);
+    } catch {
+      setError('Não foi possível carregar as partidas. Verifique sua conexão e tente novamente.');
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
   }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
   return (
     <main className="shell">
       <Link className="text-link" to="/">
@@ -67,12 +95,26 @@ export function GamesPage() {
         </Link>
       </div>
       {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
+        <div className="feedback-error" role="alert">
+          <p className="error">{error}</p>
+          <button className="text-button" type="button" onClick={() => void load()}>
+            Tentar novamente
+          </button>
+        </div>
       )}
       <section className="game-list">
-        {games.length === 0 && !error && <p className="hint">Nenhuma partida futura ainda.</p>}
+        {loading && <p role="status">Carregando partidas...</p>}
+        {!loading && games.length === 0 && !error && (
+          <section className="card empty-state">
+            <h2>Nenhuma partida futura ainda.</h2>
+            <p className="hint">
+              Crie uma partida ou ajuste sua disponibilidade para encontrar jogadores.
+            </p>
+            <Link className="button" to="/games/new">
+              Criar uma partida
+            </Link>
+          </section>
+        )}
         {games.map((game) => (
           <Link className="card game-card" key={game.id} to={`/games/${game.id}`}>
             <p className="eyebrow">
@@ -91,6 +133,16 @@ export function GamesPage() {
           </Link>
         ))}
       </section>
+      {hasMore && (
+        <button
+          className="button load-more-button"
+          type="button"
+          disabled={loadingMore}
+          onClick={() => void load(page + 1, true)}
+        >
+          {loadingMore ? 'Carregando...' : 'Carregar mais partidas'}
+        </button>
+      )}
     </main>
   );
 }
@@ -104,8 +156,18 @@ export function CreateGamePage() {
   const [areas, setAreas] = useState<PreferredArea[]>([]);
   const [locationChoice, setLocationChoice] = useState('');
   const [venueDraft, setVenueDraft] = useState<VenueDraft>(blankVenueDraft());
-  useEffect(() => {
-    Promise.all([locationApi.favoriteVenues(), locationApi.venues(), locationApi.preferredAreas()])
+  const [saving, setSaving] = useState(false);
+  const [loadingLocations, setLoadingLocations] = useState(true);
+  const [locationError, setLocationError] = useState('');
+  const isOnline = useOnlineStatus();
+  const loadLocations = useCallback(() => {
+    setLoadingLocations(true);
+    setLocationError('');
+    return Promise.all([
+      locationApi.favoriteVenues(),
+      locationApi.venues(),
+      locationApi.preferredAreas(),
+    ])
       .then(([favoriteVenues, availableVenues, preferredAreas]) => {
         const seenVenueIds = new Set<string>();
         const nextVenues = [...favoriteVenues, ...availableVenues]
@@ -125,8 +187,15 @@ export function CreateGamePage() {
       .catch(() => {
         setVenues([]);
         setAreas([]);
+        setLocationError('Não foi possível carregar seus locais. Tente novamente.');
+      })
+      .finally(() => {
+        setLoadingLocations(false);
       });
   }, []);
+  useEffect(() => {
+    void loadLocations();
+  }, [loadLocations]);
 
   const selectedArea = locationChoice.startsWith('area:')
     ? areas.find((area) => `area:${area.id}` === locationChoice)
@@ -145,71 +214,91 @@ export function CreateGamePage() {
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (saving) return;
     setError('');
-    const form = new FormData(event.currentTarget);
-    const date = String(form.get('date') ?? '');
-    const time = String(form.get('time') ?? '');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
-      setError('Escolha uma data e um horÃ¡rio vÃ¡lidos.');
+    if (!isOnline) {
+      setError('Você está offline. Conecte-se antes de criar uma partida.');
       return;
     }
-    const starts = `${date}T${time}:00`;
-    const startsAt = new Date(starts);
-    if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() <= Date.now() + minimumStartLeadMs) {
-      setError('Escolha um horário de início com pelo menos 15 minutos de antecedência.');
-      return;
-    }
-    const submittedLocation = String(form.get('venueId') ?? locationChoice);
-    let gameVenueId = submittedLocation.startsWith('venue:')
-      ? submittedLocation.replace('venue:', '')
-      : '';
-    if (!gameVenueId) {
-      if (!selectedArea && !venueDraftReady(venueDraft)) {
-        setError('Informe o nome e selecione um local no Google Maps ou escolha um local salvo.');
+    setSaving(true);
+    try {
+      const form = new FormData(event.currentTarget);
+      const date = String(form.get('date') ?? '');
+      const time = String(form.get('time') ?? '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+        setError('Escolha uma data e um horário válidos.');
         return;
       }
+      const starts = `${date}T${time}:00`;
+      const startsAt = new Date(starts);
+      if (
+        Number.isNaN(startsAt.getTime()) ||
+        startsAt.getTime() <= Date.now() + minimumStartLeadMs
+      ) {
+        setError('Escolha um horário de início com pelo menos 15 minutos de antecedência.');
+        return;
+      }
+      const capacity = Number(form.get('capacity'));
+      const minimumSkillLevel = String(form.get('minimum')) as GameSkillLevel;
+      const maximumSkillLevel = String(form.get('maximum')) as GameSkillLevel;
+      if (!Number.isInteger(capacity) || capacity < 2 || capacity > 12) {
+        setError('Escolha entre 2 e 12 jogadores.');
+        return;
+      }
+      if (levels.indexOf(minimumSkillLevel) > levels.indexOf(maximumSkillLevel)) {
+        setError('A habilidade mínima não pode ser maior que a máxima.');
+        return;
+      }
+      const submittedLocation = String(form.get('venueId') ?? locationChoice);
+      let gameVenueId = submittedLocation.startsWith('venue:')
+        ? submittedLocation.replace('venue:', '')
+        : '';
+      if (!gameVenueId) {
+        if (!selectedArea && !venueDraftReady(venueDraft)) {
+          setError('Informe o nome e selecione um local no Google Maps ou escolha um local salvo.');
+          return;
+        }
+        try {
+          const created = selectedArea
+            ? await createVenueFromArea(selectedArea)
+            : await createVenueFromDraft(venueDraft);
+          gameVenueId = created.id;
+          setVenues((current) => [...current, { id: created.id, name: created.name }]);
+          setLocationChoice(`venue:${created.id}`);
+          setVenueDraft(blankVenueDraft());
+        } catch (cause: unknown) {
+          setError(
+            cause instanceof ApiError
+              ? `Não foi possível criar o local: ${cause.message}`
+              : 'Não foi possível criar o local. Verifique o nome e a seleção no Google Maps.',
+          );
+          return;
+        }
+      }
+      const input: GameInput = {
+        startsAt: startsAt.toISOString(),
+        durationMinutes: Number(form.get('duration')) as 60 | 90 | 120,
+        venueId: gameVenueId,
+        capacity,
+        minimumSkillLevel,
+        maximumSkillLevel,
+        visibility: String(form.get('visibility')) as GameVisibility,
+        title: String(form.get('title') || '') || undefined,
+        description: String(form.get('description') || '') || undefined,
+      };
       try {
-        const created = selectedArea
-          ? await createVenueFromArea(selectedArea)
-          : await createVenueFromDraft(venueDraft);
-        gameVenueId = created.id;
-        setVenues((current) => [...current, { id: created.id, name: created.name }]);
-        setLocationChoice(`venue:${created.id}`);
-        setVenueDraft(blankVenueDraft());
+        const game = await gameApi.create(input);
+        markGameAlertPromptReady();
+        navigate(game.shareUrl ?? `/games/${game.id}`);
       } catch (cause: unknown) {
         setError(
           cause instanceof ApiError
-            ? `Não foi possível criar o local: ${cause.message}`
-            : 'Não foi possível criar o local. Verifique o nome e a seleção no Google Maps.',
-        );
-        return;
-      }
-    }
-    const input: GameInput = {
-      startsAt: startsAt.toISOString(),
-      durationMinutes: Number(form.get('duration')) as 60 | 90 | 120,
-      venueId: gameVenueId,
-      capacity: Number(form.get('capacity')),
-      minimumSkillLevel: String(form.get('minimum')) as GameSkillLevel,
-      maximumSkillLevel: String(form.get('maximum')) as GameSkillLevel,
-      visibility: String(form.get('visibility')) as GameVisibility,
-      title: String(form.get('title') || '') || undefined,
-      description: String(form.get('description') || '') || undefined,
-    };
-    try {
-      const game = await gameApi.create(input);
-      markGameAlertPromptReady();
-      navigate(game.shareUrl ?? `/games/${game.id}`);
-    } catch (cause: unknown) {
-      if (cause instanceof ApiError && cause.status === 409) {
-        setError(
-          cause instanceof ApiError
             ? cause.message
-            : 'Não foi possível criar a partida. Tente novamente.',
+            : 'Não foi possível criar a partida. Verifique data, local e faixa de habilidade.',
         );
-      } else {
-        setError('Não foi possível criar a partida. Verifique data, local e faixa de habilidade.');
       }
+    } finally {
+      setSaving(false);
     }
   };
   return (
@@ -245,6 +334,15 @@ export function CreateGamePage() {
         </label>
         <section className="inline-panel" aria-label="Local">
           <h2>Local</h2>
+          {loadingLocations && <p role="status">Carregando locais...</p>}
+          {locationError && (
+            <div className="feedback-error" role="alert">
+              <p className="error">{locationError}</p>
+              <button className="text-button" type="button" onClick={() => void loadLocations()}>
+                Tentar novamente
+              </button>
+            </div>
+          )}
           <label>
             Quadra
             <select
@@ -279,7 +377,7 @@ export function CreateGamePage() {
               uma nova.
             </p>
           ) : (
-            <VenueForm draft={venueDraft} onChange={setVenueDraft} />
+            <VenueForm draft={venueDraft} onChange={setVenueDraft} disabled={!isOnline} />
           )}
         </section>
         <label>
@@ -329,8 +427,8 @@ export function CreateGamePage() {
             {error}
           </p>
         )}
-        <button className="button" type="submit">
-          Criar partida
+        <button className="button" type="submit" disabled={saving || !isOnline}>
+          {saving ? 'Criando partida...' : 'Criar partida'}
         </button>
       </form>
     </main>
@@ -345,6 +443,9 @@ export function GameDetailsPage() {
   const [preview, setPreview] = useState<GamePreview | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [shareMessage, setShareMessage] = useState('');
+  const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
+  const isOnline = useOnlineStatus();
   useEffect(() => {
     gameApi
       .get(id, params.get('access') ?? undefined)
@@ -385,8 +486,9 @@ export function GameDetailsPage() {
             {preview.addressLabel ? ` - ${preview.addressLabel}` : ''}
           </p>
           <p>
-            {preview.openSlots} {preview.openSlots === 1 ? 'vaga disponível' : 'vagas disponíveis'}{' '}
-            - {label(preview.minimumSkillLevel)}-{label(preview.maximumSkillLevel)}
+            {preview.confirmedPlayers}/{preview.capacity} jogadores · {preview.openSlots}{' '}
+            {preview.openSlots === 1 ? 'vaga disponível' : 'vagas disponíveis'} ·{' '}
+            {label(preview.minimumSkillLevel)}-{label(preview.maximumSkillLevel)}
           </p>
           <Link
             className="button"
@@ -398,7 +500,7 @@ export function GameDetailsPage() {
               )
             }
           >
-            Entre para participar
+            {preview.openSlots > 0 ? 'Entre para participar' : 'Entre para entrar na espera'}
           </Link>
         </section>
       </main>
@@ -410,6 +512,10 @@ export function GameDetailsPage() {
       </main>
     );
   const action = async (fn: () => Promise<unknown>) => {
+    if (!isOnline) {
+      setError('Você está offline. Conecte-se antes de atualizar esta partida.');
+      return;
+    }
     setBusy(true);
     try {
       await fn();
@@ -437,16 +543,39 @@ export function GameDetailsPage() {
       ? new URL(sharePath, window.location.origin).toString()
       : '';
   const copyShareURL = async () => {
-    if (!shareURL || !navigator.clipboard) return;
-    await navigator.clipboard.writeText(shareURL);
+    if (!shareURL) return;
+    if (!navigator.clipboard) {
+      setShareMessage('Copie o link manualmente.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(shareURL);
+      setShareMessage('Link copiado.');
+    } catch {
+      setShareMessage('Não foi possível copiar. Copie o link manualmente.');
+    }
   };
-  const removePlayer = (playerID: string) => {
-    if (!window.confirm('Remover este jogador da partida?')) return;
-    void action(() => gameApi.removePlayer(id, playerID));
+  const removePlayer = (playerID: string, displayName: string) => {
+    setConfirmation({
+      title: 'Remover jogador?',
+      message: `${displayName} perderá a vaga nesta partida.`,
+      confirmLabel: 'Remover jogador',
+      onConfirm: () => {
+        setConfirmation(null);
+        void action(() => gameApi.removePlayer(id, playerID));
+      },
+    });
   };
   const cancelGame = () => {
-    if (!window.confirm('Excluir esta partida para todos os jogadores?')) return;
-    void action(() => gameApi.cancel(id));
+    setConfirmation({
+      title: 'Cancelar partida?',
+      message: 'Todos os jogadores serão avisados e a partida não acontecerá.',
+      confirmLabel: 'Cancelar partida',
+      onConfirm: () => {
+        setConfirmation(null);
+        void action(() => gameApi.cancel(id));
+      },
+    });
   };
   return (
     <main className="shell">
@@ -483,8 +612,9 @@ export function GameDetailsPage() {
           )}
         </div>
         <p>
-          {label(game.minimumSkillLevel)}–{label(game.maximumSkillLevel)} · {game.openSlots}{' '}
-          {game.openSlots === 1 ? 'vaga disponível' : 'vagas disponíveis'}
+          {game.confirmedPlayers}/{game.capacity} jogadores · {game.openSlots}{' '}
+          {game.openSlots === 1 ? 'vaga disponível' : 'vagas disponíveis'} ·{' '}
+          {label(game.minimumSkillLevel)}–{label(game.maximumSkillLevel)}
         </p>
         {game.description && <p>{game.description}</p>}
         {game.currentUserStatus === 'removed' && (
@@ -496,15 +626,30 @@ export function GameDetailsPage() {
           <section className="inline-panel" aria-label="Link da partida">
             <h2>Link para convidar jogadores</h2>
             <input aria-label="Link da partida" readOnly value={shareURL} />
-            <button className="text-button" type="button" onClick={() => void copyShareURL()}>
+            <button
+              className="text-button"
+              type="button"
+              disabled={!isOnline}
+              onClick={() => void copyShareURL()}
+            >
               Copiar link
             </button>
+            {shareMessage && (
+              <p className="hint" role="status">
+                {shareMessage}
+              </p>
+            )}
           </section>
         )}
         <h2>Jogadores</h2>
         {game.players?.map((player) => (
           <p key={player.id}>
-            {player.displayName}
+            <Link
+              className="text-link"
+              to={`/players/${player.id}?gameId=${encodeURIComponent(game.id)}`}
+            >
+              {player.displayName}
+            </Link>
             {player.role === 'organizer' ? ' · organizador' : ''}
           </p>
         ))}
@@ -521,7 +666,7 @@ export function GameDetailsPage() {
                     type="button"
                     disabled={busy}
                     key={player.id}
-                    onClick={() => removePlayer(player.id)}
+                    onClick={() => removePlayer(player.id, player.displayName)}
                   >
                     Remover {player.displayName}
                   </button>
@@ -541,10 +686,10 @@ export function GameDetailsPage() {
           game.currentUserStatus !== 'removed' && (
             <button
               className="button"
-              disabled={busy}
+              disabled={busy || !isOnline}
               onClick={() => action(() => gameApi.join(id))}
             >
-              Participar da partida
+              {game.openSlots > 0 ? 'Participar da partida' : 'Entrar na lista de espera'}
             </button>
           )}
         {game.status !== 'cancelled' &&
@@ -552,18 +697,32 @@ export function GameDetailsPage() {
           game.currentUserRole !== 'organizer' && (
             <button
               className="text-button"
-              disabled={busy}
+              disabled={busy || !isOnline}
               onClick={() => action(() => gameApi.leave(id))}
             >
               Sair da partida
             </button>
           )}
         {game.status === 'scheduled' && game.currentUserRole === 'organizer' && (
-          <button className="text-button danger" type="button" disabled={busy} onClick={cancelGame}>
-            Excluir partida
+          <button
+            className="text-button danger"
+            type="button"
+            disabled={busy || !isOnline}
+            onClick={cancelGame}
+          >
+            Cancelar partida
           </button>
         )}
       </section>
+      {confirmation && (
+        <ConfirmDialog
+          title={confirmation.title}
+          message={confirmation.message}
+          confirmLabel={confirmation.confirmLabel}
+          onConfirm={confirmation.onConfirm}
+          onCancel={() => setConfirmation(null)}
+        />
+      )}
     </main>
   );
 }

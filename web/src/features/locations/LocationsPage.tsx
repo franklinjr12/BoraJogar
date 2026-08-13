@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react';
 import { Link } from 'react-router-dom';
 import { locationApi, type PreferredArea, type Venue } from '../../api/client';
 import { requestBrowserLocation, type LocationMessages } from './browserLocation';
@@ -7,6 +7,8 @@ import { loadGoogleMaps } from './googleMaps';
 import { blankVenueDraft, type VenueDraft } from './venueDraft';
 import { VenueForm } from './VenueForm';
 import type { PlaceSearchResult } from './googlePlace';
+import { notifyLocationsChanged } from './locationEvents';
+import { useOnlineStatus } from '../../platform/useOnlineStatus';
 
 const defaultCenter = { latitude: -25.4284, longitude: -49.2733 };
 const locationMessages: LocationMessages = {
@@ -159,7 +161,7 @@ export function LocationSetup({
   const [venues, setVenues] = useState<Venue[]>([]);
   const [favorites, setFavorites] = useState<Venue[]>([]);
   const [areas, setAreas] = useState<PreferredArea[]>([]);
-  const [mode, setMode] = useState<'list' | 'court' | 'area'>(compact ? 'area' : 'court');
+  const [mode, setMode] = useState<'list' | 'court' | 'area'>(compact ? 'area' : 'list');
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
   const [venueDraft, setVenueDraft] = useState<VenueDraft>(blankVenueDraft());
   const [search, setSearch] = useState('');
@@ -167,11 +169,22 @@ export function LocationSetup({
   const [radius, setRadius] = useState(4000);
   const [label, setLabel] = useState('Perto de casa');
   const [message, setMessage] = useState('');
+  const [messageTone, setMessageTone] = useState<'error' | 'success'>('success');
   const [loading, setLoading] = useState(true);
   const [areaSearchOpen, setAreaSearchOpen] = useState(false);
   const [savingArea, setSavingArea] = useState(false);
+  const isOnline = useOnlineStatus();
 
-  const load = async () => {
+  const showError = (value: SetStateAction<string>) => {
+    setMessageTone('error');
+    setMessage(value);
+  };
+  const showSuccess = (value: string) => {
+    setMessageTone('success');
+    setMessage(value);
+  };
+
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [loadedVenues, loadedFavorites, loadedAreas] = await Promise.all([
@@ -182,16 +195,19 @@ export function LocationSetup({
       setVenues(loadedVenues);
       setFavorites(loadedFavorites);
       setAreas(loadedAreas);
+      if (!compact && loadedFavorites.length === 0 && loadedAreas.length === 0) {
+        setMode('court');
+      }
     } catch {
-      setMessage('Não foi possível carregar os locais. Verifique a conexão e tente novamente.');
+      showError('Não foi possível carregar os locais. Verifique a conexão e tente novamente.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [compact]);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   const favoriteIds = new Set(favorites.map((venue) => venue.id));
   const savedLocations = favorites.length + areas.length;
@@ -202,9 +218,14 @@ export function LocationSetup({
   );
 
   const saveAreaAtPoint = async (selectedPoint: typeof point, selectedLabel: string) => {
+    if (!isOnline) {
+      onLocationSavingChange?.(false);
+      showError('Você está offline. Conecte-se antes de salvar um local.');
+      return;
+    }
     if (areas.length >= 5) {
       onLocationSavingChange?.(false);
-      setMessage('Você atingiu o limite de cinco áreas.');
+      showError('Você atingiu o limite de cinco áreas.');
       return;
     }
     setSavingArea(true);
@@ -218,11 +239,12 @@ export function LocationSetup({
       });
       setAreas((current) => [...current, created]);
       setMode('list');
-      setMessage(
+      notifyLocationsChanged();
+      showSuccess(
         selectedLabel.trim() === 'Perto de você' ? 'Área perto de você salva.' : 'Área salva.',
       );
     } catch {
-      setMessage('Não foi possível salvar a área. Você pode tentar novamente.');
+      showError('Não foi possível salvar a área. Você pode tentar novamente.');
     } finally {
       setSavingArea(false);
       onLocationSavingChange?.(false);
@@ -234,7 +256,7 @@ export function LocationSetup({
     const result = await requestBrowserLocation(locationMessages);
     if (!result.ok) {
       if (compact) onLocationSavingChange?.(false);
-      setMessage(result.message);
+      showError(result.message);
       return;
     }
 
@@ -249,7 +271,7 @@ export function LocationSetup({
       await saveAreaAtPoint(rounded, selectedLabel);
       return;
     }
-    setMessage('Área definida pela localização do seu dispositivo.');
+    showSuccess('Área definida pela localização do seu dispositivo.');
   };
 
   const openAreaSearch = () => {
@@ -259,7 +281,7 @@ export function LocationSetup({
 
   const chooseMap = () => {
     setAreaSearchOpen(false);
-    setMessage('Mova o mapa ou clique em um ponto para escolher uma área.');
+    showSuccess('Mova o mapa ou clique em um ponto para escolher uma área.');
   };
 
   const selectAreaPlace = (place: PlaceSearchResult) => {
@@ -271,22 +293,31 @@ export function LocationSetup({
       void saveAreaAtPoint(rounded, selectedLabel);
       return;
     }
-    setMessage(`Área selecionada: ${place.city}.`);
+    showSuccess(`Área selecionada: ${place.city}.`);
   };
 
   const saveCourt = async (venue: Venue) => {
+    if (!isOnline) {
+      showError('Você está offline. Conecte-se antes de salvar um local.');
+      return;
+    }
     try {
       await locationApi.favoriteVenue(venue.id);
       setFavorites((current) => (favoriteIds.has(venue.id) ? current : [...current, venue]));
       setSelectedVenue(null);
       setMode('list');
-      setMessage('Quadra salva.');
+      notifyLocationsChanged();
+      showSuccess('Quadra salva.');
     } catch {
-      setMessage('Não foi possível salvar a quadra.');
+      showError('Não foi possível salvar a quadra.');
     }
   };
 
   const saveCreatedCourt = async (venue: Venue) => {
+    if (!isOnline) {
+      showError('Você está offline. Conecte-se antes de salvar um local.');
+      return;
+    }
     await locationApi.favoriteVenue(venue.id);
     setFavorites((current) =>
       current.some((item) => item.id === venue.id) ? current : [...current, venue],
@@ -295,21 +326,27 @@ export function LocationSetup({
       current.some((item) => item.id === venue.id) ? current : [...current, venue],
     );
     setMode('list');
-    setMessage('Quadra salva.');
+    notifyLocationsChanged();
+    showSuccess('Quadra salva.');
   };
 
   const removeCourt = async (venue: Venue) => {
+    if (!isOnline) {
+      showError('Você está offline. Conecte-se antes de alterar seus locais.');
+      return;
+    }
     try {
       await locationApi.unfavoriteVenue(venue.id);
       setFavorites((current) => current.filter((item) => item.id !== venue.id));
+      notifyLocationsChanged();
     } catch {
-      setMessage('Não foi possível remover a quadra.');
+      showError('Não foi possível remover a quadra.');
     }
   };
 
   const saveArea = async () => {
     if (!label.trim()) {
-      setMessage('Informe um nome para esta área.');
+      showError('Informe um nome para esta área.');
       return;
     }
     await saveAreaAtPoint(point, label);
@@ -322,11 +359,16 @@ export function LocationSetup({
   };
 
   const removeArea = async (id: string) => {
+    if (!isOnline) {
+      showError('Você está offline. Conecte-se antes de alterar seus locais.');
+      return;
+    }
     try {
       await locationApi.deletePreferredArea(id);
       setAreas((current) => current.filter((area) => area.id !== id));
+      notifyLocationsChanged();
     } catch {
-      setMessage('Não foi possível remover a área.');
+      showError('Não foi possível remover a área.');
     }
   };
 
@@ -340,6 +382,16 @@ export function LocationSetup({
           : 'Escolha quadras que você já frequenta ou marque uma área geral. Suas áreas privadas são usadas apenas para encontrar combinações.'}
       </p>
       <div className="location-mode-switcher" role="group" aria-label="Escolha do local">
+        {!compact && (
+          <button
+            className={mode === 'list' ? 'mode-tab selected' : 'mode-tab'}
+            type="button"
+            aria-pressed={mode === 'list'}
+            onClick={() => setMode('list')}
+          >
+            Meus locais
+          </button>
+        )}
         <button
           className={mode === 'court' ? 'mode-tab selected' : 'mode-tab'}
           type="button"
@@ -369,8 +421,23 @@ export function LocationSetup({
                 Adicione quadras que conhece ou marque uma área, como perto de casa ou do trabalho.
               </p>
               <p>Suas áreas salvas permanecem privadas.</p>
-              <button className="button" type="button" onClick={() => setMode('court')}>
-                Adicionar meu primeiro local
+              <div className="actions compact-actions">
+                <button className="button" type="button" onClick={() => setMode('area')}>
+                  Adicionar uma área
+                </button>
+                <button className="text-button" type="button" onClick={() => setMode('court')}>
+                  Adicionar uma quadra
+                </button>
+              </div>
+            </div>
+          )}
+          {!loading && savedLocations > 0 && (
+            <div className="actions compact-actions">
+              <button className="button" type="button" onClick={() => setMode('area')}>
+                Adicionar área
+              </button>
+              <button className="text-button" type="button" onClick={() => setMode('court')}>
+                Adicionar quadra
               </button>
             </div>
           )}
@@ -380,9 +447,14 @@ export function LocationSetup({
                 <h3>{venue.name}</h3>
                 <p>{venueLabel(venue)}</p>
                 <p>{venue.addressLabel || venue.city}</p>
-                <p>Preferida em qualquer horário</p>
+                <p>Local salvo para combinar partidas.</p>
               </div>
-              <button className="text-button" type="button" onClick={() => removeCourt(venue)}>
+              <button
+                className="text-button"
+                type="button"
+                disabled={!isOnline}
+                onClick={() => removeCourt(venue)}
+              >
                 Remover
               </button>
             </article>
@@ -393,9 +465,14 @@ export function LocationSetup({
                 <h3>{area.label}</h3>
                 <p>Área privada</p>
                 <p>Em um raio de {Math.round(area.radiusMeters / 1000)} km</p>
-                <p>Qualquer disponibilidade</p>
+                <p>Usada para encontrar partidas na região.</p>
               </div>
-              <button className="text-button" type="button" onClick={() => removeArea(area.id)}>
+              <button
+                className="text-button"
+                type="button"
+                disabled={!isOnline}
+                onClick={() => removeArea(area.id)}
+              >
                 Remover
               </button>
             </article>
@@ -413,6 +490,7 @@ export function LocationSetup({
             draft={venueDraft}
             onChange={setVenueDraft}
             onCreated={saveCreatedCourt}
+            disabled={!isOnline}
             onPointSelected={
               compact
                 ? (selectedPoint) => saveAreaAtPoint(roundPoint(selectedPoint), 'Perto de você')
@@ -442,7 +520,12 @@ export function LocationSetup({
                       <input type="checkbox" defaultChecked /> Sempre que eu estiver disponível
                     </span>
                   </label>
-                  <button className="button" type="button" onClick={() => saveCourt(selectedVenue)}>
+                  <button
+                    className="button"
+                    type="button"
+                    onClick={() => saveCourt(selectedVenue)}
+                    disabled={!isOnline}
+                  >
                     Salvar quadra
                   </button>
                 </div>
@@ -492,7 +575,7 @@ export function LocationSetup({
                   placeholder="Ex.: Praça Oswaldo Cruz"
                   onSelected={selectAreaPlace}
                   onUnavailable={() =>
-                    setMessage(
+                    showError(
                       (current) =>
                         current ||
                         'Pesquisa Google indisponível. Tente novamente ou escolha no mapa.',
@@ -507,6 +590,9 @@ export function LocationSetup({
             onSelect={(latitude, longitude) => selectAreaPoint(latitude, longitude)}
             onPointSelected={(latitude, longitude) => selectAreaPoint(latitude, longitude, true)}
           />
+          {compact && (
+            <p className="hint">No onboarding, marcar um ponto salva a área automaticamente.</p>
+          )}
           <p className="hint">Perto de {label || 'área selecionada'}</p>
           <fieldset>
             <legend>Até onde você viajaria?</legend>
@@ -535,17 +621,30 @@ export function LocationSetup({
             className="button"
             type="button"
             onClick={saveArea}
-            disabled={areas.length >= 5 || savingArea}
+            disabled={areas.length >= 5 || savingArea || !isOnline}
           >
             {savingArea ? 'Salvando área...' : 'Salvar área'}
           </button>
+          {!isOnline && (
+            <p className="hint">Você está offline. Conecte-se para salvar alterações.</p>
+          )}
         </section>
       )}
 
       {message && (
-        <p className="error" role="alert">
-          {message}
-        </p>
+        <div className={messageTone === 'error' ? 'feedback-error' : undefined}>
+          <p
+            className={messageTone === 'error' ? 'error' : 'hint'}
+            role={messageTone === 'error' ? 'alert' : 'status'}
+          >
+            {message}
+          </p>
+          {messageTone === 'error' && (
+            <button className="text-button" type="button" onClick={() => void load()}>
+              Tentar novamente
+            </button>
+          )}
+        </div>
       )}
     </>
   );

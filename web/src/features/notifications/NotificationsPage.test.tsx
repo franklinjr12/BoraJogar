@@ -48,4 +48,56 @@ describe('NotificationsPage', () => {
       screen.getByText('Sua partida terminou. Registre a presença dos jogadores.'),
     ).toBeInTheDocument();
   });
+
+  it('only renders internal notification destinations as app links', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              items: [
+                {
+                  id: 'internal',
+                  userId: 'user-1',
+                  type: 'game_changed',
+                  title: 'Internal',
+                  body: 'Internal destination',
+                  actionUrl: '/games/game-1',
+                  payload: {},
+                  readAt: null,
+                  createdAt: '2026-08-05T12:00:00Z',
+                },
+                {
+                  id: 'external',
+                  userId: 'user-1',
+                  type: 'game_changed',
+                  title: 'External',
+                  body: 'External destination',
+                  actionUrl: 'https://example.com',
+                  payload: {},
+                  readAt: null,
+                  createdAt: '2026-08-05T12:00:00Z',
+                },
+              ],
+              unreadCount: 2,
+              hasMore: false,
+              page: 1,
+              pageSize: 20,
+            }),
+            { status: 200 },
+          ),
+        ),
+      ),
+    );
+    render(
+      <MemoryRouter>
+        <NotificationsPage />
+      </MemoryRouter>,
+    );
+
+    const links = await screen.findAllByRole('link', { name: 'Abrir' });
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', '/games/game-1');
+  });
 });

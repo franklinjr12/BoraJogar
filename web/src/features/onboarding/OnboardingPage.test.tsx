@@ -94,6 +94,7 @@ describe('OnboardingPage', () => {
 
   it('continues after choosing current location without manual area setup', async () => {
     let locationReady = false;
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
     const geolocation = {
       getCurrentPosition: vi.fn((success: PositionCallback) =>
         success({
@@ -101,7 +102,7 @@ describe('OnboardingPage', () => {
         } as GeolocationPosition),
       ),
     };
-    vi.stubGlobal('navigator', { ...navigator, geolocation });
+    vi.stubGlobal('navigator', { ...navigator, onLine: true, geolocation });
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -162,6 +163,9 @@ describe('OnboardingPage', () => {
         '/api/v1/me/preferred-areas',
         expect.objectContaining({ method: 'POST' }),
       ),
+    );
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: /continuar/i }).at(-1)).not.toBeDisabled(),
     );
     fireEvent.click(screen.getAllByRole('button', { name: /continuar/i }).at(-1)!);
 

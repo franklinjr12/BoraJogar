@@ -145,6 +145,45 @@ export interface NotificationPage {
   pageSize: number;
 }
 
+export type AttendanceStatus = 'unknown' | 'attended' | 'no_show';
+export interface AttendanceEntry {
+  userId: string;
+  displayName: string;
+  status: AttendanceStatus;
+  recordedAt?: string;
+}
+export interface ReliabilitySummary {
+  gamesConfirmed: number;
+  gamesAttended: number;
+  earlyCancellations: number;
+  lateCancellations: number;
+  noShows: number;
+  sufficientHistory: boolean;
+  matchmakingValue: number;
+}
+export interface ReportInput {
+  reportedUserId?: string;
+  gameId?: string;
+  category:
+    | 'harassment'
+    | 'unsafe_behavior'
+    | 'repeated_no_show'
+    | 'false_profile'
+    | 'inappropriate_content'
+    | 'other';
+  description: string;
+  blockReportedUser: boolean;
+}
+export interface ReportResult {
+  id: string;
+  status: string;
+}
+export interface BlockedUser {
+  userId: string;
+  displayName: string;
+  createdAt: string;
+}
+
 export interface PublicProfile {
   userId: string;
   displayName: string;
@@ -154,12 +193,6 @@ export interface PublicProfile {
   styles: PlayingStyle[];
   completedGames: number;
   playedTogether: boolean;
-}
-
-export interface BlockedUser {
-  userId: string;
-  displayName: string;
-  createdAt: string;
 }
 
 export interface Page<T> {
@@ -347,6 +380,7 @@ export const profileApi = {
 export const authApi = {
   currentUser: () => request<CurrentUser>('/api/v1/me'),
   logout: () => request<void>('/api/v1/auth/logout', { method: 'POST' }),
+  deleteAccount: () => request<void>('/api/v1/me/delete', { method: 'POST' }),
   emailSignup: (input: {
     email: string;
     password: string;
@@ -466,6 +500,25 @@ export const gameApi = {
     ),
   calendarURL: (id: string, access?: string) =>
     `/api/v1/games/${id}/calendar.ics${access ? `?access=${encodeURIComponent(access)}` : ''}`,
+};
+
+export const attendanceApi = {
+  list: (gameId: string) =>
+    request<AttendanceEntry[]>(`/api/v1/games/${encodeURIComponent(gameId)}/attendance`),
+  record: (gameId: string, userId: string, status: AttendanceStatus) =>
+    request<void>(`/api/v1/games/${encodeURIComponent(gameId)}/attendance`, {
+      method: 'PUT',
+      body: JSON.stringify({ userId, status }),
+    }),
+  reliability: () => request<ReliabilitySummary>('/api/v1/me/reliability'),
+};
+
+export const moderationApi = {
+  report: (input: ReportInput) =>
+    request<ReportResult>('/api/v1/reports', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 };
 
 export const dashboardApi = {

@@ -38,7 +38,7 @@ describe('GamesPage', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /vamos jogar/i })).toBeInTheDocument(),
     );
-    expect(screen.getByRole('link', { name: /criar uma partida/i })).toHaveAttribute(
+    expect(screen.getAllByRole('link', { name: /criar uma partida/i })[0]).toHaveAttribute(
       'href',
       '/games/new',
     );
@@ -55,7 +55,7 @@ describe('GamesPage', () => {
         <GamesPage />
       </MemoryRouter>,
     );
-    expect(await screen.findByRole('alert')).toHaveTextContent(/entre e tente novamente/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/verifique sua conexão/i);
     expect(screen.queryByText(/nenhuma partida futura/i)).not.toBeInTheDocument();
   });
 
@@ -141,6 +141,54 @@ describe('GamesPage', () => {
       '/games/far-open-game',
       '/games/full-game',
     ]);
+  });
+
+  it('loads the next page without losing the current games', async () => {
+    const pageOneGame = {
+      id: 'page-one-game',
+      startsAt: '2099-08-01T12:00:00Z',
+      endsAt: '2099-08-01T13:30:00Z',
+      venueId: 'venue-1',
+      venueName: 'Praia Central',
+      latitude: -25.4,
+      longitude: -49.3,
+      capacity: 4,
+      confirmedPlayers: 1,
+      openSlots: 3,
+      minimumSkillLevel: 'beginner',
+      maximumSkillLevel: 'advanced',
+      visibility: 'public',
+      status: 'scheduled',
+    };
+    const pageTwoGame = { ...pageOneGame, id: 'page-two-game', venueName: 'Praia Norte' };
+    const fetchMock = vi.fn((url: string) => {
+      const page = new URL(url, window.location.origin).searchParams.get('page');
+      return Promise.resolve(
+        new Response(
+          JSON.stringify(
+            page === '2'
+              ? { items: [pageTwoGame], page: 2, pageSize: 30, hasMore: false }
+              : { items: [pageOneGame], page: 1, pageSize: 30, hasMore: true },
+          ),
+          { status: 200 },
+        ),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MemoryRouter>
+        <GamesPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('link', { name: /Praia Central/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /carregar mais partidas/i }));
+    expect(await screen.findByRole('link', { name: /Praia Norte/ })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('page=2'))).toBe(true);
+    expect(screen.getByRole('link', { name: /Praia Central/ })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /carregar mais partidas/i }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -525,10 +573,11 @@ describe('GameDetailsPage', () => {
       expect.stringContaining('google.com/maps/dir'),
     );
     expect(screen.getByRole('button', { name: 'Remover Bruno' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /excluir partida/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancelar partida/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /sair da partida/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Remover Bruno' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remover jogador' }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/v1/games/game-1/players/player-1',
@@ -536,7 +585,8 @@ describe('GameDetailsPage', () => {
       ),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /excluir partida/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cancelar partida/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Cancelar partida' })[1]!);
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/v1/games/game-1/cancel',

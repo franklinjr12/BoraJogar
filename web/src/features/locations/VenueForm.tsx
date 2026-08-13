@@ -126,12 +126,14 @@ export function VenueForm({
   onCreated,
   onPointSelected,
   buttonLabel = 'Criar local',
+  disabled = false,
 }: {
   draft: VenueDraft;
   onChange: (draft: VenueDraft) => void;
   onCreated?: (venue: Venue) => void | Promise<void>;
   onPointSelected?: (point: Point) => void | Promise<void>;
   buttonLabel?: string;
+  disabled?: boolean;
 }) {
   const [message, setMessage] = useState('');
   const [locating, setLocating] = useState(false);
@@ -238,12 +240,12 @@ export function VenueForm({
           className="text-button venue-location-button"
           type="button"
           onClick={useCurrentLocation}
-          disabled={locating}
+          disabled={locating || disabled}
         >
           {locating ? 'Localizando...' : 'Usar minha localização atual'}
         </button>
         {onCreated && (
-          <button className="button" type="button" onClick={save} disabled={locating}>
+          <button className="button" type="button" onClick={save} disabled={locating || disabled}>
             {buttonLabel}
           </button>
         )}

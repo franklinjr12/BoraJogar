@@ -185,6 +185,50 @@ describe('profile editing', () => {
     );
   });
 
+  it('shows reliability history and supports account deletion', async () => {
+    const profile = {
+      userId: 'user-1',
+      displayName: 'Ana',
+      timeZone: 'UTC',
+      skillLevel: 'beginner',
+      bio: '',
+      styles: ['mixed'],
+      preferredGameDurationMinutes: 90,
+      minimumNoticeMinutes: 120,
+      activeForMatchmaking: true,
+    };
+    const fetchMock = vi.spyOn(window, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/v1/me/delete') && init?.method === 'POST')
+        return new Response(null, { status: 204 });
+      if (url.endsWith('/api/v1/me')) return json({ ...currentUser, onboardingComplete: true });
+      if (url.endsWith('/api/v1/me/profile')) return json(profile);
+      if (url.endsWith('/api/v1/me/reliability'))
+        return json({
+          gamesConfirmed: 5,
+          gamesAttended: 4,
+          earlyCancellations: 0,
+          lateCancellations: 1,
+          noShows: 0,
+          sufficientHistory: true,
+          matchmakingValue: 0.8,
+        });
+      return json({});
+    });
+    renderApp('/profile');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Ana' })).toBeInTheDocument());
+    expect(await screen.findByText(/4 de 5 partidas confirmadas/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir minha conta' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Excluir minha conta' })[1]!);
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/me/delete',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    expect(await screen.findByRole('heading', { name: /entre para jogar/i })).toBeInTheDocument();
+  });
+
   it('signs out from the profile page and sends the user to login', async () => {
     const profile = {
       userId: 'user-1',
@@ -256,5 +300,35 @@ describe('profile editing', () => {
       'href',
       '/onboarding',
     );
+  });
+
+  it('offers retry when loading the profile fails', async () => {
+    let attempts = 0;
+    const profile = {
+      userId: 'user-1',
+      displayName: 'Ana',
+      timeZone: 'UTC',
+      skillLevel: 'beginner',
+      bio: '',
+      styles: ['mixed'],
+      preferredGameDurationMinutes: 90,
+      minimumNoticeMinutes: 120,
+      activeForMatchmaking: true,
+    };
+    vi.spyOn(window, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/api/v1/me')) return json({ ...currentUser, onboardingComplete: true });
+      if (url.endsWith('/api/v1/me/profile')) {
+        attempts += 1;
+        return attempts === 1
+          ? json({ error: { code: 'http_500', message: 'Failed.', fields: {} } }, 500)
+          : json(profile);
+      }
+      return json({});
+    });
+    renderApp('/profile');
+    expect(await screen.findByRole('button', { name: /tentar novamente/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /tentar novamente/i }));
+    expect(await screen.findByRole('heading', { name: 'Ana' })).toBeInTheDocument();
   });
 });

@@ -38,6 +38,59 @@ body {
   color: #0b6b68;
   background: #dcefe9;
 }
+.mobile-nav a {
+  gap: 0.35rem;
+}
+.nav-badge {
+  display: inline-grid;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  place-items: center;
+  border-radius: 999px;
+  padding: 0 0.25rem;
+  color: white;
+  background: #a52424;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+.nav-more {
+  position: relative;
+}
+.nav-more summary {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.7rem;
+  padding: 0.6rem 0.75rem;
+  color: #476566;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 700;
+  list-style: none;
+}
+.nav-more summary::-webkit-details-marker {
+  display: none;
+}
+.nav-more[open] summary {
+  color: #0b6b68;
+  background: #dcefe9;
+}
+.nav-more-links {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  display: grid;
+  min-width: 12rem;
+  border: 1px solid #d5e5df;
+  border-radius: 0.8rem;
+  padding: 0.35rem;
+  background: white;
+  box-shadow: 0 1rem 2rem #173b3b1a;
+}
+.nav-more-links a {
+  color: #476566;
+}
 .offline-banner {
   display: flex;
   align-items: center;
@@ -59,6 +112,10 @@ body {
   right: 1rem;
   bottom: 1rem;
   width: min(100% - 2rem, 24rem);
+  pointer-events: none;
+}
+.install-prompt .actions {
+  pointer-events: auto;
 }
 .shell {
   width: min(100% - 2rem, 760px);
@@ -78,6 +135,22 @@ body {
 .login-form .button {
   width: 100%;
   text-align: center;
+}
+.password-field {
+  display: flex;
+  align-items: stretch;
+}
+.password-field input {
+  min-width: 0;
+  flex: 1;
+  border-radius: 0.7rem 0 0 0.7rem;
+}
+.password-toggle {
+  border: 1px solid #b8d0c9;
+  border-left: 0;
+  border-radius: 0 0.7rem 0.7rem 0;
+  padding: 0 0.8rem;
+  background: #edf8f4;
 }
 .button.login-google-button {
   display: block;
@@ -207,6 +280,11 @@ progress {
 .onboarding h1 {
   font-size: clamp(2.1rem, 8vw, 4rem);
 }
+.onboarding-progress {
+  margin: 0 0 0.5rem;
+  color: #476566;
+  font-weight: 800;
+}
 .choice-list {
   display: grid;
   gap: 0.75rem;
@@ -253,6 +331,7 @@ progress {
 .button:focus-visible,
 .text-link:focus-visible,
 .text-button:focus-visible,
+.nav-more summary:focus-visible,
 .mode-tab:focus-visible,
 .choice:focus-visible,
 .view-button:focus-visible,
@@ -292,6 +371,59 @@ textarea:focus-visible {
 .error {
   color: #a52424;
   font-weight: 700;
+}
+.feedback-error {
+  margin: 1rem 0;
+  border: 1px solid #e5b6b6;
+  border-radius: 0.9rem;
+  padding: 0.75rem 1rem;
+  background: #fff7f7;
+}
+.feedback-error p {
+  margin: 0;
+}
+.empty-state {
+  display: grid;
+  gap: 0.5rem;
+}
+.empty-state h2,
+.empty-state p {
+  margin: 0;
+}
+.load-more-button {
+  margin-top: 1rem;
+}
+.danger {
+  color: #a52424;
+}
+.dialog-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: #102f3170;
+}
+.confirm-dialog {
+  width: min(100%, 28rem);
+  margin: 0;
+  box-shadow: 0 1rem 3rem #102f3133;
+}
+.confirm-dialog h2,
+.confirm-dialog p {
+  margin-top: 0;
+}
+.confirm-dialog .actions {
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+.danger-button {
+  background: #a52424;
+}
+.account-danger-zone {
+  margin-top: 1.25rem;
+  border-color: #e5b6b6;
 }
 .cancellation-banner {
   display: grid;
@@ -393,6 +525,11 @@ textarea:focus-visible {
   }
   .mobile-nav a {
     flex: 1;
+    justify-content: center;
+    padding-inline: 0.25rem;
+    font-size: 0.75rem;
+  }
+  .nav-more summary {
     justify-content: center;
     padding-inline: 0.25rem;
     font-size: 0.75rem;

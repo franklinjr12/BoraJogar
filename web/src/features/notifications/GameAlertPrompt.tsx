@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { dismissGameAlertPrompt, gameAlertPromptReady } from './gameAlertPromptState';
 
-export function GameAlertPrompt() {
+export function GameAlertPrompt({ onChanged }: { onChanged?: () => void }) {
   const [open, setOpen] = useState(() => gameAlertPromptReady());
 
   useEffect(() => {
@@ -17,25 +18,19 @@ export function GameAlertPrompt() {
   const dismiss = () => {
     dismissGameAlertPrompt();
     setOpen(false);
-  };
-
-  const enable = async () => {
-    if ('Notification' in window) {
-      await Notification.requestPermission();
-    }
-    dismiss();
+    onChanged?.();
   };
 
   return (
     <aside className="install-prompt card" aria-label="Alertas de partidas">
-      <h2>Receba avisos quando uma partida for encontrada</h2>
-      <p>Avisaremos apenas sobre propostas, confirmações, alterações e lembretes.</p>
+      <h2>Acompanhe os avisos das suas partidas</h2>
+      <p>Propostas, confirmações, alterações e lembretes ficam reunidos na aba Avisos.</p>
       <div className="actions compact-actions">
-        <button className="button" onClick={() => void enable()}>
-          Ativar alertas de partidas
-        </button>
-        <button className="text-button" onClick={dismiss}>
-          Usar apenas e-mail
+        <Link className="button" to="/notifications" onClick={dismiss}>
+          Ver avisos
+        </Link>
+        <button className="text-button" type="button" onClick={dismiss}>
+          Agora não
         </button>
       </div>
     </aside>

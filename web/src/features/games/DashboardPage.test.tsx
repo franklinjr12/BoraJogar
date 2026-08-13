@@ -144,4 +144,34 @@ describe('DashboardPage', () => {
     ]);
     expect(screen.getByText(/partida confirmada/i)).toBeInTheDocument();
   });
+
+  it('offers retry when the dashboard request fails', async () => {
+    let attempts = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => {
+        attempts += 1;
+        return attempts === 1
+          ? Promise.resolve(new Response('{}', { status: 500 }))
+          : Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  displayName: 'Franklin',
+                  readiness,
+                  openGames: [],
+                  availabilitySummary: [],
+                }),
+                { status: 200 },
+              ),
+            );
+      }),
+    );
+    render(
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /tentar novamente/i }));
+    expect(await screen.findByRole('heading', { name: /pronto/i })).toBeInTheDocument();
+  });
 });
