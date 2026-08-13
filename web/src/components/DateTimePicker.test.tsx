@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DatePickerField, TimePickerField } from './DateTimePicker';
 
@@ -60,39 +60,56 @@ describe('DatePickerField', () => {
 });
 
 describe('TimePickerField', () => {
-  it('selects time with vertical wheels and defaults minute to zero', () => {
+  it('uses native time input with one-minute precision', () => {
     const onChange = vi.fn();
-    render(<TimePickerField label="Horário" name="time" value="" onChange={onChange} required />);
-
-    fireEvent.click(screen.getByRole('button', { name: /abrir seletor de horário/i }));
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    const hourWheel = screen.getByRole('listbox', { name: 'Hora' });
-    const minuteWheel = screen.getByRole('listbox', { name: 'Minutos' });
-    expect(within(minuteWheel).getByRole('option', { name: '00' })).toHaveAttribute(
-      'aria-selected',
-      'true',
+    const view = render(
+      <TimePickerField label="Horário" name="time" value="09:00" onChange={onChange} required />,
     );
 
-    fireEvent.click(within(hourWheel).getByRole('option', { name: '09' }));
-    fireEvent.click(within(minuteWheel).getByRole('option', { name: '35' }));
+    const input = screen.getByLabelText('Horário');
+    expect(input).toHaveAttribute('type', 'time');
+    expect(input).toHaveAttribute('step', '60');
+    expect(input).toHaveAttribute('lang', 'pt-BR');
+    expect(input).toBeRequired();
+    expect(input).toHaveValue('09:00');
+
+    fireEvent.change(input, { target: { value: '09:35' } });
     expect(onChange).toHaveBeenLastCalledWith('09:35');
+    view.rerender(
+      <TimePickerField label="Horário" name="time" value="09:35" onChange={onChange} required />,
+    );
 
     const hiddenInput = document.querySelector<HTMLInputElement>(
       'input[type="hidden"][name="time"]',
     );
     expect(hiddenInput).toHaveValue('09:35');
-    fireEvent.click(screen.getByRole('button', { name: 'Concluído' }));
+  });
+
+  it('offers a large non-scrolling mobile picker with cancel and apply', () => {
+    const onChange = vi.fn();
+    render(<TimePickerField label="Horário" name="time" value="09:35" onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '09:35, abrir seletor de horário' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Aumentar hora' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aumentar minutos' }));
+    expect(screen.getByText('10:36')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Definir' }));
+    expect(onChange).toHaveBeenLastCalledWith('10:36');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('accepts typed hours with or without a colon', () => {
-    const onChange = vi.fn();
-    render(<TimePickerField label="Horário" name="time" value="" onChange={onChange} />);
+  it('normalizes leading zeroes while typing mobile time values', () => {
+    render(<TimePickerField label="Horário" name="time" value="09:05" onChange={vi.fn()} />);
 
-    const input = screen.getByLabelText('Horário');
-    fireEvent.change(input, { target: { value: '1030' } });
+    fireEvent.click(screen.getByRole('button', { name: '09:05, abrir seletor de horário' }));
+    const hourInput = screen.getByLabelText('Hora');
+    const minuteInput = screen.getByLabelText('Minutos');
+    fireEvent.change(hourInput, { target: { value: '013' } });
+    fireEvent.change(minuteInput, { target: { value: '050' } });
 
-    expect(input).toHaveValue('10:30');
-    expect(onChange).toHaveBeenLastCalledWith('10:30');
+    expect(hourInput).toHaveValue('13');
+    expect(minuteInput).toHaveValue('50');
   });
 });

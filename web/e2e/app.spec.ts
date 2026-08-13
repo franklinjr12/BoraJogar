@@ -85,20 +85,17 @@ async function chooseDate(page: Page, value: string) {
 }
 
 async function chooseTime(page: Page, hour: string, minute: string) {
+  const nativeTimeInput = page.locator('.desktop-time-input');
+  if (await nativeTimeInput.isVisible()) {
+    await nativeTimeInput.fill(`${hour}:${minute}`);
+    await expect(nativeTimeInput).toHaveValue(`${hour}:${minute}`);
+    return;
+  }
+
   await page.getByRole('button', { name: /abrir seletor de horário/i }).click();
-  const hourWheel = page.getByRole('listbox', { name: 'Hora' });
-  const minuteWheel = page.getByRole('listbox', { name: 'Minutos' });
-  await hourWheel.getByRole('option', { name: hour, exact: true }).click();
-  await minuteWheel.getByRole('option', { name: minute, exact: true }).click();
-  await expect(hourWheel.getByRole('option', { name: hour, exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await expect(minuteWheel.getByRole('option', { name: minute, exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await page.getByRole('button', { name: 'Concluído' }).click();
+  await page.getByRole('textbox', { name: 'Hora', exact: true }).fill(hour);
+  await page.getByRole('textbox', { name: 'Minutos', exact: true }).fill(minute);
+  await page.getByRole('button', { name: 'Definir' }).click();
 }
 
 test.describe('Bora Jogar real backend E2E', () => {

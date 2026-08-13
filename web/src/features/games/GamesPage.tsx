@@ -384,7 +384,7 @@ export function CreateGamePage() {
           Número de jogadores
           <input name="capacity" type="number" min="2" max="12" defaultValue="4" required />
         </label>
-        <div className="time-fields">
+        <div className="time-fields skill-fields">
           <label>
             Habilidade mínima
             <select name="minimum" defaultValue="beginner">

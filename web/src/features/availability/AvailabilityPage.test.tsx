@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AvailabilityPage } from './AvailabilityPage';
@@ -155,36 +155,8 @@ describe('AvailabilityPage', () => {
     );
 
     await screen.findByRole('button', { name: /neste fim de semana/i });
-    const pickerToggles = screen.getAllByRole('button', {
-      name: /abrir seletor de horário/i,
-    });
-    fireEvent.click(pickerToggles[0]!);
-    let dialog = screen.getByRole('dialog');
-    fireEvent.click(
-      within(within(dialog).getByRole('listbox', { name: 'Hora' })).getByRole('option', {
-        name: '06',
-      }),
-    );
-    fireEvent.click(
-      within(within(dialog).getByRole('listbox', { name: 'Minutos' })).getByRole('option', {
-        name: '00',
-      }),
-    );
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Concluído' }));
-
-    fireEvent.click(pickerToggles[1]!);
-    dialog = screen.getByRole('dialog');
-    fireEvent.click(
-      within(within(dialog).getByRole('listbox', { name: 'Hora' })).getByRole('option', {
-        name: '08',
-      }),
-    );
-    fireEvent.click(
-      within(within(dialog).getByRole('listbox', { name: 'Minutos' })).getByRole('option', {
-        name: '00',
-      }),
-    );
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Concluído' }));
+    fireEvent.change(screen.getByLabelText('Início'), { target: { value: '06:00' } });
+    fireEvent.change(screen.getByLabelText('Fim'), { target: { value: '08:00' } });
 
     fireEvent.submit(
       screen.getByRole('button', { name: /adicionar hor.rio dispon.vel/i }).closest('form')!,

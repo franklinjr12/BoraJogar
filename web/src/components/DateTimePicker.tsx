@@ -13,7 +13,6 @@ type DatePickerFieldProps = PickerFieldProps & {
 };
 
 const weekDays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-const wheelRowHeight = 56;
 
 function localToday() {
   const date = new Date();
@@ -60,21 +59,39 @@ function isValidDateInput(value: string) {
   return parseDateValue(value) !== undefined;
 }
 
-function isValidTimeInput(value: string) {
-  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
-}
-
-function normalizeTypedTime(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 4);
-  return digits.length > 2 ? `${digits.slice(0, 2)}:${digits.slice(2)}` : digits;
-}
-
 function firstDayOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
 function shiftMonth(date: Date, amount: number) {
   return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+type TimeValue = {
+  hour: number;
+  minute: number;
+};
+
+function parseTimeValue(value: string): TimeValue | undefined {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+  if (!match) return undefined;
+  return { hour: Number(match[1]), minute: Number(match[2]) };
+}
+
+function formatTimeValue({ hour, minute }: TimeValue) {
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function clampTimeValue(value: number, maximum: number) {
+  return Number.isFinite(value) ? Math.max(0, Math.min(maximum, Math.round(value))) : 0;
+}
+
+function parseTypedTimeValue(value: string, maximum: number) {
+  const digits = value
+    .replace(/\D/g, '')
+    .replace(/^0+(?=\d)/, '')
+    .slice(0, 2);
+  return clampTimeValue(Number(digits), maximum);
 }
 
 export function DatePickerField({ min = localToday(), ...props }: DatePickerFieldProps) {
@@ -241,239 +258,159 @@ export function DatePickerField({ min = localToday(), ...props }: DatePickerFiel
 }
 
 export function TimePickerField(props: PickerFieldProps) {
+  const inputId = useId();
+  const labelId = `${inputId}-label`;
+  const dialogId = `${inputId}-dialog`;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const hourInputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
-  const [selectedHour, setSelectedHour] = useState<number | undefined>(() =>
-    isValidTimeInput(props.value) ? Number(props.value.slice(0, 2)) : undefined,
-  );
-  const [selectedMinute, setSelectedMinute] = useState<number | undefined>(() =>
-    isValidTimeInput(props.value) ? Number(props.value.slice(3, 5)) : 0,
-  );
-  const triggerRef = useRef<HTMLInputElement>(null);
-  const hourWheelRef = useRef<HTMLDivElement>(null);
-  const minuteWheelRef = useRef<HTMLDivElement>(null);
-  const committedValueRef = useRef(props.value);
-  const [typedValue, setTypedValue] = useState(props.value);
-  const titleId = useId();
+  const currentTime = parseTimeValue(props.value);
+  const [draftHour, setDraftHour] = useState(currentTime?.hour ?? 0);
+  const [draftMinute, setDraftMinute] = useState(currentTime?.minute ?? 0);
+  const close = useCallback(() => {
+    setOpen(false);
+    window.setTimeout(() => triggerRef.current?.focus(), 0);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    const focusTarget = document.querySelector<HTMLElement>(`[data-picker-title="${titleId}"]`);
-    focusTarget?.focus();
+    hourInputRef.current?.focus();
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setOpen(false);
-        window.setTimeout(() => triggerRef.current?.focus(), 0);
-      }
+      if (event.key === 'Escape') close();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open, titleId]);
+  }, [close, open]);
 
-  useEffect(() => {
-    if (props.value === committedValueRef.current) return;
-    committedValueRef.current = props.value;
-    setTypedValue(props.value);
-  }, [props.value]);
-
-  useEffect(() => {
-    if (!isValidTimeInput(props.value)) {
-      setSelectedHour(undefined);
-      setSelectedMinute(0);
-      return;
-    }
-    setSelectedHour(Number(props.value.slice(0, 2)));
-    setSelectedMinute(Number(props.value.slice(3, 5)));
-  }, [props.value]);
-
-  const close = () => {
-    setOpen(false);
-    window.setTimeout(() => triggerRef.current?.focus(), 0);
+  const openPicker = () => {
+    const nextTime = parseTimeValue(props.value);
+    setDraftHour(nextTime?.hour ?? 0);
+    setDraftMinute(nextTime?.minute ?? 0);
+    setOpen(true);
   };
-  const scrollWheelTo = useCallback((wheel: HTMLDivElement | null, index: number) => {
-    if (!wheel) return;
-    const top = index * wheelRowHeight;
-    if (typeof wheel.scrollTo === 'function') {
-      wheel.scrollTo({ top, behavior: 'smooth' });
-    } else {
-      wheel.scrollTop = top;
-    }
-  }, []);
-  useEffect(() => {
-    if (!open) return;
-    const frame = window.requestAnimationFrame(() => {
-      if (selectedHour !== undefined) scrollWheelTo(hourWheelRef.current, selectedHour);
-      scrollWheelTo(minuteWheelRef.current, selectedMinute ?? 0);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [open, scrollWheelTo, selectedHour, selectedMinute]);
-  const updateTime = (hour: number | undefined, minute: number) => {
-    if (hour === undefined) return;
-    const value = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-    committedValueRef.current = value;
-    setTypedValue(value);
-    props.onChange(value);
+  const apply = () => {
+    props.onChange(formatTimeValue({ hour: draftHour, minute: draftMinute }));
+    close();
   };
-  const selectHour = (hour: number) => {
-    setSelectedHour(hour);
-    updateTime(hour, selectedMinute ?? 0);
+  const adjustHour = (amount: number) => {
+    setDraftHour((value) => (value + amount + 24) % 24);
   };
-  const selectMinute = (minute: number) => {
-    setSelectedMinute(minute);
-    updateTime(selectedHour, minute);
+  const adjustMinute = (amount: number) => {
+    setDraftMinute((value) => (value + amount + 60) % 60);
   };
-  const handleHourScroll = () => {
-    const wheel = hourWheelRef.current;
-    if (!wheel) return;
-    const hour = Math.max(0, Math.min(23, Math.round(wheel.scrollTop / wheelRowHeight)));
-    if (hour !== selectedHour) selectHour(hour);
-  };
-  const handleMinuteScroll = () => {
-    const wheel = minuteWheelRef.current;
-    if (!wheel) return;
-    const minute = Math.max(0, Math.min(59, Math.round(wheel.scrollTop / wheelRowHeight)));
-    if (minute !== selectedMinute) selectMinute(minute);
-  };
-  const hours = Array.from({ length: 24 }, (_, index) => index);
-  const minutes = Array.from({ length: 60 }, (_, index) => index);
+  const displayedValue = currentTime ? formatTimeValue(currentTime) : 'Selecionar horário';
 
   return (
     <div className="date-time-field">
-      <label htmlFor={`${titleId}-trigger`}>{props.label}</label>
-      <div className="date-time-input-row">
-        <input
-          id={`${titleId}-trigger`}
-          ref={triggerRef}
-          className="date-time-trigger"
-          type="text"
-          lang="pt-BR"
-          value={typedValue}
-          inputMode="numeric"
-          maxLength={5}
-          placeholder="HH:mm"
-          required={props.required}
-          aria-required={props.required || undefined}
-          aria-label={props.label}
-          onChange={(event) => {
-            const value = normalizeTypedTime(event.target.value);
-            setTypedValue(value);
-            if (isValidTimeInput(value)) {
-              committedValueRef.current = value;
-              props.onChange(value);
-            }
-          }}
-          onBlur={() => {
-            if (typedValue.length > 0 && !isValidTimeInput(typedValue)) setTypedValue(props.value);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              setOpen(true);
-            }
-          }}
-        />
+      <label id={labelId} htmlFor={inputId}>
+        {props.label}
+      </label>
+      <input
+        id={inputId}
+        className="native-time-input desktop-time-input"
+        type="time"
+        lang="pt-BR"
+        step="60"
+        value={props.value}
+        required={props.required}
+        onChange={(event) => props.onChange(event.target.value)}
+      />
+      <div className="mobile-time-control">
         <button
-          className="date-time-picker-toggle"
+          ref={triggerRef}
+          className="mobile-time-trigger"
           type="button"
-          aria-label="Abrir seletor de horário"
+          aria-label={`${displayedValue}, abrir seletor de horário`}
           aria-haspopup="dialog"
           aria-expanded={open}
-          aria-controls={open ? `${titleId}-dialog` : undefined}
-          onClick={() => setOpen(true)}
+          aria-controls={open ? dialogId : undefined}
+          onClick={openPicker}
         >
-          ▾
+          {displayedValue}
         </button>
       </div>
-      <input type="hidden" name={props.name} value={typedValue} />
+      <input type="hidden" name={props.name} value={props.value} />
       {open && (
         <div className="date-time-overlay" role="presentation">
           <div
             className="date-time-dialog time-picker-dialog"
-            id={`${titleId}-dialog`}
+            id={dialogId}
             role="dialog"
             aria-modal="true"
-            aria-labelledby={titleId}
+            aria-labelledby={labelId}
           >
             <div className="date-time-dialog-header">
               <p className="date-time-dialog-kicker">{props.label}</p>
-              <p
-                id={titleId}
-                className="date-time-dialog-value"
-                tabIndex={-1}
-                data-picker-title={titleId}
-              >
-                {isValidTimeInput(props.value) ? props.value : 'Selecionar horário'}
+              <p className="date-time-dialog-value">
+                {formatTimeValue({ hour: draftHour, minute: draftMinute })}
               </p>
             </div>
-            <div className="time-picker-section">
-              <div className="time-picker-wheels" aria-label="Selecionar horário">
-                <div className="time-picker-wheel-column">
-                  <span className="time-picker-label">Hora</span>
-                  <div
-                    className="time-picker-wheel"
-                    ref={hourWheelRef}
-                    role="listbox"
-                    aria-label="Hora"
-                    aria-activedescendant={
-                      selectedHour === undefined ? undefined : `${titleId}-hour-${selectedHour}`
+            <div className="custom-time-controls">
+              <div className="custom-time-control">
+                <label htmlFor={`${dialogId}-hour`}>Hora</label>
+                <div className="custom-time-stepper">
+                  <input
+                    id={`${dialogId}-hour`}
+                    ref={hourInputRef}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={3}
+                    value={draftHour}
+                    onFocus={(event) => event.currentTarget.select()}
+                    onChange={(event) => setDraftHour(parseTypedTimeValue(event.target.value, 23))}
+                  />
+                  <div className="custom-time-stepper-actions">
+                    <button type="button" aria-label="Diminuir hora" onClick={() => adjustHour(-1)}>
+                      −
+                    </button>
+                    <button type="button" aria-label="Aumentar hora" onClick={() => adjustHour(1)}>
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <span className="custom-time-separator" aria-hidden="true">
+                :
+              </span>
+              <div className="custom-time-control">
+                <label htmlFor={`${dialogId}-minute`}>Minutos</label>
+                <div className="custom-time-stepper">
+                  <input
+                    id={`${dialogId}-minute`}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={3}
+                    value={draftMinute}
+                    onFocus={(event) => event.currentTarget.select()}
+                    onChange={(event) =>
+                      setDraftMinute(parseTypedTimeValue(event.target.value, 59))
                     }
-                    onScroll={handleHourScroll}
-                  >
-                    <span className="time-picker-wheel-spacer" aria-hidden="true" />
-                    {hours.map((hour) => (
-                      <button
-                        className={`time-picker-wheel-option${selectedHour === hour ? ' selected' : ''}`}
-                        id={`${titleId}-hour-${hour}`}
-                        type="button"
-                        role="option"
-                        aria-selected={selectedHour === hour}
-                        key={hour}
-                        onClick={() => {
-                          selectHour(hour);
-                          scrollWheelTo(hourWheelRef.current, hour);
-                        }}
-                      >
-                        {String(hour).padStart(2, '0')}
-                      </button>
-                    ))}
-                    <span className="time-picker-wheel-spacer" aria-hidden="true" />
+                  />
+                  <div className="custom-time-stepper-actions">
+                    <button
+                      type="button"
+                      aria-label="Diminuir minutos"
+                      onClick={() => adjustMinute(-1)}
+                    >
+                      −
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Aumentar minutos"
+                      onClick={() => adjustMinute(1)}
+                    >
+                      +
+                    </button>
                   </div>
                 </div>
-                <div className="time-picker-wheel-column">
-                  <span className="time-picker-label">Minutos</span>
-                  <div
-                    className="time-picker-wheel"
-                    ref={minuteWheelRef}
-                    role="listbox"
-                    aria-label="Minutos"
-                    aria-activedescendant={`${titleId}-minute-${selectedMinute ?? 0}`}
-                    onScroll={handleMinuteScroll}
-                  >
-                    <span className="time-picker-wheel-spacer" aria-hidden="true" />
-                    {minutes.map((minute) => (
-                      <button
-                        className={`time-picker-wheel-option${selectedMinute === minute ? ' selected' : ''}`}
-                        id={`${titleId}-minute-${minute}`}
-                        type="button"
-                        role="option"
-                        aria-selected={selectedMinute === minute}
-                        key={minute}
-                        onClick={() => {
-                          selectMinute(minute);
-                          scrollWheelTo(minuteWheelRef.current, minute);
-                        }}
-                      >
-                        {String(minute).padStart(2, '0')}
-                      </button>
-                    ))}
-                    <span className="time-picker-wheel-spacer" aria-hidden="true" />
-                  </div>
-                </div>
-                <span className="time-picker-wheel-highlight" aria-hidden="true" />
               </div>
             </div>
-            <div className="date-time-dialog-actions">
+            <div className="date-time-dialog-actions custom-time-actions">
               <button className="text-button" type="button" onClick={close}>
-                Concluído
+                Cancelar
+              </button>
+              <button className="button" type="button" onClick={apply}>
+                Definir
               </button>
             </div>
           </div>
