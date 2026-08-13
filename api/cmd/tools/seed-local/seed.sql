@@ -1,5 +1,6 @@
 BEGIN;
 
+DELETE FROM error_events WHERE id = 'c1000000-0000-0000-0000-000000000001';
 DELETE FROM audit_events WHERE id = 'b1000000-0000-0000-0000-000000000001';
 
 -- Fixture IDs are intentionally stable. Remove only rows owned by this seed.
@@ -166,5 +167,18 @@ VALUES ('a1000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-0000000
 
 INSERT INTO audit_events (id, actor_user_id, action, target_type, target_id, details, created_at)
 VALUES ('b1000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'venue_approved', 'venue', '20000000-0000-0000-0000-000000000101', '{}'::jsonb, '2026-07-30 12:00:00+00');
+
+INSERT INTO error_events (
+    id, source, kind, user_id, occurred_at, error_name, message, stack_trace,
+    component_stack, page_path, request_method, request_path, request_id,
+    status_code, app_version, locale, time_zone, viewport_width, viewport_height,
+    online, user_agent
+) VALUES (
+    'c1000000-0000-0000-0000-000000000001', 'frontend', 'api_error',
+    '10000000-0000-0000-0000-000000000001', '2026-08-01 12:00:00+00',
+    'ApiError', 'Fixture client error', NULL, NULL, '/dashboard', 'GET',
+    '/api/v1/me/dashboard', 'seed-error-request', 503, 'seed', 'pt-BR',
+    'America/Sao_Paulo', 390, 844, true, 'seed-browser'
+);
 
 COMMIT;

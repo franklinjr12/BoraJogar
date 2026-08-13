@@ -17,6 +17,7 @@ import (
 	"github.com/borajogar/borajogar/api/internal/location"
 	"github.com/borajogar/borajogar/api/internal/moderation"
 	"github.com/borajogar/borajogar/api/internal/notification"
+	"github.com/borajogar/borajogar/api/internal/observability"
 	"github.com/borajogar/borajogar/api/internal/platform/metrics"
 	"github.com/borajogar/borajogar/api/internal/profile"
 	"github.com/google/uuid"
@@ -41,8 +42,13 @@ func NewWithMetrics(logger *slog.Logger, db *pgxpool.Pool, requestMetrics *metri
 
 func newWithMetrics(logger *slog.Logger, db *pgxpool.Pool, requestMetrics *metrics.Metrics, googleMapsAPIKey string, authHandlers ...auth.Handler) http.Handler {
 	mux := http.NewServeMux()
+	errorStore := observability.Store{DB: db}
+	errorHandler := observability.Handler{Recorder: errorStore, Logger: logger, Limiter: observability.NewRateLimiter()}
+	registeredErrorHandler := false
 	for _, authHandler := range authHandlers {
 		authHandler.Register(mux)
+		errorHandler.Register(mux, authHandler.OptionalAuth)
+		registeredErrorHandler = true
 		profile.Handler{DB: db}.Register(mux, authHandler.RequireAuth)
 		location.Handler{DB: db, GoogleMapsAPIKey: googleMapsAPIKey}.Register(mux, authHandler.RequireAuth, authHandler.RequireAdmin)
 		availability.Handler{DB: db}.Register(mux, authHandler.RequireAuth)
@@ -53,6 +59,9 @@ func newWithMetrics(logger *slog.Logger, db *pgxpool.Pool, requestMetrics *metri
 		moderation.Handler{DB: db, Notifications: publisher}.Register(mux, authHandler.RequireAuth, authHandler.RequireAdmin)
 		admin.Handler{DB: db, Metrics: requestMetrics}.Register(mux, authHandler.RequireAdmin)
 	}
+	if !registeredErrorHandler {
+		errorHandler.Register(mux, nil)
+	}
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -62,13 +71,13 @@ func newWithMetrics(logger *slog.Logger, db *pgxpool.Pool, requestMetrics *metri
 			return
 		}
 		var migrationsReady bool
-		if err := db.QueryRow(r.Context(), `SELECT COALESCE(MAX(version_id), 0) >= 11 FROM goose_db_version WHERE is_applied`).Scan(&migrationsReady); err != nil || !migrationsReady {
+		if err := db.QueryRow(r.Context(), `SELECT COALESCE(MAX(version_id), 0) >= 13 FROM goose_db_version WHERE is_applied`).Scan(&migrationsReady); err != nil || !migrationsReady {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
-	return secureHeaders(recoverer(logger, requestLogger(logger, requestMetrics, requestID(mux))))
+	return secureHeaders(recoverer(logger, errorStore, requestLogger(logger, requestMetrics, errorStore, requestID(mux))))
 }
 
 func secureHeaders(next http.Handler) http.Handler {
@@ -122,12 +131,17 @@ func (w *requestIDWriter) Write(body []byte) (int, error) {
 	}
 	return w.ResponseWriter.Write(body)
 }
-func requestLogger(logger *slog.Logger, requestMetrics *metrics.Metrics, next http.Handler) http.Handler {
+func requestLogger(logger *slog.Logger, requestMetrics *metrics.Metrics, recorder observability.Recorder, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		rw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rw, r)
-		requestMetrics.Observe(rw.status, time.Since(started))
+		if requestMetrics != nil {
+			requestMetrics.Observe(rw.status, time.Since(started))
+		}
+		if rw.status >= http.StatusInternalServerError && r.URL.Path != "/api/v1/client-errors" {
+			recordBackendEvent(logger, recorder, r, observability.BackendHTTPEvent(r, rw.status))
+		}
 		attrs := []any{"request_id", requestIDValue(r.Context()), "method", r.Method, "route", r.URL.Path, "status", rw.status, "duration_ms", time.Since(started).Milliseconds()}
 		if user, ok := auth.UserFromContext(r.Context()); ok {
 			attrs = append(attrs, "user_id", user.ID)
@@ -135,16 +149,30 @@ func requestLogger(logger *slog.Logger, requestMetrics *metrics.Metrics, next ht
 		logger.Info("http request", attrs...)
 	})
 }
-func recoverer(logger *slog.Logger, next http.Handler) http.Handler {
+func recoverer(logger *slog.Logger, recorder observability.Recorder, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if value := recover(); value != nil {
+				if r.URL.Path != "/api/v1/client-errors" {
+					recordBackendEvent(logger, recorder, r, observability.BackendPanicEvent(r, value, string(debug.Stack())))
+				}
 				logger.Error("panic recovered", "request_id", requestIDValue(r.Context()), "panic", value, "stack", string(debug.Stack()))
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			}
 		}()
 		next.ServeHTTP(w, r)
 	})
+}
+
+func recordBackendEvent(logger *slog.Logger, recorder observability.Recorder, r *http.Request, event observability.Event) {
+	if recorder == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := recorder.Record(ctx, event); err != nil {
+		logger.Error("backend error event persistence failed", "request_id", requestIDValue(r.Context()), "error", err)
+	}
 }
 func requestIDValue(ctx context.Context) string {
 	id, ok := ctx.Value(requestIDKey).(string)

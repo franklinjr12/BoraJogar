@@ -28,6 +28,37 @@ describe('typed API client', () => {
     });
   });
 
+  it('reports failed API requests with safe request context', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      void init;
+      return String(input).includes('/client-errors')
+        ? Promise.resolve(new Response(null, { status: 204 }))
+        : Promise.resolve(
+            new Response(
+              JSON.stringify({
+                error: { code: 'server_error', message: 'Failed.', fields: {} },
+                requestId: 'request-503',
+              }),
+              { status: 503, headers: { 'X-Request-ID': 'request-503' } },
+            ),
+          );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(gameApi.list()).rejects.toMatchObject({ status: 503 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const reportInit = fetchMock.mock.calls[1]?.[1];
+    const report = JSON.parse(String(reportInit?.body)) as Record<string, unknown>;
+    expect(report).toMatchObject({
+      kind: 'api_error',
+      requestMethod: 'GET',
+      requestPath: '/api/v1/games',
+      requestId: 'request-503',
+      statusCode: 503,
+    });
+  });
+
   it('routes venue loading through shared client with encoded query', async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify([]), { status: 200 })),

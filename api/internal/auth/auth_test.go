@@ -117,3 +117,19 @@ func TestStartGoogleUsesConfiguredClientAndRedirect(t *testing.T) {
 		}
 	}
 }
+
+func TestOptionalAuthAllowsAnonymousRequests(t *testing.T) {
+	called := false
+	handler := (Handler{}).OptionalAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		if _, ok := UserFromContext(r.Context()); ok {
+			t.Fatal("anonymous request unexpectedly has user context")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusNoContent || !called {
+		t.Fatalf("status=%d called=%v", response.Code, called)
+	}
+}

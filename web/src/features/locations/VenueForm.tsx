@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, type Venue } from '../../api/client';
+import { captureClientError } from '../../platform/errorReporting';
 import { requestBrowserLocation, type LocationMessages } from './browserLocation';
 import { GooglePlaceSearch } from './GooglePlaceSearch';
 import { loadGoogleMaps } from './googleMaps';
@@ -88,7 +89,8 @@ function GoogleMapPicker({
         map.current = instance;
         marker.current = pin;
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        captureClientError('uncaught_error', error);
         if (!disposed) onFailure();
       });
 

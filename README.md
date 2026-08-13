@@ -58,6 +58,10 @@ go -C api run ./cmd/tools/send-test-email
 
 `make dev`, `make dev-web`, `make dev-api`, `make dev-worker`, `make test`, `make test-e2e`, `make e2e-db-reset`, `make test-integration`, `make lint`, `make typecheck`, `make generate`, `make migrate`, `make migrate-down`, `make seed`, `make db-reset`, and `make build` cover common development operations.
 
+### Remote error capture
+
+The web app reports uncaught browser errors, unhandled promise rejections, React render errors, and failed API requests to `POST /api/v1/client-errors` when online. The API also stores backend `5xx` responses and recovered panics in `error_events`. Reports contain safe diagnostic fields and may include the authenticated user ID; they do not store email addresses, display names, query strings, request bodies, or IP addresses. Set `VITE_APP_VERSION` during deployment to identify the frontend build. Query events directly with `SELECT * FROM error_events ORDER BY created_at DESC`.
+
 Install Playwright browsers once after dependency installation:
 
 ```powershell

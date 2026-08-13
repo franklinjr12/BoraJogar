@@ -67,6 +67,16 @@ func (h Handler) RequireAuth(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey{}, user)))
 	})
 }
+
+func (h Handler) OptionalAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if user, ok := h.userFromRequest(r); ok {
+			r = r.WithContext(context.WithValue(r.Context(), userKey{}, user))
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (h Handler) RequireAdmin(next http.Handler) http.Handler {
 	return h.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, _ := r.Context().Value(userKey{}).(User)
@@ -452,6 +462,9 @@ func (h Handler) currentUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, user)
 }
 func (h Handler) userFromRequest(r *http.Request) (User, bool) {
+	if h.DB == nil {
+		return User{}, false
+	}
 	cookie, err := r.Cookie(sessionCookie)
 	if err != nil {
 		return User{}, false

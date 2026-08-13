@@ -1,5 +1,6 @@
 export type SkillLevel = 'learning' | 'beginner' | 'intermediate' | 'advanced' | 'competitive';
 import { apiErrorMessage } from '../i18n/pt-BR';
+import { captureClientError } from '../platform/errorReporting';
 
 export type PlayingStyle = 'casual' | 'competitive' | 'training_focused' | 'mixed';
 
@@ -290,6 +291,7 @@ function isErrorResponse(value: unknown): value is ErrorResponse {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const requestMethod = (init?.method ?? 'GET').toUpperCase();
   const headers = new Headers(init?.headers);
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   const controller = new AbortController();
@@ -302,14 +304,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       headers,
       signal: init?.signal ?? controller.signal,
     });
+  } catch (error) {
+    captureClientError('api_error', error, { requestMethod, requestPath: path });
+    throw error;
   } finally {
     window.clearTimeout(timeout);
   }
   if (response.status === 204) return undefined as T;
-  const body: unknown = await response.json().catch(() => undefined);
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch (error) {
+    captureClientError('api_error', error, {
+      requestMethod,
+      requestPath: path,
+      statusCode: response.status,
+    });
+    if (response.ok) throw error;
+  }
   if (!response.ok) {
     const error = isErrorResponse(body) ? body.error : undefined;
-    throw new ApiError(
+    const apiError = new ApiError(
       response.status,
       {
         code: error?.code ?? `http_${response.status}`,
@@ -318,6 +333,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       },
       isErrorResponse(body) ? body.requestId : (response.headers.get('X-Request-ID') ?? undefined),
     );
+    captureClientError('api_error', apiError, {
+      requestMethod,
+      requestPath: path,
+      requestId: apiError.requestId,
+      statusCode: response.status,
+    });
+    throw apiError;
   }
   return body as T;
 }

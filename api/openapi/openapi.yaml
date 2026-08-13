@@ -7,6 +7,18 @@ paths:
     get: { summary: Liveness check, responses: { '200': { description: Process is alive } } }
   /health/ready:
     get: { summary: Readiness check, responses: { '200': { description: Dependencies are ready }, '503': { description: Dependencies are unavailable } } }
+  /api/v1/client-errors:
+    post:
+      summary: Record a client-side application error
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClientErrorReportInput' }
+      responses:
+        '204': { description: Error event accepted }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /api/v1/auth/google:
     get:
       summary: Start Google OAuth login
@@ -577,6 +589,27 @@ components:
           required: [items]
           properties:
             items: { type: array, items: { $ref: '#/components/schemas/Game' } }
+    ClientErrorReportInput:
+      type: object
+      required: [kind, message]
+      properties:
+        kind: { type: string, enum: [uncaught_error, unhandled_rejection, react_error, api_error] }
+        name: { type: string, maxLength: 128 }
+        message: { type: string, minLength: 1, maxLength: 4000 }
+        stackTrace: { type: string, maxLength: 16000, nullable: true }
+        componentStack: { type: string, maxLength: 16000, nullable: true }
+        pagePath: { type: string, maxLength: 512 }
+        requestMethod: { type: string, maxLength: 16, nullable: true }
+        requestPath: { type: string, maxLength: 512, nullable: true }
+        requestId: { type: string, maxLength: 128, nullable: true }
+        statusCode: { type: integer, minimum: 100, maximum: 599, nullable: true }
+        occurredAt: { type: string, format: date-time, nullable: true }
+        appVersion: { type: string, maxLength: 128, nullable: true }
+        locale: { type: string, maxLength: 64, nullable: true }
+        timeZone: { type: string, maxLength: 128, nullable: true }
+        viewportWidth: { type: integer, minimum: 0, maximum: 10000, nullable: true }
+        viewportHeight: { type: integer, minimum: 0, maximum: 10000, nullable: true }
+        online: { type: boolean, nullable: true }
     ApiError:
       type: object
       required: [error, requestId]
@@ -593,6 +626,7 @@ components:
     Unauthorized: { description: Authentication required, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
     Forbidden: { description: Administrator access required, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
     Conflict: { description: Request conflicts with existing state, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+    RateLimited: { description: Error reporting rate limit exceeded, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
     AuthResult: { description: Authenticated session and redirect target, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResult' } } } }
     CurrentUser: { description: Current authenticated user, content: { application/json: { schema: { $ref: '#/components/schemas/CurrentUser' } } } }
     Profile: { description: Player profile }

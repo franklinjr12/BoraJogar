@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { captureClientError } from '../../platform/errorReporting';
 import { loadGoogleMaps } from './googleMaps';
 import { googlePlaceToSearchResult } from './googlePlace';
 import type { PlaceSearchResult } from './googlePlace';
@@ -58,14 +59,16 @@ export function GooglePlaceSearch({
               return;
             }
             onSelectedRef.current(result);
-          } catch {
+          } catch (error: unknown) {
+            captureClientError('uncaught_error', error);
             setFailed(true);
             onUnavailableRef.current();
           }
         });
         node.current.appendChild(autocomplete);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        captureClientError('uncaught_error', error);
         if (disposed) return;
         setFailed(true);
         onUnavailableRef.current();

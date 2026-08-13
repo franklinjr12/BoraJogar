@@ -8,6 +8,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AuditEvent struct {
+	ID          pgtype.UUID
+	ActorUserID pgtype.UUID
+	Action      string
+	TargetType  string
+	TargetID    pgtype.UUID
+	Details     []byte
+	CreatedAt   pgtype.Timestamptz
+}
+
 type AvailabilityException struct {
 	ID             pgtype.UUID
 	UserID         pgtype.UUID
@@ -53,26 +63,54 @@ type AvailabilityRuleVenue struct {
 	VenueID            pgtype.UUID
 }
 
+type ErrorEvent struct {
+	ID             pgtype.UUID
+	Source         string
+	Kind           string
+	UserID         pgtype.UUID
+	OccurredAt     pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	ErrorName      string
+	Message        string
+	StackTrace     pgtype.Text
+	ComponentStack pgtype.Text
+	PagePath       string
+	RequestMethod  pgtype.Text
+	RequestPath    pgtype.Text
+	RequestID      pgtype.Text
+	StatusCode     pgtype.Int4
+	AppVersion     pgtype.Text
+	Locale         pgtype.Text
+	TimeZone       pgtype.Text
+	ViewportWidth  pgtype.Int4
+	ViewportHeight pgtype.Int4
+	Online         pgtype.Bool
+	UserAgent      pgtype.Text
+}
+
 type Game struct {
-	ID                 pgtype.UUID
-	SourceType         string
-	SourceProposalID   pgtype.UUID
-	CreatedByUserID    pgtype.UUID
-	Title              pgtype.Text
-	Description        pgtype.Text
-	StartsAt           pgtype.Timestamptz
-	EndsAt             pgtype.Timestamptz
-	VenueID            pgtype.UUID
-	Capacity           int32
-	MinimumSkillLevel  string
-	MaximumSkillLevel  string
-	Visibility         string
-	Status             string
-	ShareTokenHash     pgtype.Text
-	CancelledAt        pgtype.Timestamptz
-	CancellationReason pgtype.Text
-	CreatedAt          pgtype.Timestamptz
-	UpdatedAt          pgtype.Timestamptz
+	ID                           pgtype.UUID
+	SourceType                   string
+	SourceProposalID             pgtype.UUID
+	CreatedByUserID              pgtype.UUID
+	Title                        pgtype.Text
+	Description                  pgtype.Text
+	StartsAt                     pgtype.Timestamptz
+	EndsAt                       pgtype.Timestamptz
+	VenueID                      pgtype.UUID
+	Capacity                     int32
+	MinimumSkillLevel            string
+	MaximumSkillLevel            string
+	Visibility                   string
+	Status                       string
+	ShareTokenHash               pgtype.Text
+	CancelledAt                  pgtype.Timestamptz
+	CancellationReason           pgtype.Text
+	CreatedAt                    pgtype.Timestamptz
+	UpdatedAt                    pgtype.Timestamptz
+	CompletedAt                  pgtype.Timestamptz
+	AttendanceRequestedAt        pgtype.Timestamptz
+	CancellationThresholdMinutes pgtype.Int4
 }
 
 type GameInvitation struct {
@@ -87,14 +125,18 @@ type GameInvitation struct {
 }
 
 type GamePlayer struct {
-	GameID           pgtype.UUID
-	UserID           pgtype.UUID
-	Role             string
-	Status           string
-	JoinedAt         pgtype.Timestamptz
-	CancelledAt      pgtype.Timestamptz
-	AttendanceStatus pgtype.Text
-	InvitedByUserID  pgtype.UUID
+	GameID                       pgtype.UUID
+	UserID                       pgtype.UUID
+	Role                         string
+	Status                       string
+	JoinedAt                     pgtype.Timestamptz
+	CancelledAt                  pgtype.Timestamptz
+	AttendanceStatus             pgtype.Text
+	InvitedByUserID              pgtype.UUID
+	AttendanceRecordedAt         pgtype.Timestamptz
+	AttendanceRecordedByUserID   pgtype.UUID
+	CancellationType             pgtype.Text
+	CancellationThresholdMinutes pgtype.Int4
 }
 
 type GameWaitlist struct {
@@ -114,6 +156,69 @@ type Invitation struct {
 	ExpiresAt       pgtype.Timestamptz
 	DisabledAt      pgtype.Timestamptz
 	CreatedAt       pgtype.Timestamptz
+}
+
+type MatchProposal struct {
+	ID                  pgtype.UUID
+	MatchmakingRunID    pgtype.UUID
+	StartsAt            pgtype.Timestamptz
+	EndsAt              pgtype.Timestamptz
+	VenueID             pgtype.UUID
+	RequiredPlayerCount int32
+	Status              string
+	ExpiresAt           pgtype.Timestamptz
+	ConfirmedGameID     pgtype.UUID
+	ScoreSummary        []byte
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+}
+
+type MatchmakingRun struct {
+	ID                    pgtype.UUID
+	StartedAt             pgtype.Timestamptz
+	CompletedAt           pgtype.Timestamptz
+	Status                string
+	CandidateSlotCount    int32
+	ProposalCount         int32
+	ErrorSummary          []byte
+	ConfigurationSnapshot []byte
+	CreatedAt             pgtype.Timestamptz
+}
+
+type NotificationDelivery struct {
+	ID                  pgtype.UUID
+	NotificationEventID pgtype.UUID
+	Channel             string
+	Status              string
+	AttemptCount        int32
+	LastAttemptAt       pgtype.Timestamptz
+	DeliveredAt         pgtype.Timestamptz
+	ErrorMessage        pgtype.Text
+}
+
+type NotificationEvent struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	Type      string
+	Title     string
+	Body      string
+	ActionUrl pgtype.Text
+	Payload   []byte
+	ReadAt    pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+}
+
+type NotificationPreference struct {
+	UserID                  pgtype.UUID
+	InAppEnabled            bool
+	EmailEnabled            bool
+	WebPushEnabled          bool
+	ProposalNotifications   bool
+	GameUpdateNotifications bool
+	ReminderNotifications   bool
+	OpenSlotNotifications   bool
+	CreatedAt               pgtype.Timestamptz
+	UpdatedAt               pgtype.Timestamptz
 }
 
 type OnboardingProgress struct {
@@ -151,6 +256,42 @@ type PreferredArea struct {
 	UpdatedAt    pgtype.Timestamptz
 }
 
+type ProposalParticipant struct {
+	ProposalID     pgtype.UUID
+	UserID         pgtype.UUID
+	ResponseStatus string
+	ProposedAt     pgtype.Timestamptz
+	NotifiedAt     pgtype.Timestamptz
+	RespondedAt    pgtype.Timestamptz
+}
+
+type PushSubscription struct {
+	ID                pgtype.UUID
+	UserID            pgtype.UUID
+	EndpointHash      string
+	EndpointEncrypted string
+	P256dhEncrypted   string
+	AuthEncrypted     string
+	UserAgent         pgtype.Text
+	CreatedAt         pgtype.Timestamptz
+	LastSuccessAt     pgtype.Timestamptz
+	DisabledAt        pgtype.Timestamptz
+}
+
+type Report struct {
+	ID               pgtype.UUID
+	ReporterUserID   pgtype.UUID
+	ReportedUserID   pgtype.UUID
+	GameID           pgtype.UUID
+	Category         string
+	Description      string
+	Status           string
+	CreatedAt        pgtype.Timestamptz
+	ReviewedAt       pgtype.Timestamptz
+	ReviewedByUserID pgtype.UUID
+	ResolutionNotes  pgtype.Text
+}
+
 type Session struct {
 	TokenHash  string
 	UserID     pgtype.UUID
@@ -163,7 +304,7 @@ type Session struct {
 
 type User struct {
 	ID                    pgtype.UUID
-	GoogleSubject         string
+	GoogleSubject         pgtype.Text
 	Email                 string
 	DisplayName           string
 	AvatarUrl             pgtype.Text
@@ -175,6 +316,15 @@ type User struct {
 	Status                string
 	OnboardingCompletedAt pgtype.Timestamptz
 	DeletedAt             pgtype.Timestamptz
+	DeletionRequestedAt   pgtype.Timestamptz
+	AnonymizedAt          pgtype.Timestamptz
+	PasswordHash          pgtype.Text
+}
+
+type UserBlock struct {
+	BlockerUserID pgtype.UUID
+	BlockedUserID pgtype.UUID
+	CreatedAt     pgtype.Timestamptz
 }
 
 type UserFavoriteVenue struct {

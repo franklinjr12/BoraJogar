@@ -9,6 +9,7 @@ import { VenueForm } from './VenueForm';
 import type { PlaceSearchResult } from './googlePlace';
 import { notifyLocationsChanged } from './locationEvents';
 import { useOnlineStatus } from '../../platform/useOnlineStatus';
+import { captureClientError } from '../../platform/errorReporting';
 
 const defaultCenter = { latitude: -25.4284, longitude: -49.2733 };
 const locationMessages: LocationMessages = {
@@ -96,7 +97,8 @@ function MapPanel({
         );
         map.current = instance;
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        captureClientError('uncaught_error', error);
         if (!disposed) setMapFailed(true);
       });
     return () => {
