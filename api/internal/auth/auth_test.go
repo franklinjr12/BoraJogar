@@ -93,7 +93,7 @@ func TestStartGoogleClearsStaleInvitationWithoutCode(t *testing.T) {
 }
 
 func TestStartGoogleUsesConfiguredClientAndRedirect(t *testing.T) {
-	h := Handler{Google: GoogleHTTPClient{ClientID: "production-client-id"}, RedirectURL: "https://borajogar.hobbyserver.com.br/api/v1/auth/google/callback"}
+	h := Handler{Google: GoogleHTTPClient{ClientID: "production-client-id"}, RedirectURL: "https://example.com/api/v1/auth/google/callback"}
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/google?returnTo=%2Fgames%2Fgame-id%3Faccess%3Dtoken", nil)
 	res := httptest.NewRecorder()
 	h.startGoogle(res, req)
