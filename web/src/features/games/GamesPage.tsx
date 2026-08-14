@@ -722,16 +722,17 @@ export function GameDetailsPage() {
         {game.status !== 'cancelled' &&
           game.currentUserStatus !== 'confirmed' &&
           game.currentUserStatus !== 'removed' &&
-          (game.openSlots > 0 || game.waitlistEnabled) && (
+          (game.openSlots > 0 ||
+            (game.waitlistEnabled && game.currentUserStatus !== 'waitlisted')) && (
             <button
               className="button"
               disabled={busy || !isOnline}
               onClick={() => action(() => gameApi.join(id))}
             >
-              {game.openSlots > 0
-                ? 'Participar da partida'
-                : game.currentUserStatus === 'waitlisted'
-                  ? 'Tentar pegar a vaga'
+              {game.currentUserStatus === 'waitlisted'
+                ? 'Tentar pegar a vaga'
+                : game.openSlots > 0
+                  ? 'Participar da partida'
                   : 'Entrar na lista de espera'}
             </button>
           )}

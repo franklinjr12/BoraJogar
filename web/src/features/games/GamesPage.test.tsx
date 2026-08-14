@@ -838,6 +838,7 @@ describe('GameDetailsPage', () => {
       </MemoryRouter>,
     );
 
+    expect(screen.queryByRole('button', { name: /tentar pegar a vaga/i })).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /sair da lista de espera/i }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -845,6 +846,48 @@ describe('GameDetailsPage', () => {
         expect.objectContaining({ method: 'DELETE' }),
       ),
     );
+  });
+
+  it('lets a waitlisted player try to take an open slot', async () => {
+    const game = {
+      id: 'game-1',
+      title: 'Game with an open slot',
+      startsAt: '2099-08-01T12:00:00Z',
+      endsAt: '2099-08-01T13:30:00Z',
+      venueId: 'venue-1',
+      venueName: 'Central court',
+      latitude: -23.5,
+      longitude: -46.6,
+      capacity: 2,
+      confirmedPlayers: 1,
+      openSlots: 1,
+      waitlistEnabled: true,
+      waitlistSize: 2,
+      waitlistCount: 1,
+      minimumSkillLevel: 'beginner',
+      maximumSkillLevel: 'advanced',
+      visibility: 'public',
+      status: 'scheduled',
+      currentUserStatus: 'waitlisted',
+      waitlist: [{ id: 'player-1', displayName: 'Bruno' }],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(game), { status: 200 }))),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/games/game-1']}>
+        <Routes>
+          <Route path="/games/:id" element={<GameDetailsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('button', { name: /tentar pegar a vaga/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /entrar na lista de espera/i }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows the API reason when joining a shared-link game is rejected', async () => {
