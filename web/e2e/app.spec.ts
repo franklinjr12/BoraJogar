@@ -269,7 +269,7 @@ test.describe('Bora Jogar real backend E2E', () => {
 
       await carla.goto(gamePath);
       await expect(carla.getByText(/1 vaga disponível/i)).toBeVisible();
-      await carla.getByRole('button', { name: /participar da partida/i }).click();
+      await carla.getByRole('button', { name: /tentar pegar a vaga/i }).click();
       await expect(carla.getByRole('button', { name: /sair da partida/i })).toBeVisible();
       await expect(carla.getByRole('button', { name: /sair da lista de espera/i })).toHaveCount(0);
       await expect(carla.getByText('Lista de espera: 0/1')).toBeVisible();
