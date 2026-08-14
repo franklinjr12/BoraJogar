@@ -117,6 +117,8 @@ describe('typed API client', () => {
 
     await gameApi.removePlayer('game/1', 'user/2');
     await gameApi.cancel('game-1');
+    await gameApi.joinWaitlist('game-1');
+    await gameApi.leaveWaitlist('game-1');
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -127,6 +129,16 @@ describe('typed API client', () => {
       2,
       '/api/v1/games/game-1/cancel',
       expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/v1/games/game-1/waitlist',
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      '/api/v1/games/game-1/waitlist',
+      expect.objectContaining({ method: 'DELETE', credentials: 'include' }),
     );
   });
 });

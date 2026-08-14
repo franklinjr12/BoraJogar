@@ -294,7 +294,7 @@ Then test private browser session:
 3. Confirm `borajogar_session` has `Secure`, `HttpOnly`, `SameSite=Lax`.
 4. Complete onboarding.
 5. Add/check venue and location permission.
-6. Create, join, leave, cancel, and share a game.
+6. Create, join, leave, cancel, share, and waitlist for a game; verify vacancy notifications and first-claim behavior.
 7. Test invitation and Google OAuth after callback config is verified.
 8. Test offline UI; state-changing operations must not silently queue.
 9. Review API and worker logs.

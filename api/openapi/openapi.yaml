@@ -237,7 +237,7 @@ paths:
   /api/v1/games/{gameId}/cancel:
     post: { summary: Cancel game, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/GameCancellation' } } } }, responses: { '204': { description: Cancelled }, '403': { $ref: '#/components/responses/Forbidden' } } }
   /api/v1/games/{gameId}/waitlist:
-    post: { summary: Add to waitlist, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Waitlisted } } }
+    post: { summary: Join game or waitlist, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Join result }, '409': { description: Waitlist unavailable or full } } }
     delete: { summary: Remove from waitlist, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Removed } } }
   /api/v1/notifications:
     get:
@@ -436,7 +436,7 @@ components:
         timezone: { type: string }
     Game:
       type: object
-      required: [id, startsAt, endsAt, venueId, venueName, capacity, confirmedPlayers, openSlots, minimumSkillLevel, maximumSkillLevel, visibility, status]
+      required: [id, startsAt, endsAt, venueId, venueName, capacity, confirmedPlayers, openSlots, waitlistEnabled, waitlistSize, waitlistCount, minimumSkillLevel, maximumSkillLevel, visibility, status]
       properties:
         id: { type: string, format: uuid }
         title: { type: string, nullable: true }
@@ -451,6 +451,9 @@ components:
         capacity: { type: integer, minimum: 2, maximum: 12 }
         confirmedPlayers: { type: integer, minimum: 0 }
         openSlots: { type: integer, minimum: 0 }
+        waitlistEnabled: { type: boolean }
+        waitlistSize: { type: integer, minimum: 0 }
+        waitlistCount: { type: integer, minimum: 0 }
         minimumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
         maximumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
         visibility: { type: string, enum: [public, link-only, private] }
@@ -459,7 +462,7 @@ components:
         players: { type: array, items: { $ref: '#/components/schemas/GamePlayer' } }
         waitlist: { type: array, items: { $ref: '#/components/schemas/GamePlayer' } }
         isMember: { type: boolean }
-        currentUserStatus: { type: string }
+        currentUserStatus: { type: string, enum: ['', confirmed, waitlisted, cancelled, removed] }
         currentUserRole: { type: string }
         shareUrl: { type: string }
     GamePlayer:
@@ -472,7 +475,7 @@ components:
         status: { type: string, enum: [confirmed, cancelled, removed] }
     GamePreview:
       type: object
-      required: [id, startsAt, endsAt, venueName, capacity, confirmedPlayers, openSlots, minimumSkillLevel, maximumSkillLevel, visibility, status]
+      required: [id, startsAt, endsAt, venueName, capacity, confirmedPlayers, openSlots, waitlistEnabled, waitlistSize, waitlistCount, minimumSkillLevel, maximumSkillLevel, visibility, status]
       properties:
         id: { type: string, format: uuid }
         title: { type: string, nullable: true }
@@ -485,6 +488,9 @@ components:
         capacity: { type: integer, minimum: 2, maximum: 12 }
         confirmedPlayers: { type: integer, minimum: 0 }
         openSlots: { type: integer, minimum: 0 }
+        waitlistEnabled: { type: boolean }
+        waitlistSize: { type: integer, minimum: 0 }
+        waitlistCount: { type: integer, minimum: 0 }
         minimumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
         maximumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
         visibility: { type: string, enum: [public, link-only, private] }
@@ -516,6 +522,8 @@ components:
         durationMinutes: { type: integer, enum: [60, 90, 120] }
         venueId: { type: string, format: uuid }
         capacity: { type: integer, minimum: 2, maximum: 12 }
+        waitlistEnabled: { type: boolean, default: false }
+        waitlistSize: { type: integer, minimum: 0, maximum: 12, default: 0 }
         minimumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
         maximumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
         visibility: { type: string, enum: [public, link-only, private] }

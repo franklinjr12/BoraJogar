@@ -45,6 +45,43 @@ func TestValidateCreateRejectsPastAndInvalidVisibility(t *testing.T) {
 	}
 }
 
+func TestValidateCreateWaitlistConfiguration(t *testing.T) {
+	now := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	base := CreateInput{
+		StartsAt:          "2026-07-31T12:00:00Z",
+		DurationMinutes:   90,
+		VenueID:           "venue",
+		Capacity:          4,
+		MinimumSkillLevel: "beginner",
+		MaximumSkillLevel: "advanced",
+		Visibility:        "public",
+	}
+	if _, _, err := ValidateCreate(base, now); err != nil {
+		t.Fatalf("disabled waitlist default rejected: %v", err)
+	}
+	for _, size := range []int{0, 13} {
+		input := base
+		input.WaitlistEnabled = true
+		input.WaitlistSize = size
+		if _, _, err := ValidateCreate(input, now); err == nil {
+			t.Fatalf("waitlist size %d accepted", size)
+		}
+	}
+	input := base
+	input.WaitlistSize = 1
+	if _, _, err := ValidateCreate(input, now); err == nil {
+		t.Fatal("disabled waitlist with positive size accepted")
+	}
+	for _, size := range []int{1, 12} {
+		input := base
+		input.WaitlistEnabled = true
+		input.WaitlistSize = size
+		if _, _, err := ValidateCreate(input, now); err != nil {
+			t.Fatalf("waitlist size %d rejected: %v", size, err)
+		}
+	}
+}
+
 func TestValidateCreateSeparatesMalformedStartFromPastStart(t *testing.T) {
 	now := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
 	_, _, err := ValidateCreate(CreateInput{StartsAt: "tomorrow", DurationMinutes: 90, VenueID: "venue", Capacity: 4, MinimumSkillLevel: "beginner", MaximumSkillLevel: "advanced", Visibility: "public"}, now)
@@ -127,6 +164,26 @@ func TestNotifyGameUsersPublishesRemovalEventWithSafeActionData(t *testing.T) {
 	}
 	if payload, ok := event.Payload.(map[string]string); !ok || payload["gameId"] != gameID.String() || payload["playerId"] != playerID.String() {
 		t.Fatalf("payload = %#v", event.Payload)
+	}
+}
+
+func TestNotifyWaitlistOpenNotifiesEveryWaitingUser(t *testing.T) {
+	publisher := &recordingPublisher{}
+	gameID := uuid.New()
+	recipients := []uuid.UUID{uuid.New(), uuid.New()}
+	Handler{Notifications: publisher}.notifyWaitlistOpen(context.Background(), recipients, gameID)
+
+	if len(publisher.events) != len(recipients) {
+		t.Fatalf("events = %d, want %d", len(publisher.events), len(recipients))
+	}
+	for index, event := range publisher.events {
+		if event.UserID != recipients[index] || event.Type != notification.WaitlistOpen || event.ActionURL != "/games/"+gameID.String() {
+			t.Fatalf("event[%d] = %+v", index, event)
+		}
+		payload, ok := event.Payload.(map[string]string)
+		if !ok || payload["gameId"] != gameID.String() || len(payload) != 1 {
+			t.Fatalf("payload[%d] = %#v", index, event.Payload)
+		}
 	}
 }
 

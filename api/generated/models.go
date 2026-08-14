@@ -111,6 +111,8 @@ type Game struct {
 	CompletedAt                  pgtype.Timestamptz
 	AttendanceRequestedAt        pgtype.Timestamptz
 	CancellationThresholdMinutes pgtype.Int4
+	WaitlistEnabled              bool
+	WaitlistSize                 int32
 }
 
 type GameInvitation struct {

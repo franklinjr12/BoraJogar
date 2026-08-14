@@ -507,6 +507,86 @@ describe('CreateGamePage', () => {
       expect.objectContaining({ method: 'POST' }),
     );
   });
+
+  it('creates games with waitlist disabled by default', async () => {
+    const savedVenue = { id: 'venue-1', name: 'Praia Central' };
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/v1/me/favorite-venues')) {
+        return Promise.resolve(new Response(JSON.stringify([savedVenue]), { status: 200 }));
+      }
+      if (url.includes('/api/v1/games') && init?.method === 'POST') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ id: 'game-1', shareUrl: '/games/game-1' }), {
+            status: 201,
+          }),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MemoryRouter initialEntries={['/games/new']}>
+        <CreateGamePage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: /configure uma partida/i });
+    await waitFor(() => expect(screen.getByLabelText(/^quadra$/i)).toHaveValue('venue:venue-1'));
+    fireEvent.change(screen.getByLabelText(/^data$/i), { target: { value: futureGameDate } });
+    fireEvent.change(screen.getByLabelText(/horário de início/i), { target: { value: '09:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /^criar partida$/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/games', expect.anything()));
+    const request = fetchMock.mock.calls.find(
+      ([url, init]) => url === '/api/v1/games' && init?.method === 'POST',
+    );
+    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
+      waitlistEnabled: false,
+      waitlistSize: 0,
+    });
+  });
+
+  it('submits enabled waitlist size', async () => {
+    const savedVenue = { id: 'venue-1', name: 'Praia Central' };
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/v1/me/favorite-venues')) {
+        return Promise.resolve(new Response(JSON.stringify([savedVenue]), { status: 200 }));
+      }
+      if (url.includes('/api/v1/games') && init?.method === 'POST') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ id: 'game-1', shareUrl: '/games/game-1' }), {
+            status: 201,
+          }),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MemoryRouter initialEntries={['/games/new']}>
+        <CreateGamePage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: /configure uma partida/i });
+    await waitFor(() => expect(screen.getByLabelText(/^quadra$/i)).toHaveValue('venue:venue-1'));
+    fireEvent.click(screen.getByLabelText(/ativar lista de espera/i));
+    fireEvent.change(screen.getByLabelText(/tamanho da lista de espera/i), {
+      target: { value: '3' },
+    });
+    fireEvent.change(screen.getByLabelText(/^data$/i), { target: { value: futureGameDate } });
+    fireEvent.change(screen.getByLabelText(/horário de início/i), { target: { value: '09:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /^criar partida$/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/games', expect.anything()));
+    const request = fetchMock.mock.calls.find(
+      ([url, init]) => url === '/api/v1/games' && init?.method === 'POST',
+    );
+    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
+      waitlistEnabled: true,
+      waitlistSize: 3,
+    });
+  });
 });
 
 describe('GameDetailsPage', () => {
@@ -676,6 +756,95 @@ describe('GameDetailsPage', () => {
 
     await screen.findByRole('heading', { name: 'Saturday game' });
     expect(screen.queryByLabelText('Link da partida')).not.toBeInTheDocument();
+  });
+
+  it('shows unavailable state when a full game has no waitlist', async () => {
+    const game = {
+      id: 'game-1',
+      title: 'Full game',
+      startsAt: '2099-08-01T12:00:00Z',
+      endsAt: '2099-08-01T13:30:00Z',
+      venueId: 'venue-1',
+      venueName: 'Central court',
+      latitude: -23.5,
+      longitude: -46.6,
+      capacity: 2,
+      confirmedPlayers: 2,
+      openSlots: 0,
+      waitlistEnabled: false,
+      waitlistSize: 0,
+      waitlistCount: 0,
+      minimumSkillLevel: 'beginner',
+      maximumSkillLevel: 'advanced',
+      visibility: 'public',
+      status: 'scheduled',
+      currentUserStatus: '',
+      players: [{ id: 'host-1', displayName: 'Host', role: 'organizer' }],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(game), { status: 200 }))),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/games/game-1']}>
+        <Routes>
+          <Route path="/games/:id" element={<GameDetailsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/está lotada e não tem lista de espera/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /entrar na lista de espera/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('lets a waitlisted player leave the waitlist', async () => {
+    const game = {
+      id: 'game-1',
+      title: 'Full game',
+      startsAt: '2099-08-01T12:00:00Z',
+      endsAt: '2099-08-01T13:30:00Z',
+      venueId: 'venue-1',
+      venueName: 'Central court',
+      latitude: -23.5,
+      longitude: -46.6,
+      capacity: 2,
+      confirmedPlayers: 2,
+      openSlots: 0,
+      waitlistEnabled: true,
+      waitlistSize: 2,
+      waitlistCount: 1,
+      minimumSkillLevel: 'beginner',
+      maximumSkillLevel: 'advanced',
+      visibility: 'public',
+      status: 'scheduled',
+      currentUserStatus: 'waitlisted',
+      waitlist: [{ id: 'player-1', displayName: 'Bruno' }],
+    };
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) =>
+      init?.method === 'DELETE'
+        ? Promise.resolve(new Response(null, { status: 204 }))
+        : Promise.resolve(new Response(JSON.stringify(game), { status: 200 })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/games/game-1']}>
+        <Routes>
+          <Route path="/games/:id" element={<GameDetailsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /sair da lista de espera/i }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/games/game-1/waitlist',
+        expect.objectContaining({ method: 'DELETE' }),
+      ),
+    );
   });
 
   it('shows the API reason when joining a shared-link game is rejected', async () => {

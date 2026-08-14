@@ -63,6 +63,7 @@ const apiErrorMessages: Record<string, string> = {
   skill_out_of_range: 'Seu nível está fora da faixa desta partida.',
   already_joined: 'Você já está nesta partida.',
   already_waitlisted: 'Você já está na lista de espera.',
+  waitlist_full: 'A lista de espera está cheia.',
   conflicting_game: 'Você já tem uma partida nesse horário.',
   venue_inactive: 'Esta quadra não está disponível.',
   venue_not_found: 'Quadra não encontrada.',
@@ -135,6 +136,10 @@ const notificationMessages: Record<string, { title: string; body: string }> = {
   waitlist_promotion: {
     title: 'Você saiu da lista de espera',
     body: 'Uma vaga abriu e você foi confirmado na partida.',
+  },
+  waitlist_open: {
+    title: 'Vaga disponível',
+    body: 'Uma vaga abriu. Entre agora; a primeira pessoa a confirmar fica com a vaga.',
   },
   game_changed: {
     title: 'Partida atualizada',

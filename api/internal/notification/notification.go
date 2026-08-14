@@ -30,6 +30,7 @@ const (
 	UserJoinedGame       Type = "user_joined_game"
 	UserLeftGame         Type = "user_left_game"
 	WaitlistPromotion    Type = "waitlist_promotion"
+	WaitlistOpen         Type = "waitlist_open"
 	GameChanged          Type = "game_changed"
 	GameCancelled        Type = "game_cancelled"
 	GameReminder         Type = "game_reminder"

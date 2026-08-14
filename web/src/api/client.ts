@@ -90,6 +90,7 @@ export interface AvailabilityOccurrence {
 }
 export type GameSkillLevel = SkillLevel;
 export type GameVisibility = 'public' | 'link-only' | 'private';
+export type GameCurrentUserStatus = '' | 'confirmed' | 'waitlisted' | 'cancelled' | 'removed';
 export interface Game {
   id: string;
   title?: string;
@@ -104,6 +105,9 @@ export interface Game {
   capacity: number;
   confirmedPlayers: number;
   openSlots: number;
+  waitlistEnabled: boolean;
+  waitlistSize: number;
+  waitlistCount: number;
   minimumSkillLevel: GameSkillLevel;
   maximumSkillLevel: GameSkillLevel;
   visibility: GameVisibility;
@@ -112,7 +116,7 @@ export interface Game {
   players?: Array<{ id: string; displayName: string; role?: string; status?: string }>;
   waitlist?: Array<{ id: string; displayName: string }>;
   isMember?: boolean;
-  currentUserStatus?: string;
+  currentUserStatus?: GameCurrentUserStatus;
   currentUserRole?: string;
   shareUrl?: string;
 }
@@ -121,6 +125,8 @@ export interface GameInput {
   durationMinutes: 60 | 90 | 120;
   venueId: string;
   capacity: number;
+  waitlistEnabled: boolean;
+  waitlistSize: number;
   minimumSkillLevel: GameSkillLevel;
   maximumSkillLevel: GameSkillLevel;
   visibility: GameVisibility;
@@ -252,6 +258,9 @@ export type GamePreview = Pick<
   | 'capacity'
   | 'confirmedPlayers'
   | 'openSlots'
+  | 'waitlistEnabled'
+  | 'waitlistSize'
+  | 'waitlistCount'
   | 'minimumSkillLevel'
   | 'maximumSkillLevel'
   | 'visibility'
@@ -512,11 +521,17 @@ export const gameApi = {
     request<Game>('/api/v1/games', { method: 'POST', body: JSON.stringify(input) }),
   join: (id: string) =>
     request<{ result: 'confirmed' | 'waitlisted' }>(`/api/v1/games/${id}/join`, { method: 'POST' }),
+  joinWaitlist: (id: string) =>
+    request<{ result: 'confirmed' | 'waitlisted' }>(`/api/v1/games/${id}/waitlist`, {
+      method: 'POST',
+    }),
+  leaveWaitlist: (id: string) =>
+    request<void>(`/api/v1/games/${id}/waitlist`, { method: 'DELETE' }),
   leave: (id: string) =>
     request<{ result: string }>(`/api/v1/games/${id}/leave`, { method: 'POST' }),
   cancel: (id: string) => request<void>(`/api/v1/games/${id}/cancel`, { method: 'POST' }),
   removePlayer: (gameId: string, userId: string) =>
-    request<{ result: 'removed'; promotedUserId?: string }>(
+    request<{ result: 'removed' }>(
       `/api/v1/games/${encodeURIComponent(gameId)}/players/${encodeURIComponent(userId)}`,
       { method: 'DELETE' },
     ),

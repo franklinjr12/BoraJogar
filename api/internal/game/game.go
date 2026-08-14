@@ -7,10 +7,11 @@ import (
 )
 
 var (
-	ErrInvalidGame = errors.New("invalid game")
-	ErrForbidden   = errors.New("game action forbidden")
-	ErrNotFound    = errors.New("game not found")
-	ErrConflict    = errors.New("game state conflict")
+	ErrInvalidGame  = errors.New("invalid game")
+	ErrForbidden    = errors.New("game action forbidden")
+	ErrNotFound     = errors.New("game not found")
+	ErrConflict     = errors.New("game state conflict")
+	ErrWaitlistFull = errors.New("waitlist is full")
 )
 
 var skillRank = map[string]int{"learning": 0, "beginner": 1, "intermediate": 2, "advanced": 3, "competitive": 4}
@@ -21,6 +22,8 @@ type CreateInput struct {
 	DurationMinutes   int     `json:"durationMinutes"`
 	VenueID           string  `json:"venueId"`
 	Capacity          int     `json:"capacity"`
+	WaitlistEnabled   bool    `json:"waitlistEnabled"`
+	WaitlistSize      int     `json:"waitlistSize"`
 	MinimumSkillLevel string  `json:"minimumSkillLevel"`
 	MaximumSkillLevel string  `json:"maximumSkillLevel"`
 	Visibility        string  `json:"visibility"`
@@ -49,6 +52,13 @@ func ValidateCreate(in CreateInput, now time.Time) (time.Time, time.Time, error)
 	}
 	if in.Capacity < 2 || in.Capacity > 12 {
 		return time.Time{}, time.Time{}, errors.Join(ErrInvalidGame, errors.New("capacity must be between 2 and 12"))
+	}
+	if in.WaitlistEnabled {
+		if in.WaitlistSize < 1 || in.WaitlistSize > 12 {
+			return time.Time{}, time.Time{}, errors.Join(ErrInvalidGame, errors.New("waitlist size must be between 1 and 12 when enabled"))
+		}
+	} else if in.WaitlistSize != 0 {
+		return time.Time{}, time.Time{}, errors.Join(ErrInvalidGame, errors.New("waitlist size must be zero when waitlist is disabled"))
 	}
 	if _, ok := skillRank[in.MinimumSkillLevel]; !ok {
 		return time.Time{}, time.Time{}, errors.Join(ErrInvalidGame, errors.New("minimum skill is invalid"))

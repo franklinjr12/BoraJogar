@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 const sessions = {
   ana: 'seed-session-ana',
+  bruno: 'seed-session-bruno',
   carla: 'seed-session-carla',
 };
 
@@ -205,11 +206,76 @@ test.describe('Bora Jogar real backend E2E', () => {
 
     await expect(page.getByRole('heading', { name: 'E2E Full Game' })).toBeVisible();
     await expect(page.getByText(/0 vagas disponíveis/i)).toBeVisible();
-    await page
-      .getByRole('button', { name: /participar da partida|entrar na lista de espera/i })
-      .click();
+    const joinButton = page.getByRole('button', {
+      name: /participar da partida|entrar na lista de espera/i,
+    });
+    if ((await joinButton.count()) > 0) await joinButton.click();
 
     await expect(page.getByRole('heading', { name: /lista de espera/i })).toBeVisible();
     await expect(page.getByText('Carla Lima')).toBeVisible();
+  });
+
+  test('opens and claims a configured waitlist slot through the real backend', async ({
+    browser,
+    page,
+  }) => {
+    const title = `E2E Waitlist ${test.info().project.name} ${Date.now()}`;
+    await signIn(page, sessions.ana);
+    await page.goto('/games/new');
+    await chooseDate(page, futureDate(test.info().project.name === 'chromium' ? 6 : 7));
+    await chooseTime(page, '10', '30');
+    await page.getByRole('combobox', { name: /^quadra$/i }).selectOption({
+      label: 'E2E Praia Paulista',
+    });
+    await page.getByLabel(/número de jogadores/i).fill('2');
+    await page.getByRole('checkbox', { name: /ativar lista de espera/i }).check();
+    await page.getByLabel(/tamanho da lista de espera/i).fill('1');
+    await page.getByRole('combobox', { name: /visibilidade/i }).selectOption('public');
+    await page.getByLabel(/título/i).fill(title);
+    await page.getByRole('button', { name: /criar partida/i }).click();
+
+    await expect(page.getByRole('heading', { name: title })).toBeVisible();
+    await expect(page.getByText('Lista de espera: 0/1')).toBeVisible();
+    const gamePath = new URL(page.url()).pathname;
+
+    const bruno = await browser.newPage();
+    const carla = await browser.newPage();
+    try {
+      await signIn(bruno, sessions.bruno);
+      await bruno.goto(gamePath);
+      await expect(bruno.getByRole('heading', { name: title })).toBeVisible();
+      await bruno.getByRole('button', { name: /participar da partida/i }).click();
+      await expect(bruno.getByRole('button', { name: /sair da partida/i })).toBeVisible();
+
+      await signIn(carla, sessions.carla);
+      await carla.goto(gamePath);
+      await carla.getByRole('button', { name: /entrar na lista de espera/i }).click();
+      await expect(carla.getByText('Lista de espera: 1/1')).toBeVisible();
+      await expect(carla.getByRole('button', { name: /sair da lista de espera/i })).toBeVisible();
+
+      await bruno.getByRole('button', { name: /sair da partida/i }).click();
+      await expect(bruno.getByText(/1 vaga disponível/i)).toBeVisible();
+
+      await carla.goto('/notifications');
+      const openSlotNotification = carla
+        .locator('article')
+        .filter({ hasText: 'Vaga disponível' })
+        .first();
+      await expect(openSlotNotification).toBeVisible();
+      await expect(openSlotNotification.getByRole('link', { name: 'Abrir' })).toHaveAttribute(
+        'href',
+        gamePath,
+      );
+
+      await carla.goto(gamePath);
+      await expect(carla.getByText(/1 vaga disponível/i)).toBeVisible();
+      await carla.getByRole('button', { name: /participar da partida/i }).click();
+      await expect(carla.getByRole('button', { name: /sair da partida/i })).toBeVisible();
+      await expect(carla.getByRole('button', { name: /sair da lista de espera/i })).toHaveCount(0);
+      await expect(carla.getByText('Lista de espera: 0/1')).toBeVisible();
+    } finally {
+      await bruno.close();
+      await carla.close();
+    }
   });
 });

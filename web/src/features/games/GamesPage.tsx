@@ -157,6 +157,7 @@ export function CreateGamePage() {
   const [locationChoice, setLocationChoice] = useState('');
   const [venueDraft, setVenueDraft] = useState<VenueDraft>(blankVenueDraft());
   const [saving, setSaving] = useState(false);
+  const [waitlistEnabled, setWaitlistEnabled] = useState(false);
   const [loadingLocations, setLoadingLocations] = useState(true);
   const [locationError, setLocationError] = useState('');
   const isOnline = useOnlineStatus();
@@ -249,6 +250,14 @@ export function CreateGamePage() {
         setError('A habilidade mínima não pode ser maior que a máxima.');
         return;
       }
+      const waitlistSize = waitlistEnabled ? Number(form.get('waitlistSize')) : 0;
+      if (
+        waitlistEnabled &&
+        (!Number.isInteger(waitlistSize) || waitlistSize < 1 || waitlistSize > 12)
+      ) {
+        setError('Escolha entre 1 e 12 pessoas na lista de espera.');
+        return;
+      }
       const submittedLocation = String(form.get('venueId') ?? locationChoice);
       let gameVenueId = submittedLocation.startsWith('venue:')
         ? submittedLocation.replace('venue:', '')
@@ -280,6 +289,8 @@ export function CreateGamePage() {
         durationMinutes: Number(form.get('duration')) as 60 | 90 | 120,
         venueId: gameVenueId,
         capacity,
+        waitlistEnabled,
+        waitlistSize,
         minimumSkillLevel,
         maximumSkillLevel,
         visibility: String(form.get('visibility')) as GameVisibility,
@@ -384,6 +395,21 @@ export function CreateGamePage() {
           Número de jogadores
           <input name="capacity" type="number" min="2" max="12" defaultValue="4" required />
         </label>
+        <label>
+          <span>Ativar lista de espera</span>
+          <input
+            name="waitlistEnabled"
+            type="checkbox"
+            checked={waitlistEnabled}
+            onChange={(event) => setWaitlistEnabled(event.target.checked)}
+          />
+        </label>
+        {waitlistEnabled && (
+          <label>
+            Tamanho da lista de espera
+            <input name="waitlistSize" type="number" min="1" max="12" defaultValue="1" required />
+          </label>
+        )}
         <div className="time-fields skill-fields">
           <label>
             Habilidade mínima
@@ -490,18 +516,22 @@ export function GameDetailsPage() {
             {preview.openSlots === 1 ? 'vaga disponível' : 'vagas disponíveis'} ·{' '}
             {label(preview.minimumSkillLevel)}-{label(preview.maximumSkillLevel)}
           </p>
-          <Link
-            className="button"
-            to={`/login?returnTo=${encodeURIComponent(`${currentLocation.pathname}${currentLocation.search}`)}`}
-            onClick={() =>
-              localStorage.setItem(
-                'borajogar_return_to',
-                `${currentLocation.pathname}${currentLocation.search}`,
-              )
-            }
-          >
-            {preview.openSlots > 0 ? 'Entre para participar' : 'Entre para entrar na espera'}
-          </Link>
+          {preview.openSlots > 0 || preview.waitlistEnabled ? (
+            <Link
+              className="button"
+              to={`/login?returnTo=${encodeURIComponent(`${currentLocation.pathname}${currentLocation.search}`)}`}
+              onClick={() =>
+                localStorage.setItem(
+                  'borajogar_return_to',
+                  `${currentLocation.pathname}${currentLocation.search}`,
+                )
+              }
+            >
+              {preview.openSlots > 0 ? 'Entre para participar' : 'Entre para entrar na espera'}
+            </Link>
+          ) : (
+            <p className="hint">Esta partida está lotada e não tem lista de espera.</p>
+          )}
         </section>
       </main>
     );
@@ -616,6 +646,9 @@ export function GameDetailsPage() {
           {game.openSlots === 1 ? 'vaga disponível' : 'vagas disponíveis'} ·{' '}
           {label(game.minimumSkillLevel)}–{label(game.maximumSkillLevel)}
         </p>
+        {game.status === 'scheduled' && game.openSlots === 0 && !game.waitlistEnabled && (
+          <p className="hint">Esta partida está lotada e não tem lista de espera.</p>
+        )}
         {game.description && <p>{game.description}</p>}
         {game.currentUserStatus === 'removed' && (
           <p className="error" role="alert">
@@ -673,6 +706,11 @@ export function GameDetailsPage() {
                 ))}
             </section>
           )}
+        {game.waitlistEnabled && (
+          <p className="hint">
+            Lista de espera: {game.waitlistCount}/{game.waitlistSize}
+          </p>
+        )}
         {game.waitlist && game.waitlist.length > 0 && (
           <>
             <h2>Lista de espera</h2>
@@ -683,15 +721,29 @@ export function GameDetailsPage() {
         )}
         {game.status !== 'cancelled' &&
           game.currentUserStatus !== 'confirmed' &&
-          game.currentUserStatus !== 'removed' && (
+          game.currentUserStatus !== 'removed' &&
+          (game.openSlots > 0 || game.waitlistEnabled) && (
             <button
               className="button"
               disabled={busy || !isOnline}
               onClick={() => action(() => gameApi.join(id))}
             >
-              {game.openSlots > 0 ? 'Participar da partida' : 'Entrar na lista de espera'}
+              {game.openSlots > 0
+                ? 'Participar da partida'
+                : game.currentUserStatus === 'waitlisted'
+                  ? 'Tentar pegar a vaga'
+                  : 'Entrar na lista de espera'}
             </button>
           )}
+        {game.status !== 'cancelled' && game.currentUserStatus === 'waitlisted' && (
+          <button
+            className="text-button"
+            disabled={busy || !isOnline}
+            onClick={() => action(() => gameApi.leaveWaitlist(id))}
+          >
+            Sair da lista de espera
+          </button>
+        )}
         {game.status !== 'cancelled' &&
           game.currentUserStatus === 'confirmed' &&
           game.currentUserRole !== 'organizer' && (

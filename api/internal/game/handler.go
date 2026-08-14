@@ -38,6 +38,9 @@ type gameSummary struct {
 	Capacity          int       `json:"capacity"`
 	ConfirmedPlayers  int       `json:"confirmedPlayers"`
 	OpenSlots         int       `json:"openSlots"`
+	WaitlistEnabled   bool      `json:"waitlistEnabled"`
+	WaitlistSize      int       `json:"waitlistSize"`
+	WaitlistCount     int       `json:"waitlistCount"`
 	MinimumSkillLevel string    `json:"minimumSkillLevel"`
 	MaximumSkillLevel string    `json:"maximumSkillLevel"`
 	Visibility        string    `json:"visibility"`
@@ -57,6 +60,9 @@ type gamePreview struct {
 	Capacity          int       `json:"capacity"`
 	ConfirmedPlayers  int       `json:"confirmedPlayers"`
 	OpenSlots         int       `json:"openSlots"`
+	WaitlistEnabled   bool      `json:"waitlistEnabled"`
+	WaitlistSize      int       `json:"waitlistSize"`
+	WaitlistCount     int       `json:"waitlistCount"`
 	MinimumSkillLevel string    `json:"minimumSkillLevel"`
 	MaximumSkillLevel string    `json:"maximumSkillLevel"`
 	Visibility        string    `json:"visibility"`
@@ -106,8 +112,7 @@ type player struct {
 	Status      string `json:"status,omitempty"`
 }
 type actionResponse struct {
-	Result         string `json:"result"`
-	PromotedUserID string `json:"promotedUserId,omitempty"`
+	Result string `json:"result"`
 }
 
 func (h Handler) now() time.Time {
@@ -276,7 +281,7 @@ func (h Handler) create(w http.ResponseWriter, r *http.Request, userID uuid.UUID
 		http.Error(w, "game unavailable", 500)
 		return
 	}
-	if _, err = tx.Exec(r.Context(), `INSERT INTO games(id,source_type,created_by_user_id,title,description,starts_at,ends_at,venue_id,capacity,minimum_skill_level,maximum_skill_level,visibility,share_token_hash) VALUES($1,'manual',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, id, userID, nullableString(in.Title), nullableString(in.Description), starts, ends, venueID, in.Capacity, in.MinimumSkillLevel, in.MaximumSkillLevel, in.Visibility, hash); err != nil {
+	if _, err = tx.Exec(r.Context(), `INSERT INTO games(id,source_type,created_by_user_id,title,description,starts_at,ends_at,venue_id,capacity,waitlist_enabled,waitlist_size,minimum_skill_level,maximum_skill_level,visibility,share_token_hash) VALUES($1,'manual',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, id, userID, nullableString(in.Title), nullableString(in.Description), starts, ends, venueID, in.Capacity, in.WaitlistEnabled, in.WaitlistSize, in.MinimumSkillLevel, in.MaximumSkillLevel, in.Visibility, hash); err != nil {
 		http.Error(w, "game unavailable", 500)
 		return
 	}
@@ -315,7 +320,7 @@ func (h Handler) list(w http.ResponseWriter, r *http.Request, userID uuid.UUID) 
 		statusClause = "g.status IN ('scheduled', 'cancelled')"
 	}
 	now := h.now()
-	rows, err := h.DB.Query(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),''),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE `+statusClause+` AND g.ends_at > $4 AND (g.visibility='public' OR g.created_by_user_id=$1 OR EXISTS (SELECT 1 FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1 AND gp.status='confirmed')) ORDER BY (g.capacity - (SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed')) <= 0, ABS(EXTRACT(EPOCH FROM (g.starts_at - $4))), g.id LIMIT $2 OFFSET $3`, userID, pageSize+1, (page-1)*pageSize, now)
+	rows, err := h.DB.Query(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),(SELECT count(*) FROM game_waitlist gw WHERE gw.game_id=g.id),g.waitlist_enabled,g.waitlist_size,g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),CASE WHEN EXISTS (SELECT 1 FROM game_waitlist gw WHERE gw.game_id=g.id AND gw.user_id=$1) THEN 'waitlisted' ELSE '' END),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE `+statusClause+` AND g.ends_at > $4 AND (g.visibility='public' OR g.created_by_user_id=$1 OR EXISTS (SELECT 1 FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1 AND gp.status='confirmed')) ORDER BY (g.capacity - (SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed')) <= 0, ABS(EXTRACT(EPOCH FROM (g.starts_at - $4))), g.id LIMIT $2 OFFSET $3`, userID, pageSize+1, (page-1)*pageSize, now)
 	if err != nil {
 		http.Error(w, "game unavailable", 500)
 		return
@@ -324,7 +329,7 @@ func (h Handler) list(w http.ResponseWriter, r *http.Request, userID uuid.UUID) 
 	out := []gameSummary{}
 	for rows.Next() {
 		var x gameSummary
-		if err = rows.Scan(&x.ID, &x.Title, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.CurrentUserStatus, &x.CurrentUserRole); err != nil {
+		if err = rows.Scan(&x.ID, &x.Title, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.WaitlistCount, &x.WaitlistEnabled, &x.WaitlistSize, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.CurrentUserStatus, &x.CurrentUserRole); err != nil {
 			http.Error(w, "game unavailable", 500)
 			return
 		}
@@ -416,7 +421,7 @@ func (h Handler) dashboardReadiness(r *http.Request, userID uuid.UUID) (onboardi
 
 func (h Handler) nextConfirmedGame(r *http.Request, userID uuid.UUID) (gameSummary, bool, error) {
 	var x gameSummary
-	err := h.DB.QueryRow(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),''),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id JOIN game_players mine ON mine.game_id=g.id AND mine.user_id=$1 AND mine.status='confirmed' WHERE g.status='scheduled' AND g.ends_at > $2 ORDER BY g.starts_at,g.id LIMIT 1`, userID, h.now()).Scan(&x.ID, &x.Title, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.CurrentUserStatus, &x.CurrentUserRole)
+	err := h.DB.QueryRow(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),(SELECT count(*) FROM game_waitlist gw WHERE gw.game_id=g.id),g.waitlist_enabled,g.waitlist_size,g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),CASE WHEN EXISTS (SELECT 1 FROM game_waitlist gw WHERE gw.game_id=g.id AND gw.user_id=$1) THEN 'waitlisted' ELSE '' END),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id JOIN game_players mine ON mine.game_id=g.id AND mine.user_id=$1 AND mine.status='confirmed' WHERE g.status='scheduled' AND g.ends_at > $2 ORDER BY g.starts_at,g.id LIMIT 1`, userID, h.now()).Scan(&x.ID, &x.Title, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.WaitlistCount, &x.WaitlistEnabled, &x.WaitlistSize, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.CurrentUserStatus, &x.CurrentUserRole)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return x, false, nil
 	}
@@ -429,7 +434,7 @@ func (h Handler) nextConfirmedGame(r *http.Request, userID uuid.UUID) (gameSumma
 
 func (h Handler) dashboardOpenGames(r *http.Request, userID uuid.UUID) ([]gameSummary, error) {
 	now := h.now()
-	rows, err := h.DB.Query(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),''),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.status='scheduled' AND g.ends_at > $2 AND g.visibility='public' AND NOT EXISTS (SELECT 1 FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1 AND gp.status='confirmed') ORDER BY (g.capacity - (SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed')) <= 0, ABS(EXTRACT(EPOCH FROM (g.starts_at - $2))), g.id LIMIT 3`, userID, now)
+	rows, err := h.DB.Query(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),(SELECT count(*) FROM game_waitlist gw WHERE gw.game_id=g.id),g.waitlist_enabled,g.waitlist_size,g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE((SELECT gp.status FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),CASE WHEN EXISTS (SELECT 1 FROM game_waitlist gw WHERE gw.game_id=g.id AND gw.user_id=$1) THEN 'waitlisted' ELSE '' END),COALESCE((SELECT gp.role FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1),'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.status='scheduled' AND g.ends_at > $2 AND g.visibility='public' AND NOT EXISTS (SELECT 1 FROM game_players gp WHERE gp.game_id=g.id AND gp.user_id=$1 AND gp.status='confirmed') ORDER BY (g.capacity - (SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed')) <= 0, ABS(EXTRACT(EPOCH FROM (g.starts_at - $2))), g.id LIMIT 3`, userID, now)
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +442,7 @@ func (h Handler) dashboardOpenGames(r *http.Request, userID uuid.UUID) ([]gameSu
 	out := []gameSummary{}
 	for rows.Next() {
 		var x gameSummary
-		if err = rows.Scan(&x.ID, &x.Title, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.CurrentUserStatus, &x.CurrentUserRole); err != nil {
+		if err = rows.Scan(&x.ID, &x.Title, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.WaitlistCount, &x.WaitlistEnabled, &x.WaitlistSize, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.CurrentUserStatus, &x.CurrentUserRole); err != nil {
 			return nil, err
 		}
 		x.OpenSlots = x.Capacity - x.ConfirmedPlayers
@@ -535,14 +540,14 @@ func (h Handler) details(w http.ResponseWriter, r *http.Request, id, userID uuid
 		http.Error(w, "game unavailable", 500)
 		return
 	}
-	if x.Visibility == "link-only" && !x.IsMember && x.CurrentUserStatus != "removed" {
+	if x.Visibility == "link-only" && !x.IsMember && x.CurrentUserStatus != "removed" && x.CurrentUserStatus != "waitlisted" {
 		token := r.URL.Query().Get("access")
 		if token == "" || hashToken(token) != x.shareTokenHash {
 			writeError(w, 404, "game_not_found", "Game not found.")
 			return
 		}
 	}
-	if x.Visibility == "private" && !x.IsMember {
+	if x.Visibility == "private" && !x.IsMember && x.CurrentUserStatus != "waitlisted" {
 		writeError(w, 404, "game_not_found", "Game not found.")
 		return
 	}
@@ -559,7 +564,7 @@ func (h Handler) preview(w http.ResponseWriter, r *http.Request) {
 	}
 	var out gamePreview
 	var shareTokenHash string
-	err = h.DB.QueryRow(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE(g.share_token_hash,'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.id=$1`, id).Scan(&out.ID, &out.Title, &out.StartsAt, &out.EndsAt, &out.VenueName, &out.AddressLabel, &out.Latitude, &out.Longitude, &out.Capacity, &out.ConfirmedPlayers, &out.MinimumSkillLevel, &out.MaximumSkillLevel, &out.Visibility, &out.Status, &shareTokenHash)
+	err = h.DB.QueryRow(r.Context(), `SELECT g.id,g.title,g.starts_at,g.ends_at,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),(SELECT count(*) FROM game_waitlist gw WHERE gw.game_id=g.id),g.waitlist_enabled,g.waitlist_size,g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE(g.share_token_hash,'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.id=$1`, id).Scan(&out.ID, &out.Title, &out.StartsAt, &out.EndsAt, &out.VenueName, &out.AddressLabel, &out.Latitude, &out.Longitude, &out.Capacity, &out.ConfirmedPlayers, &out.WaitlistCount, &out.WaitlistEnabled, &out.WaitlistSize, &out.MinimumSkillLevel, &out.MaximumSkillLevel, &out.Visibility, &out.Status, &shareTokenHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, 404, "game_not_found", "Game not found.")
 		return
@@ -578,7 +583,7 @@ func (h Handler) preview(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) readDetails(r *http.Request, id, userID uuid.UUID) (gameDetails, error) {
 	var x gameDetails
-	err := h.DB.QueryRow(r.Context(), `SELECT g.id,g.title,g.description,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE(g.share_token_hash,'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.id=$1`, id).Scan(&x.ID, &x.Title, &x.Description, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.shareTokenHash)
+	err := h.DB.QueryRow(r.Context(), `SELECT g.id,g.title,g.description,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),(SELECT count(*) FROM game_waitlist gw WHERE gw.game_id=g.id),g.waitlist_enabled,g.waitlist_size,g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE(g.share_token_hash,'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.id=$1`, id).Scan(&x.ID, &x.Title, &x.Description, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.WaitlistCount, &x.WaitlistEnabled, &x.WaitlistSize, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.shareTokenHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return x, ErrNotFound
 	}
@@ -619,12 +624,13 @@ func (h Handler) readDetails(r *http.Request, id, userID uuid.UUID) (gameDetails
 		x.Waitlist = append(x.Waitlist, p)
 	}
 	var status, role string
-	err = h.DB.QueryRow(r.Context(), `SELECT status,role FROM game_players WHERE game_id=$1 AND user_id=$2`, id, userID).Scan(&status, &role)
-	if err == nil {
-		x.IsMember = status == "confirmed"
-		x.CurrentUserStatus = status
-		x.CurrentUserRole = role
+	err = h.DB.QueryRow(r.Context(), `SELECT COALESCE((SELECT status FROM game_players WHERE game_id=$1 AND user_id=$2),CASE WHEN EXISTS (SELECT 1 FROM game_waitlist WHERE game_id=$1 AND user_id=$2) THEN 'waitlisted' ELSE '' END),COALESCE((SELECT role FROM game_players WHERE game_id=$1 AND user_id=$2),'')`, id, userID).Scan(&status, &role)
+	if err != nil {
+		return x, err
 	}
+	x.IsMember = status == "confirmed"
+	x.CurrentUserStatus = status
+	x.CurrentUserRole = role
 	return x, nil
 }
 
@@ -637,10 +643,10 @@ func (h Handler) join(w http.ResponseWriter, r *http.Request, id, userID uuid.UU
 	defer tx.Rollback(r.Context())
 	var starts time.Time
 	var ends time.Time
-	var cap int
+	var cap, waitlistSize int
+	var waitlistEnabled bool
 	var min, max, status, visibility string
-	var creator uuid.UUID
-	if err = tx.QueryRow(r.Context(), `SELECT starts_at,ends_at,capacity,minimum_skill_level,maximum_skill_level,status,created_by_user_id,visibility FROM games WHERE id=$1 FOR UPDATE`, id).Scan(&starts, &ends, &cap, &min, &max, &status, &creator, &visibility); errors.Is(err, pgx.ErrNoRows) {
+	if err = tx.QueryRow(r.Context(), `SELECT starts_at,ends_at,capacity,waitlist_enabled,waitlist_size,minimum_skill_level,maximum_skill_level,status,visibility FROM games WHERE id=$1 FOR UPDATE`, id).Scan(&starts, &ends, &cap, &waitlistEnabled, &waitlistSize, &min, &max, &status, &visibility); errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, 404, "game_not_found", "Game not found.")
 		return
 	} else if err != nil {
@@ -673,12 +679,21 @@ func (h Handler) join(w http.ResponseWriter, r *http.Request, id, userID uuid.UU
 	}
 	var existing string
 	err = tx.QueryRow(r.Context(), `SELECT status FROM game_players WHERE game_id=$1 AND user_id=$2`, id, userID).Scan(&existing)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
 	if err == nil && existing == "confirmed" {
 		writeError(w, 409, "already_joined", "You already joined this game.")
 		return
 	}
 	if err == nil && existing == "removed" {
 		writeError(w, 403, "player_removed", "The organizer removed you from this game.")
+		return
+	}
+	var alreadyWaitlisted bool
+	if err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM game_waitlist WHERE game_id=$1 AND user_id=$2)`, id, userID).Scan(&alreadyWaitlisted); err != nil {
+		http.Error(w, "game unavailable", 500)
 		return
 	}
 	var conflicting int
@@ -701,6 +716,10 @@ func (h Handler) join(w http.ResponseWriter, r *http.Request, id, userID uuid.UU
 			http.Error(w, "game unavailable", 500)
 			return
 		}
+		if _, err = tx.Exec(r.Context(), `DELETE FROM game_waitlist WHERE game_id=$1 AND user_id=$2`, id, userID); err != nil {
+			http.Error(w, "game unavailable", 500)
+			return
+		}
 		if err = tx.Commit(r.Context()); err != nil {
 			http.Error(w, "game unavailable", 500)
 			return
@@ -708,9 +727,21 @@ func (h Handler) join(w http.ResponseWriter, r *http.Request, id, userID uuid.UU
 		writeJSON(w, 200, actionResponse{Result: "confirmed"})
 		return
 	}
-	if err = insertWaitlist(r, tx, id, userID); err != nil {
+	if !waitlistEnabled {
+		writeError(w, 409, "game_full", "Game is full.")
+		return
+	}
+	if alreadyWaitlisted {
+		writeError(w, 409, "game_full", "This game is full; the open slot was taken.")
+		return
+	}
+	if err = insertWaitlist(r, tx, id, userID, waitlistSize); err != nil {
 		if errors.Is(err, ErrConflict) {
 			writeError(w, 409, "already_waitlisted", "You already joined the waitlist.")
+			return
+		}
+		if errors.Is(err, ErrWaitlistFull) {
+			writeError(w, 409, "waitlist_full", "The waitlist is full.")
 			return
 		}
 		http.Error(w, "game unavailable", 500)
@@ -722,13 +753,20 @@ func (h Handler) join(w http.ResponseWriter, r *http.Request, id, userID uuid.UU
 	}
 	writeJSON(w, 200, actionResponse{Result: "waitlisted"})
 }
-func insertWaitlist(r *http.Request, tx pgx.Tx, id, userID uuid.UUID) error {
+func insertWaitlist(r *http.Request, tx pgx.Tx, id, userID uuid.UUID, waitlistSize int) error {
 	var exists int
 	if err := tx.QueryRow(r.Context(), `SELECT count(*) FROM game_waitlist WHERE game_id=$1 AND user_id=$2`, id, userID).Scan(&exists); err != nil {
 		return err
 	}
 	if exists > 0 {
 		return ErrConflict
+	}
+	var count int
+	if err := tx.QueryRow(r.Context(), `SELECT count(*) FROM game_waitlist WHERE game_id=$1`, id).Scan(&count); err != nil {
+		return err
+	}
+	if count >= waitlistSize {
+		return ErrWaitlistFull
 	}
 	var pos int
 	if err := tx.QueryRow(r.Context(), `SELECT COALESCE(max(position),0)+1 FROM game_waitlist WHERE game_id=$1`, id).Scan(&pos); err != nil {
@@ -738,31 +776,8 @@ func insertWaitlist(r *http.Request, tx pgx.Tx, id, userID uuid.UUID) error {
 	return err
 }
 func (h Handler) addWaitlist(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
-	tx, err := h.DB.Begin(r.Context())
-	if err != nil {
-		http.Error(w, "game unavailable", 500)
-		return
-	}
-	defer tx.Rollback(r.Context())
-	var status string
-	var starts time.Time
-	if err = tx.QueryRow(r.Context(), `SELECT status,starts_at FROM games WHERE id=$1 FOR UPDATE`, id).Scan(&status, &starts); errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, 404, "game_not_found", "Game not found.")
-		return
-	}
-	if err != nil || status != "scheduled" {
-		writeError(w, 409, "game_not_joinable", "Game is not open for joining.")
-		return
-	}
-	if err = insertWaitlist(r, tx, id, userID); err != nil {
-		writeError(w, 409, "already_waitlisted", "You already joined the waitlist.")
-		return
-	}
-	if err = tx.Commit(r.Context()); err != nil {
-		http.Error(w, "game unavailable", 500)
-		return
-	}
-	writeJSON(w, 200, actionResponse{Result: "waitlisted"})
+	// Keep legacy waitlist POST clients on the same eligibility and locking path.
+	h.join(w, r, id, userID)
 }
 func (h Handler) removeWaitlist(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
 	tag, err := h.DB.Exec(r.Context(), `DELETE FROM game_waitlist WHERE game_id=$1 AND user_id=$2`, id, userID)
@@ -783,6 +798,19 @@ func (h Handler) leave(w http.ResponseWriter, r *http.Request, id, userID uuid.U
 		return
 	}
 	defer tx.Rollback(r.Context())
+	var gameStatus string
+	if err = tx.QueryRow(r.Context(), `SELECT status FROM games WHERE id=$1 FOR UPDATE`, id).Scan(&gameStatus); errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, 404, "game_not_found", "Game not found.")
+		return
+	}
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if gameStatus != "scheduled" {
+		writeError(w, 409, "game_not_joinable", "This game is not active.")
+		return
+	}
 	var role, status string
 	if err = tx.QueryRow(r.Context(), `SELECT role,status FROM game_players WHERE game_id=$1 AND user_id=$2 FOR UPDATE`, id, userID).Scan(&role, &status); errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, 404, "player_not_found", "You are not a player in this game.")
@@ -804,7 +832,7 @@ func (h Handler) leave(w http.ResponseWriter, r *http.Request, id, userID uuid.U
 		http.Error(w, "game unavailable", 500)
 		return
 	}
-	promoted, err := promote(tx, r, id)
+	recipients, err := waitlistRecipients(tx, r, id)
 	if err != nil {
 		http.Error(w, "game unavailable", 500)
 		return
@@ -813,7 +841,8 @@ func (h Handler) leave(w http.ResponseWriter, r *http.Request, id, userID uuid.U
 		http.Error(w, "game unavailable", 500)
 		return
 	}
-	writeJSON(w, 200, actionResponse{Result: "left", PromotedUserID: promoted})
+	h.notifyWaitlistOpen(r.Context(), recipients, id)
+	writeJSON(w, 200, actionResponse{Result: "left"})
 }
 
 func (h Handler) removePlayer(w http.ResponseWriter, r *http.Request, id, userID, targetID uuid.UUID) {
@@ -868,7 +897,7 @@ func (h Handler) removePlayer(w http.ResponseWriter, r *http.Request, id, userID
 		http.Error(w, "game unavailable", 500)
 		return
 	}
-	promoted, err := promote(tx, r, id)
+	recipients, err := waitlistRecipients(tx, r, id)
 	if err != nil {
 		http.Error(w, "game unavailable", 500)
 		return
@@ -878,64 +907,31 @@ func (h Handler) removePlayer(w http.ResponseWriter, r *http.Request, id, userID
 		return
 	}
 	h.notifyGameUsers(r.Context(), []uuid.UUID{targetID}, notification.GameChanged, "Você foi removido da partida.", "O organizador removeu você desta partida.", id, targetID)
-	if promoted != "" {
-		promotedID, parseErr := uuid.Parse(promoted)
-		if parseErr == nil {
-			h.notifyGameUsers(r.Context(), []uuid.UUID{promotedID}, notification.WaitlistPromotion, "Sua vaga foi confirmada.", "Você entrou nesta partida a partir da lista de espera.", id, promotedID)
-		}
-	}
-	writeJSON(w, 200, actionResponse{Result: "removed", PromotedUserID: promoted})
+	h.notifyWaitlistOpen(r.Context(), recipients, id)
+	writeJSON(w, 200, actionResponse{Result: "removed"})
 }
 
-func promote(tx pgx.Tx, r *http.Request, id uuid.UUID) (string, error) {
-	var starts, ends time.Time
-	var minimum, maximum string
-	if err := tx.QueryRow(r.Context(), `SELECT starts_at,ends_at,minimum_skill_level,maximum_skill_level FROM games WHERE id=$1 FOR UPDATE`, id).Scan(&starts, &ends, &minimum, &maximum); err != nil {
-		return "", err
-	}
-	rows, err := tx.Query(r.Context(), `SELECT gw.user_id,pp.skill_level FROM game_waitlist gw JOIN player_profiles pp ON pp.user_id=gw.user_id WHERE gw.game_id=$1 ORDER BY gw.position FOR UPDATE SKIP LOCKED`, id)
+func waitlistRecipients(tx pgx.Tx, r *http.Request, id uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := tx.Query(r.Context(), `SELECT user_id FROM game_waitlist WHERE game_id=$1 ORDER BY position`, id)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer rows.Close()
-	var candidates []struct {
-		ID    uuid.UUID
-		Skill string
-	}
+	recipients := []uuid.UUID{}
 	for rows.Next() {
-		var c struct {
-			ID    uuid.UUID
-			Skill string
+		var userID uuid.UUID
+		if err = rows.Scan(&userID); err != nil {
+			return nil, err
 		}
-		if err = rows.Scan(&c.ID, &c.Skill); err != nil {
-			return "", err
-		}
-		candidates = append(candidates, c)
+		recipients = append(recipients, userID)
 	}
-	if err = rows.Err(); err != nil {
-		return "", err
-	}
-	for _, candidate := range candidates {
-		if !SkillAllowed(minimum, maximum, candidate.Skill) {
-			continue
-		}
-		var conflicting int
-		if err = tx.QueryRow(r.Context(), `SELECT count(*) FROM game_players gp JOIN games g ON g.id=gp.game_id WHERE gp.user_id=$1 AND gp.status='confirmed' AND g.status='scheduled' AND g.starts_at < $3 AND g.ends_at > $2`, candidate.ID, starts, ends).Scan(&conflicting); err != nil {
-			return "", err
-		}
-		if conflicting > 0 {
-			continue
-		}
-		if _, err = tx.Exec(r.Context(), `INSERT INTO game_players(game_id,user_id,role,status,attendance_status) VALUES($1,$2,'player','confirmed','unknown') ON CONFLICT(game_id,user_id) DO UPDATE SET status='confirmed',cancelled_at=NULL,joined_at=now()`, id, candidate.ID); err != nil {
-			return "", err
-		}
-		if _, err = tx.Exec(r.Context(), `DELETE FROM game_waitlist WHERE game_id=$1 AND user_id=$2`, id, candidate.ID); err != nil {
-			return "", err
-		}
-		return candidate.ID.String(), nil
-	}
-	return "", nil
+	return recipients, rows.Err()
 }
+
+func (h Handler) notifyWaitlistOpen(ctx context.Context, recipients []uuid.UUID, gameID uuid.UUID) {
+	h.notifyGameUsers(ctx, recipients, notification.WaitlistOpen, "Vaga disponível.", "Uma vaga abriu. Entre agora; a primeira pessoa a confirmar fica com a vaga.", gameID, uuid.Nil)
+}
+
 func (h Handler) cancel(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
 	var in struct {
 		Reason *string `json:"reason"`
