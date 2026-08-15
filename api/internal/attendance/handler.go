@@ -192,8 +192,10 @@ func CompleteFinishedGames(ctx context.Context, db *pgxpool.Pool, publisher noti
 		return 0, err
 	}
 	if publisher != nil {
+		const title = "Registre a presença"
+		const body = "Seu jogo foi completo. Registre a presença dos jogadores."
 		for _, x := range items {
-			_ = publisher.Publish(ctx, notification.EventInput{UserID: x.user, Type: notification.AttendanceRequested, Title: "Record attendance", Body: "Your game is complete. Record player attendance.", ActionURL: "/games/" + x.id.String() + "/attendance", Payload: map[string]string{"gameId": x.id.String()}})
+			_ = publisher.Publish(ctx, notification.EventInput{UserID: x.user, Type: notification.AttendanceRequested, Title: title, Body: body, ActionURL: "/games/" + x.id.String() + "/attendance", Payload: map[string]string{"gameId": x.id.String()}})
 		}
 	}
 	return len(items), nil
