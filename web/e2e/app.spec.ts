@@ -40,7 +40,11 @@ async function signUpWithEmail(page: Page, displayName: string, email: string, r
 }
 
 async function saveProfileStep(page: Page, displayName: string) {
-  await expect(page.getByRole('heading', { name: /conte sobre seu jogo/i })).toBeVisible();
+  await expect(
+    page.getByRole('heading', {
+      name: /conte sobre seu jogo|informe seu nome e n.vel para entrar/i,
+    }),
+  ).toBeVisible();
   await page.getByLabel(/nome exibido/i).fill(displayName);
   await page.getByRole('button', { name: /^continuar$/i }).click();
 }
@@ -166,6 +170,32 @@ test.describe('Bora Jogar real backend E2E', () => {
     await expect(page.getByRole('heading', { name: /configure uma partida/i })).toBeVisible();
     await expect(page.getByRole('combobox', { name: /^quadra$/i })).toHaveValue(/area:/);
     await expect(page.getByText(/esta partida usará new flow area/i)).toBeVisible();
+  });
+
+  test('guides incomplete join users through profile setup and back to the game', async ({
+    page,
+  }) => {
+    const displayName = 'Profile Required Player';
+    const gamePath = '/games/60000000-0000-0000-0000-000000000101';
+
+    await signUpWithEmail(page, displayName, uniqueEmail('profile-required'), gamePath);
+    await expect(page).toHaveURL(new RegExp(`${gamePath}$`));
+    await expect(page.getByRole('heading', { name: 'E2E Open Game' })).toBeVisible();
+
+    await page.getByRole('button', { name: /participar da partida/i }).click();
+    await expect(page.getByRole('alert')).toContainText(/informe seu nome e n.vel para entrar/i);
+    const profileLink = page.getByRole('link', { name: /configurar perfil/i });
+    await expect(profileLink).toHaveAttribute('href', '/onboarding?goal=join_game');
+    await profileLink.click();
+
+    await expect(page).toHaveURL(/\/onboarding\?goal=join_game$/);
+    await saveProfileStep(page, displayName);
+
+    await expect(page).toHaveURL(new RegExp(`${gamePath}$`));
+    await expect(page.getByRole('heading', { name: 'E2E Open Game' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /participar da partida/i })).toBeVisible();
+    await page.getByRole('button', { name: /participar da partida/i }).click();
+    await expect(page.getByRole('button', { name: /sair da partida/i })).toBeVisible();
   });
 
   test('returning incomplete user resumes setup and profile never asks to sign in', async ({

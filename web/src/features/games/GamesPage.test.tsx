@@ -587,6 +587,50 @@ describe('CreateGamePage', () => {
       waitlistSize: 3,
     });
   });
+
+  it('offers profile setup when game creation requires a profile', async () => {
+    const savedVenue = { id: 'venue-1', name: 'Praia Central' };
+    localStorage.setItem('borajogar_return_to', '/games/old-game');
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/v1/me/favorite-venues')) {
+        return Promise.resolve(new Response(JSON.stringify([savedVenue]), { status: 200 }));
+      }
+      if (url.includes('/api/v1/games') && init?.method === 'POST') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: {
+                code: 'profile_required',
+                message: 'Complete your profile before creating a game.',
+                fields: {},
+              },
+            }),
+            { status: 422 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MemoryRouter initialEntries={['/games/new']}>
+        <CreateGamePage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: /configure uma partida/i });
+    await waitFor(() => expect(screen.getByLabelText(/^quadra$/i)).toHaveValue('venue:venue-1'));
+    fireEvent.change(screen.getByLabelText(/^data$/i), { target: { value: futureGameDate } });
+    fireEvent.change(screen.getByLabelText(/hor.rio de in.cio/i), { target: { value: '09:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /^criar partida$/i }));
+
+    const link = await screen.findByRole('link', { name: /completar perfil/i });
+    expect(screen.getByRole('alert')).toHaveTextContent(/complete seu perfil para continuar/i);
+    expect(link).toHaveAttribute('href', '/onboarding?goal=create_game');
+    fireEvent.click(link);
+    expect(localStorage.getItem('borajogar_onboarding_goal')).toBe('create_game');
+    expect(localStorage.getItem('borajogar_return_to')).toBeNull();
+  });
 });
 
 describe('GameDetailsPage', () => {
@@ -946,6 +990,63 @@ describe('GameDetailsPage', () => {
       '/api/v1/games/game-1/join',
       expect.objectContaining({ method: 'POST' }),
     );
+  });
+
+  it('offers profile setup after join rejection and preserves the game link', async () => {
+    const game = {
+      id: 'game-1',
+      title: 'Saturday game',
+      startsAt: '2099-08-01T12:00:00Z',
+      endsAt: '2099-08-01T13:30:00Z',
+      venueId: 'venue-1',
+      venueName: 'Central court',
+      latitude: -23.5,
+      longitude: -46.6,
+      capacity: 4,
+      confirmedPlayers: 1,
+      openSlots: 3,
+      minimumSkillLevel: 'beginner',
+      maximumSkillLevel: 'advanced',
+      visibility: 'link-only',
+      status: 'scheduled',
+      currentUserStatus: '',
+    };
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && url.endsWith('/join')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: {
+                code: 'profile_required',
+                message: 'Complete your profile before joining.',
+                fields: {},
+              },
+            }),
+            { status: 422 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(game), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/games/game-1?access=secret']}>
+        <Routes>
+          <Route path="/games/:id" element={<GameDetailsPage />} />
+          <Route path="/onboarding" element={<p>Onboarding</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /participar da partida/i }));
+
+    const link = await screen.findByRole('link', { name: /configurar perfil/i });
+    expect(screen.getByRole('alert')).toHaveTextContent(/informe seu nome e n.vel para entrar/i);
+    expect(link).toHaveAttribute('href', '/onboarding?goal=join_game');
+    fireEvent.click(link);
+    expect(localStorage.getItem('borajogar_onboarding_goal')).toBe('join_game');
+    expect(localStorage.getItem('borajogar_return_to')).toBe('/games/game-1?access=secret');
   });
 
   it('clearly marks cancelled games and hides active match actions', async () => {

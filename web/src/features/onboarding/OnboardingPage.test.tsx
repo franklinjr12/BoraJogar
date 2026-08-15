@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OnboardingPage } from './OnboardingPage';
 
@@ -173,5 +173,81 @@ describe('OnboardingPage', () => {
     expect(
       screen.queryByText(/adicione uma quadra ou área antes de continuar/i),
     ).not.toBeInTheDocument();
+  });
+
+  it('returns join users to the saved game after completing setup', async () => {
+    localStorage.setItem('borajogar_onboarding_goal', 'join_game');
+    localStorage.setItem('borajogar_return_to', '/games/game-1?access=secret');
+    let readinessCalls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/v1/me') {
+          return Promise.resolve(
+            response({
+              id: 'user-1',
+              displayName: 'Franklin',
+              email: 'franklin@example.com',
+              timeZone: 'America/Sao_Paulo',
+              onboardingComplete: false,
+              isAdmin: false,
+            }),
+          );
+        }
+        if (url === '/api/v1/me/onboarding/readiness') {
+          readinessCalls += 1;
+          return Promise.resolve(
+            response(
+              readinessCalls === 1
+                ? {
+                    profile: false,
+                    location: false,
+                    availability: false,
+                    profileCount: 0,
+                    favoriteVenueCount: 0,
+                    preferredAreaCount: 0,
+                    availabilityCount: 0,
+                    canComplete: false,
+                    missing: ['profile', 'location', 'availability'],
+                  }
+                : {
+                    profile: true,
+                    location: false,
+                    availability: false,
+                    profileCount: 1,
+                    favoriteVenueCount: 0,
+                    preferredAreaCount: 0,
+                    availabilityCount: 0,
+                    canComplete: false,
+                    missing: ['location', 'availability'],
+                  },
+            ),
+          );
+        }
+        if (url === '/api/v1/me/onboarding/complete' && init?.method === 'POST') {
+          return Promise.resolve(new Response(null, { status: 204 }));
+        }
+        return Promise.resolve(response({}));
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/onboarding?goal=join_game']}>
+        <Routes>
+          <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route path="/games/:id" element={<p>Returned to game</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(await screen.findByLabelText(/nome exibido/i), {
+      target: { value: 'Franklin' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+
+    expect(await screen.findByText('Returned to game')).toBeInTheDocument();
+    expect(localStorage.getItem('borajogar_onboarding_goal')).toBeNull();
+    expect(localStorage.getItem('borajogar_return_to')).toBeNull();
   });
 });

@@ -82,8 +82,9 @@ export function OnboardingPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const goal = (params.get('goal') as OnboardingGoal | null) ?? storedGoal();
+  const quickJoin = goal === 'join_game';
   const initial = storedDraft();
-  const [step, setStep] = useState(initial.step);
+  const [step, setStep] = useState<OnboardingStep>(quickJoin ? 0 : initial.step);
   const [profile, setProfile] = useState(initial.profile);
   const [readiness, setReadiness] = useState<OnboardingReadiness | null>(null);
   const [error, setError] = useState('');
@@ -107,6 +108,10 @@ export function OnboardingPage() {
       .readiness()
       .then((nextReadiness) => {
         setReadiness(nextReadiness);
+        if (quickJoin && nextReadiness.profile) {
+          finishQuickJoin();
+          return;
+        }
         setStep(stepForReadiness(nextReadiness));
       })
       .catch(() => undefined);
@@ -118,6 +123,13 @@ export function OnboardingPage() {
 
   const update = <K extends keyof typeof profile>(key: K, value: (typeof profile)[K]) =>
     setProfile((current) => ({ ...current, [key]: value }));
+
+  const finishQuickJoin = () => {
+    const nextPath = nextPathForGoal(goal);
+    localStorage.removeItem('borajogar_onboarding_goal');
+    localStorage.removeItem('borajogar_return_to');
+    navigate(nextPath);
+  };
 
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -143,6 +155,10 @@ export function OnboardingPage() {
       await profileApi.saveProgress(1, [0]);
       const nextReadiness = await profileApi.readiness();
       setReadiness(nextReadiness);
+      if (quickJoin) {
+        finishQuickJoin();
+        return;
+      }
       if (nextReadiness.canComplete) {
         await profileApi.complete();
         localStorage.setItem('borajogar_install_prompt_ready', 'true');
@@ -210,14 +226,26 @@ export function OnboardingPage() {
   return (
     <main className="shell onboarding">
       <p className="eyebrow">Bora Jogar</p>
-      <p className="onboarding-progress" role="status">
-        Etapa {step + 1} de 3
-      </p>
-      <progress value={step + 1} max={3} aria-label={`Etapa ${step + 1} de 3`} />
+      {quickJoin ? (
+        <p className="onboarding-progress" role="status">
+          Perfil básico para entrar
+        </p>
+      ) : (
+        <>
+          <p className="onboarding-progress" role="status">
+            Etapa {step + 1} de 3
+          </p>
+          <progress value={step + 1} max={3} aria-label={`Etapa ${step + 1} de 3`} />
+        </>
+      )}
       {step === 0 && (
         <>
-          <h1>Conte sobre seu jogo.</h1>
-          <p className="lead">Só o básico para encontrar jogadores. O resto pode esperar.</p>
+          <h1>{quickJoin ? 'Informe seu nome e nível para entrar.' : 'Conte sobre seu jogo.'}</h1>
+          <p className="lead">
+            {quickJoin
+              ? 'Só precisamos desses dados para identificar você e validar a partida.'
+              : 'Só o básico para encontrar jogadores. O resto pode esperar.'}
+          </p>
           <form className="card" onSubmit={saveProfile}>
             <label>
               Nome exibido
@@ -268,7 +296,7 @@ export function OnboardingPage() {
           </form>
         </>
       )}
-      {step === 1 && (
+      {step === 1 && !quickJoin && (
         <>
           <LocationSetup compact onLocationSavingChange={setLocationSaving} />
           <div className="actions">
@@ -286,7 +314,7 @@ export function OnboardingPage() {
           </div>
         </>
       )}
-      {step === 2 && (
+      {step === 2 && !quickJoin && (
         <>
           <AvailabilityEditor compact />
           <p className="hint">Você pode adicionar mais horários depois.</p>

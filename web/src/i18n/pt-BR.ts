@@ -59,7 +59,7 @@ const apiErrorMessages: Record<string, string> = {
   game_not_found: 'Partida não encontrada.',
   game_not_joinable: 'Esta partida não está disponível para entrada.',
   blocked_user: 'Você não pode entrar nesta partida.',
-  profile_required: 'Complete seu perfil antes de entrar.',
+  profile_required: 'Complete seu perfil para continuar.',
   skill_out_of_range: 'Seu nível está fora da faixa desta partida.',
   already_joined: 'Você já está nesta partida.',
   already_waitlisted: 'Você já está na lista de espera.',

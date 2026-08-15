@@ -45,6 +45,38 @@ interface ConfirmationRequest {
   onConfirm: () => void;
 }
 
+type ProfileRequiredGoal = 'create_game' | 'join_game';
+const joinProfileRequiredMessage = 'Informe seu nome e nível para entrar nesta partida.';
+
+function isProfileRequiredError(cause: unknown): cause is ApiError {
+  return cause instanceof ApiError && cause.code === 'profile_required';
+}
+
+function ProfileRequiredRecovery({
+  message,
+  goal,
+  returnTo,
+}: {
+  message: string;
+  goal: ProfileRequiredGoal;
+  returnTo?: string;
+}) {
+  const handleClick = () => {
+    localStorage.setItem('borajogar_onboarding_goal', goal);
+    if (returnTo) localStorage.setItem('borajogar_return_to', returnTo);
+    else localStorage.removeItem('borajogar_return_to');
+  };
+
+  return (
+    <div className="feedback-error" role="alert">
+      <p className="error">{message}</p>
+      <Link className="button" to={`/onboarding?goal=${goal}`} onClick={handleClick}>
+        {goal === 'join_game' ? 'Configurar perfil' : 'Completar perfil'}
+      </Link>
+    </div>
+  );
+}
+
 function todayInputValue() {
   const now = new Date();
   const year = now.getFullYear();
@@ -150,6 +182,7 @@ export function GamesPage() {
 export function CreateGamePage() {
   const navigate = useNavigate();
   const [error, setError] = useState('');
+  const [profileRequired, setProfileRequired] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [venues, setVenues] = useState<Array<{ id: string; name: string }>>([]);
@@ -217,6 +250,7 @@ export function CreateGamePage() {
     event.preventDefault();
     if (saving) return;
     setError('');
+    setProfileRequired(false);
     if (!isOnline) {
       setError('Você está offline. Conecte-se antes de criar uma partida.');
       return;
@@ -276,6 +310,7 @@ export function CreateGamePage() {
           setLocationChoice(`venue:${created.id}`);
           setVenueDraft(blankVenueDraft());
         } catch (cause: unknown) {
+          setProfileRequired(isProfileRequiredError(cause));
           setError(
             cause instanceof ApiError
               ? `Não foi possível criar o local: ${cause.message}`
@@ -302,6 +337,7 @@ export function CreateGamePage() {
         markGameAlertPromptReady();
         navigate(game.shareUrl ?? `/games/${game.id}`);
       } catch (cause: unknown) {
+        setProfileRequired(isProfileRequiredError(cause));
         setError(
           cause instanceof ApiError
             ? cause.message
@@ -448,11 +484,14 @@ export function CreateGamePage() {
           Observações (opcional)
           <textarea name="description" maxLength={2000} />
         </label>
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        )}
+        {error &&
+          (profileRequired ? (
+            <ProfileRequiredRecovery message={error} goal="create_game" />
+          ) : (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          ))}
         <button className="button" type="submit" disabled={saving || !isOnline}>
           {saving ? 'Criando partida...' : 'Criar partida'}
         </button>
@@ -468,11 +507,13 @@ export function GameDetailsPage() {
   const [game, setGame] = useState<Game | null>(null);
   const [preview, setPreview] = useState<GamePreview | null>(null);
   const [error, setError] = useState('');
+  const [profileRequired, setProfileRequired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [shareMessage, setShareMessage] = useState('');
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const isOnline = useOnlineStatus();
   useEffect(() => {
+    setProfileRequired(false);
     gameApi
       .get(id, params.get('access') ?? undefined)
       .then(setGame)
@@ -492,9 +533,17 @@ export function GameDetailsPage() {
         <Link className="text-link" to="/games">
           ← Partidas
         </Link>
-        <p className="error" role="alert">
-          {error}
-        </p>
+        {profileRequired ? (
+          <ProfileRequiredRecovery
+            message={joinProfileRequiredMessage}
+            goal="join_game"
+            returnTo={`${currentLocation.pathname}${currentLocation.search}`}
+          />
+        ) : (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
       </main>
     );
   if (!game && preview)
@@ -547,12 +596,14 @@ export function GameDetailsPage() {
       return;
     }
     setBusy(true);
+    setProfileRequired(false);
     try {
       await fn();
       markGameAlertPromptReady();
       const refreshed = await gameApi.get(id, params.get('access') ?? undefined);
       setGame(refreshed);
     } catch (cause: unknown) {
+      setProfileRequired(isProfileRequiredError(cause));
       setError(
         cause instanceof ApiError ? cause.message : 'Não foi possível atualizar esta partida.',
       );
