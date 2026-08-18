@@ -160,6 +160,17 @@ func (h Handler) gameByID(w http.ResponseWriter, r *http.Request) {
 		h.calendar(w, r, id, u.ID)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "chat" {
+		switch r.Method {
+		case http.MethodGet:
+			h.chatList(w, r, id, u.ID)
+		case http.MethodPost:
+			h.chatCreate(w, r, id, u.ID)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+		return
+	}
 	if len(parts) > 1 && r.Method != http.MethodPost && r.Method != http.MethodDelete {
 		w.WriteHeader(http.StatusNotFound)
 		return

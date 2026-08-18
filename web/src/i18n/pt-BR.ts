@@ -74,6 +74,10 @@ const apiErrorMessages: Record<string, string> = {
   availability_rule_conflict: 'Esse horário se sobrepõe a outro horário salvo.',
   availability_rule_not_found: 'Horário disponível não encontrado.',
   invalid_availability_rule: 'Os dados do horário disponível são inválidos.',
+  game_chat_closed: 'O chat desta partida foi encerrado.',
+  game_chat_not_found: 'Chat da partida não encontrado.',
+  invalid_chat_message: 'A mensagem deve ter entre 1 e 2.000 caracteres.',
+  invalid_chat_cursor: 'O histórico do chat não pôde ser carregado.',
 };
 
 export function apiErrorMessage(code: string) {
@@ -160,6 +164,10 @@ const notificationMessages: Record<string, { title: string; body: string }> = {
   attendance_requested: {
     title: 'Registre a presença',
     body: 'Sua partida terminou. Registre a presença dos jogadores.',
+  },
+  game_chat_message: {
+    title: 'Nova mensagem na partida',
+    body: 'Uma nova mensagem foi enviada no chat da sua partida.',
   },
 };
 

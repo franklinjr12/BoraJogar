@@ -4,9 +4,11 @@ package game
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -60,7 +62,7 @@ func integrationGameFixture(t *testing.T) gameFixture {
 		t.Fatal(err)
 	}
 	gameID := uuid.New()
-	if _, err = db.Exec(context.Background(), `INSERT INTO games(id,source_type,created_by_user_id,starts_at,ends_at,venue_id,capacity,waitlist_enabled,waitlist_size,minimum_skill_level,maximum_skill_level,visibility) VALUES($1,'manual',$2,$3,$4,$5,2,true,2,'learning','advanced','public')`, gameID, users[0].ID, time.Now().UTC().Add(24*time.Hour), time.Now().UTC().Add(25*time.Hour), venueID); err != nil {
+	if _, err = db.Exec(context.Background(), `INSERT INTO games(id,source_type,created_by_user_id,title,starts_at,ends_at,venue_id,capacity,waitlist_enabled,waitlist_size,minimum_skill_level,maximum_skill_level,visibility) VALUES($1,'manual',$2,'Game Test Match',$3,$4,$5,2,true,2,'learning','advanced','public')`, gameID, users[0].ID, time.Now().UTC().Add(24*time.Hour), time.Now().UTC().Add(25*time.Hour), venueID); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}
@@ -94,6 +96,169 @@ func integrationGameFixture(t *testing.T) gameFixture {
 
 func gameIntegrationRequest(method, path string, user auth.User) *http.Request {
 	return httptest.NewRequest(method, path, strings.NewReader("")).WithContext(auth.WithUserContext(context.Background(), user))
+}
+
+func gameIntegrationRequestWithBody(method, path, body string, user auth.User) *http.Request {
+	request := httptest.NewRequest(method, path, strings.NewReader(body)).WithContext(auth.WithUserContext(context.Background(), user))
+	request.Header.Set("Content-Type", "application/json")
+	return request
+}
+
+func TestChatIntegrationPaginatesLatestAndOlderMessages(t *testing.T) {
+	fixture := integrationGameFixture(t)
+	base := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	for index := 0; index < 25; index++ {
+		if _, err := fixture.db.Exec(context.Background(), `INSERT INTO game_chat_messages(id,game_id,user_id,body,created_at) VALUES($1,$2,$3,$4,$5)`, uuid.New(), fixture.gameID, fixture.organizer.ID, "message-"+strconv.Itoa(index), base.Add(time.Duration(index)*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	fixture.h.gameByID(w, gameIntegrationRequest(http.MethodGet, "/api/v1/games/"+fixture.gameID.String()+"/chat", fixture.player))
+	if w.Code != http.StatusOK {
+		t.Fatalf("latest status = %d, body=%s", w.Code, w.Body.String())
+	}
+	var latest chatPage
+	if err := json.Unmarshal(w.Body.Bytes(), &latest); err != nil {
+		t.Fatal(err)
+	}
+	if len(latest.Items) != 20 || latest.Items[0].Body != "message-5" || latest.Items[19].Body != "message-24" || !latest.HasMore || latest.NextCursor == nil {
+		t.Fatalf("latest page = %+v", latest)
+	}
+
+	w = httptest.NewRecorder()
+	request := gameIntegrationRequest(http.MethodGet, "/api/v1/games/"+fixture.gameID.String()+"/chat?before="+*latest.NextCursor, fixture.player)
+	fixture.h.gameByID(w, request)
+	if w.Code != http.StatusOK {
+		t.Fatalf("older status = %d, body=%s", w.Code, w.Body.String())
+	}
+	var older chatPage
+	if err := json.Unmarshal(w.Body.Bytes(), &older); err != nil {
+		t.Fatal(err)
+	}
+	if len(older.Items) != 5 || older.Items[0].Body != "message-0" || older.Items[4].Body != "message-4" || older.HasMore || older.NextCursor != nil {
+		t.Fatalf("older page = %+v", older)
+	}
+}
+
+func TestChatIntegrationOrdersEqualTimestampsByMessageID(t *testing.T) {
+	fixture := integrationGameFixture(t)
+	createdAt := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	lowID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	highID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	for _, message := range []struct {
+		id   uuid.UUID
+		body string
+	}{{lowID, "lower id"}, {highID, "higher id"}} {
+		if _, err := fixture.db.Exec(context.Background(), `INSERT INTO game_chat_messages(id,game_id,user_id,body,created_at) VALUES($1,$2,$3,$4,$5)`, message.id, fixture.gameID, fixture.organizer.ID, message.body, createdAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w := httptest.NewRecorder()
+	fixture.h.gameByID(w, gameIntegrationRequest(http.MethodGet, "/api/v1/games/"+fixture.gameID.String()+"/chat", fixture.player))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	var result chatPage
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 2 || result.Items[0].Body != "lower id" || result.Items[1].Body != "higher id" {
+		t.Fatalf("items = %+v", result.Items)
+	}
+}
+
+func TestChatIntegrationValidatesMessageBody(t *testing.T) {
+	fixture := integrationGameFixture(t)
+	for _, body := range []string{" ", strings.Repeat("x", 2001)} {
+		w := httptest.NewRecorder()
+		fixture.h.gameByID(w, gameIntegrationRequestWithBody(http.MethodPost, "/api/v1/games/"+fixture.gameID.String()+"/chat", `{"body":"`+body+`"}`, fixture.player))
+		if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), `"code":"invalid_chat_message"`) {
+			t.Fatalf("body length %d status = %d, body=%s", len(body), w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestChatIntegrationAllowsOnlyConfirmedPlayersAndLateJoinersSeeHistory(t *testing.T) {
+	fixture := integrationGameFixture(t)
+	if _, err := fixture.db.Exec(context.Background(), `UPDATE games SET capacity=3 WHERE id=$1`, fixture.gameID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec(context.Background(), `INSERT INTO game_chat_messages(id,game_id,user_id,body) VALUES($1,$2,$3,'before join')`, uuid.New(), fixture.gameID, fixture.organizer.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, user := range []auth.User{fixture.waitlisted, fixture.outsider} {
+		w := httptest.NewRecorder()
+		fixture.h.gameByID(w, gameIntegrationRequest(http.MethodGet, "/api/v1/games/"+fixture.gameID.String()+"/chat", user))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("unauthorized chat status = %d, body=%s", w.Code, w.Body.String())
+		}
+	}
+
+	w := httptest.NewRecorder()
+	fixture.h.gameByID(w, gameIntegrationRequest(http.MethodPost, "/api/v1/games/"+fixture.gameID.String()+"/join", fixture.outsider))
+	if w.Code != http.StatusOK {
+		t.Fatalf("late join status = %d, body=%s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	fixture.h.gameByID(w, gameIntegrationRequest(http.MethodGet, "/api/v1/games/"+fixture.gameID.String()+"/chat", fixture.outsider))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "before join") {
+		t.Fatalf("late join chat status = %d, body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestChatIntegrationCreatesInAppNotificationsForOtherConfirmedPlayers(t *testing.T) {
+	fixture := integrationGameFixture(t)
+	publisher := &recordingPublisher{}
+	fixture.h.Notifications = publisher
+	w := httptest.NewRecorder()
+	fixture.h.gameByID(w, gameIntegrationRequestWithBody(http.MethodPost, "/api/v1/games/"+fixture.gameID.String()+"/chat", `{"body":"Bring a net"}`, fixture.player))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("send status = %d, body=%s", w.Code, w.Body.String())
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("events = %+v", publisher.events)
+	}
+	event := publisher.events[0]
+	if event.UserID != fixture.organizer.ID || event.Type != notification.GameChatMessage || event.ActionURL != "/games/"+fixture.gameID.String() || len(event.Channels) != 1 || event.Channels[0] != "in_app" {
+		t.Fatalf("event = %+v", event)
+	}
+	if event.Body != "Uma nova mensagem foi enviada no chat da sua partida Game Test Match." {
+		t.Fatalf("event body = %q", event.Body)
+	}
+	payload, ok := event.Payload.(map[string]string)
+	if !ok || payload["gameId"] != fixture.gameID.String() || payload["senderId"] != fixture.player.ID.String() || payload["messageId"] == "" {
+		t.Fatalf("payload = %#v", event.Payload)
+	}
+
+	var body string
+	if err := fixture.db.QueryRow(context.Background(), `SELECT body FROM game_chat_messages WHERE game_id=$1 AND user_id=$2`, fixture.gameID, fixture.player.ID).Scan(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body != "Bring a net" {
+		t.Fatalf("body = %q", body)
+	}
+}
+
+func TestChatIntegrationPreservesHistoryButClosesSendingAfterCancellation(t *testing.T) {
+	fixture := integrationGameFixture(t)
+	if _, err := fixture.db.Exec(context.Background(), `INSERT INTO game_chat_messages(id,game_id,user_id,body) VALUES($1,$2,$3,'history')`, uuid.New(), fixture.gameID, fixture.organizer.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec(context.Background(), `UPDATE games SET status='cancelled' WHERE id=$1`, fixture.gameID); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	fixture.h.gameByID(w, gameIntegrationRequest(http.MethodGet, "/api/v1/games/"+fixture.gameID.String()+"/chat", fixture.player))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "history") {
+		t.Fatalf("history status = %d, body=%s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	fixture.h.gameByID(w, gameIntegrationRequestWithBody(http.MethodPost, "/api/v1/games/"+fixture.gameID.String()+"/chat", `{"body":"too late"}`, fixture.player))
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"code":"game_chat_closed"`) {
+		t.Fatalf("closed send status = %d, body=%s", w.Code, w.Body.String())
+	}
 }
 
 func TestRemovePlayerIntegrationNotifiesEntireWaitlistWithoutPromotion(t *testing.T) {

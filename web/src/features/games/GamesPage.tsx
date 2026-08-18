@@ -26,6 +26,7 @@ import { sortGamesForDisplay } from './gameOrdering';
 import { DatePickerField, TimePickerField } from '../../components/DateTimePicker';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useOnlineStatus } from '../../platform/useOnlineStatus';
+import { GameChat } from './GameChat';
 
 const levels: GameSkillLevel[] = [
   'learning',
@@ -742,19 +743,21 @@ export function GameDetailsPage() {
           game.players?.some((player) => player.role !== 'organizer') && (
             <section className="inline-panel" aria-label="Gerenciar jogadores">
               <h2>Gerenciar jogadores</h2>
-              {game.players
-                ?.filter((player) => player.role !== 'organizer')
-                .map((player) => (
-                  <button
-                    className="text-button"
-                    type="button"
-                    disabled={busy}
-                    key={player.id}
-                    onClick={() => removePlayer(player.id, player.displayName)}
-                  >
-                    Remover {player.displayName}
-                  </button>
-                ))}
+              <div className="player-removal-actions">
+                {game.players
+                  ?.filter((player) => player.role !== 'organizer')
+                  .map((player) => (
+                    <button
+                      className="text-button"
+                      type="button"
+                      disabled={busy}
+                      key={player.id}
+                      onClick={() => removePlayer(player.id, player.displayName)}
+                    >
+                      Remover {player.displayName}
+                    </button>
+                  ))}
+              </div>
             </section>
           )}
         {game.waitlistEnabled && (
@@ -818,6 +821,9 @@ export function GameDetailsPage() {
           </button>
         )}
       </section>
+      {game.currentUserStatus === 'confirmed' && (
+        <GameChat gameId={game.id} isOnline={isOnline} canSend={game.status === 'scheduled'} />
+      )}
       {confirmation && (
         <ConfirmDialog
           title={confirmation.title}

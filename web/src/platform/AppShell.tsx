@@ -41,6 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     queryFn: () => notificationApi.list(1, 1),
     enabled: Boolean(currentUser.data),
     staleTime: 30_000,
+    refetchInterval: 30_000,
   });
   const showNavigation = !isPublicOnlyRoute(location.pathname);
   const notificationCount = unread.data?.unreadCount ?? 0;

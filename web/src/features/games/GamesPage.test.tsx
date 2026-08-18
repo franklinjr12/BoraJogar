@@ -661,6 +661,7 @@ describe('GameDetailsPage', () => {
       players: [
         { id: 'host-1', displayName: 'Host', role: 'organizer' },
         { id: 'player-1', displayName: 'Bruno', role: 'player' },
+        { id: 'player-2', displayName: 'Camila', role: 'player' },
       ],
     };
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
@@ -691,6 +692,12 @@ describe('GameDetailsPage', () => {
     expect(
       await screen.findByDisplayValue(`${window.location.origin}/games/game-1?access=secret`),
     ).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Gerenciar jogadores' })).toContainElement(
+      screen.getByRole('button', { name: 'Remover Bruno' }),
+    );
+    expect(screen.getByRole('region', { name: 'Gerenciar jogadores' })).toContainElement(
+      screen.getByRole('button', { name: 'Remover Camila' }),
+    );
     fireEvent.click(screen.getByText(/abrir mapa do local/i));
     expect(screen.getByRole('link', { name: 'Google Maps' })).toHaveAttribute(
       'href',

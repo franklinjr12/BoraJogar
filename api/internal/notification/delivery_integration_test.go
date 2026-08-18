@@ -67,6 +67,46 @@ func TestDeliverPendingEmailIntegration(t *testing.T) {
 	}
 }
 
+func TestPublishWithSelectedChannelsCreatesOnlyThoseDeliveriesIntegration(t *testing.T) {
+	db := integrationNotificationDB(t)
+	defer db.Close()
+	ctx := context.Background()
+	userID := uuid.New()
+	t.Cleanup(func() { _, _ = db.Exec(ctx, `DELETE FROM users WHERE id=$1`, userID) })
+	if _, err := db.Exec(ctx, `INSERT INTO users (id, google_subject, email, display_name) VALUES ($1,$2,$3,$4)`, userID, "notification-chat-"+userID.String(), "chat-"+userID.String()+"@example.com", "Chat Test"); err != nil {
+		t.Fatal(err)
+	}
+
+	service := Service{DB: db}
+	if err := service.Publish(ctx, EventInput{
+		UserID:   userID,
+		Type:     GameChatMessage,
+		Title:    "Nova mensagem na partida",
+		Body:     "Uma nova mensagem foi enviada no chat da sua partida.",
+		Channels: []string{"in_app"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var channels []string
+	rows, err := db.Query(ctx, `SELECT d.channel FROM notification_deliveries d JOIN notification_events e ON e.id=d.notification_event_id WHERE e.user_id=$1 ORDER BY d.channel`, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var channel string
+		if err := rows.Scan(&channel); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		channels = append(channels, channel)
+	}
+	rows.Close()
+	if len(channels) != 1 || channels[0] != "in_app" {
+		t.Fatalf("channels = %v", channels)
+	}
+}
+
 func TestDeliverPendingEmailDisablesOptedOutDeliveryIntegration(t *testing.T) {
 	db := integrationNotificationDB(t)
 	defer db.Close()

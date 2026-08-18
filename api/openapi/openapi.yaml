@@ -211,6 +211,29 @@ paths:
       parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/GameUpdate' } } } }
       responses: { '200': { description: Updated game }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /api/v1/games/{gameId}/chat:
+    get:
+      summary: List private game chat messages
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { in: path, name: gameId, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: before, required: false, schema: { type: string }, description: Opaque cursor for older messages }
+      responses:
+        '200': { description: Chat messages, content: { application/json: { schema: { $ref: '#/components/schemas/GameChatPage' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    post:
+      summary: Send private game chat message
+      security: [{ cookieAuth: [] }]
+      parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/GameChatMessageInput' } } } }
+      responses:
+        '201': { description: Chat message created, content: { application/json: { schema: { $ref: '#/components/schemas/GameChatMessage' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/games/{gameId}/calendar.ics:
     get:
       summary: Export game as iCalendar event
@@ -495,6 +518,29 @@ components:
         maximumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
         visibility: { type: string, enum: [public, link-only, private] }
         status: { type: string, enum: [scheduled, cancelled, completed] }
+    GameChatMessage:
+      type: object
+      required: [id, gameId, userId, displayName, body, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        gameId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+        body: { type: string, minLength: 1, maxLength: 2000 }
+        createdAt: { type: string, format: date-time }
+    GameChatMessageInput:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 2000 }
+    GameChatPage:
+      type: object
+      required: [items, hasMore, nextCursor, pageSize]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/GameChatMessage' } }
+        hasMore: { type: boolean }
+        nextCursor: { type: string, nullable: true }
+        pageSize: { type: integer, enum: [20] }
     AvailabilitySummary:
       type: object
       required: [id, weekday, start, end, labels]
@@ -633,6 +679,7 @@ components:
   responses:
     Unauthorized: { description: Authentication required, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
     Forbidden: { description: Administrator access required, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+    NotFound: { description: Resource unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
     Conflict: { description: Request conflicts with existing state, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
     RateLimited: { description: Error reporting rate limit exceeded, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
     AuthResult: { description: Authenticated session and redirect target, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResult' } } } }

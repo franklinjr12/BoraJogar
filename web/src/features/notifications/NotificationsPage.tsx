@@ -134,10 +134,15 @@ export function NotificationsPage() {
             <section className="choice-list" aria-label="Lista de notificações">
               {items.map((item) => {
                 const actionUrl = internalActionUrl(item.actionUrl);
+                const localizedMessage = notificationMessage(item.type);
+                const displayBody =
+                  item.type === 'game_chat_message'
+                    ? item.body
+                    : (localizedMessage?.body ?? item.body);
                 return (
                   <article className={item.readAt ? 'card' : 'card selected'} key={item.id}>
-                    <h2>{notificationMessage(item.type)?.title ?? item.title}</h2>
-                    <p>{notificationMessage(item.type)?.body ?? item.body}</p>
+                    <h2>{localizedMessage?.title ?? item.title}</h2>
+                    <p>{displayBody}</p>
                     <small>
                       {formatDate(item.createdAt, { dateStyle: 'short', timeStyle: 'short' })}
                     </small>

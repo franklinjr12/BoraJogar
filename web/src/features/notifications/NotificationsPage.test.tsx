@@ -100,4 +100,49 @@ describe('NotificationsPage', () => {
     expect(links).toHaveLength(1);
     expect(links[0]).toHaveAttribute('href', '/games/game-1');
   });
+
+  it('renders the match name in game chat notifications', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              items: [
+                {
+                  id: 'chat-notification',
+                  userId: 'user-1',
+                  type: 'game_chat_message',
+                  title: 'Generic title',
+                  body: 'Uma nova mensagem foi enviada no chat da sua partida Sábado na Praia.',
+                  actionUrl: '/games/game-1',
+                  payload: {},
+                  readAt: null,
+                  createdAt: '2026-08-05T12:00:00Z',
+                },
+              ],
+              unreadCount: 1,
+              hasMore: false,
+              page: 1,
+              pageSize: 20,
+            }),
+            { status: 200 },
+          ),
+        ),
+      ),
+    );
+
+    render(
+      <MemoryRouter>
+        <NotificationsPage />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Nova mensagem na partida' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Uma nova mensagem foi enviada no chat da sua partida Sábado na Praia.'),
+    ).toBeInTheDocument();
+  });
 });

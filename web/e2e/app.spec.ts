@@ -230,6 +230,57 @@ test.describe('Bora Jogar real backend E2E', () => {
     await expect(page.getByRole('heading', { name: /que bom ver você, returning/i })).toBeVisible();
   });
 
+  test('keeps game chat private, preserves history, and notifies confirmed players', async ({
+    browser,
+    page,
+  }) => {
+    const firstBody = `Bring a net ${test.info().project.name}`;
+    const secondBody = `I will be late 5 minutes ${test.info().project.name}`;
+    const gamePath = '/games/60000000-0000-0000-0000-000000000102';
+
+    await signIn(page, sessions.ana);
+    await page.goto(gamePath);
+    await expect(page.getByRole('heading', { name: 'Chat da partida' })).toBeVisible();
+    await page.getByLabel('Nova mensagem').fill(firstBody);
+    await page.getByRole('button', { name: 'Enviar mensagem' }).click();
+    await expect(page.getByText(firstBody)).toBeVisible();
+
+    const bruno = await browser.newPage();
+    const carla = await browser.newPage();
+    try {
+      await signIn(bruno, sessions.bruno);
+      await bruno.goto(gamePath);
+      await expect(bruno.getByRole('heading', { name: 'Chat da partida' })).toBeVisible();
+      await expect(bruno.getByText(firstBody)).toBeVisible();
+      await bruno.getByLabel('Nova mensagem').fill(secondBody);
+      await bruno.getByRole('button', { name: 'Enviar mensagem' }).click();
+      await expect(bruno.getByText(secondBody)).toBeVisible();
+
+      await page.goto('/notifications');
+      const chatNotification = page
+        .locator('article')
+        .filter({ hasText: 'Nova mensagem na partida' })
+        .first();
+      await expect(chatNotification).toBeVisible();
+      await expect(chatNotification).toContainText(
+        'Uma nova mensagem foi enviada no chat da sua partida E2E Full Game.',
+      );
+      await expect(chatNotification.getByRole('link', { name: 'Abrir' })).toHaveAttribute(
+        'href',
+        gamePath,
+      );
+
+      await signIn(carla, sessions.carla);
+      await carla.goto(gamePath);
+      const waitlistButton = carla.getByRole('button', { name: /entrar na lista de espera/i });
+      if (await waitlistButton.count()) await waitlistButton.click();
+      await expect(carla.getByRole('heading', { name: 'Chat da partida' })).toHaveCount(0);
+    } finally {
+      await bruno.close();
+      await carla.close();
+    }
+  });
+
   test('waitlists a player when a real backend game is full', async ({ page }) => {
     await signIn(page, sessions.carla);
     await page.goto('/games/60000000-0000-0000-0000-000000000102');

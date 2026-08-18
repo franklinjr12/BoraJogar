@@ -36,6 +36,7 @@ const (
 	GameReminder         Type = "game_reminder"
 	ReportReceived       Type = "report_received"
 	AttendanceRequested  Type = "attendance_requested"
+	GameChatMessage      Type = "game_chat_message"
 )
 
 type Event struct {
@@ -69,6 +70,7 @@ type EventInput struct {
 	Type                   Type
 	Title, Body, ActionURL string
 	Payload                any
+	Channels               []string
 }
 
 type GameCancellationPayload struct {
@@ -101,7 +103,11 @@ func (s Service) Publish(ctx context.Context, input EventInput) error {
 	if err != nil {
 		return err
 	}
-	for _, channel := range []string{"in_app", "email", "web_push"} {
+	channels := input.Channels
+	if len(channels) == 0 {
+		channels = []string{"in_app", "email", "web_push"}
+	}
+	for _, channel := range channels {
 		if _, err = tx.Exec(ctx, `INSERT INTO notification_deliveries (id,notification_event_id,channel) VALUES ($1,$2,$3)`, uuid.New(), eventID, channel); err != nil {
 			return err
 		}

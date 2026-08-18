@@ -120,6 +120,20 @@ export interface Game {
   currentUserRole?: string;
   shareUrl?: string;
 }
+export interface GameChatMessage {
+  id: string;
+  gameId: string;
+  userId: string;
+  displayName: string;
+  body: string;
+  createdAt: string;
+}
+export interface GameChatPage {
+  items: GameChatMessage[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  pageSize: 20;
+}
 export interface GameInput {
   startsAt: string;
   durationMinutes: 60 | 90 | 120;
@@ -537,6 +551,15 @@ export const gameApi = {
     ),
   calendarURL: (id: string, access?: string) =>
     `/api/v1/games/${id}/calendar.ics${access ? `?access=${encodeURIComponent(access)}` : ''}`,
+  chat: (id: string, before?: string) => {
+    const query = before ? `?before=${encodeURIComponent(before)}` : '';
+    return request<GameChatPage>(`/api/v1/games/${encodeURIComponent(id)}/chat${query}`);
+  },
+  sendChatMessage: (id: string, body: string) =>
+    request<GameChatMessage>(`/api/v1/games/${encodeURIComponent(id)}/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
 };
 
 export const attendanceApi = {
