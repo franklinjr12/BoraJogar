@@ -7,9 +7,19 @@
 * {
   box-sizing: border-box;
 }
+:root {
+  color-scheme: light;
+}
+html,
+body,
+#root {
+  max-width: 100%;
+  overflow-x: hidden;
+}
 body {
   margin: 0;
   min-width: 320px;
+  background: #f4f8f5;
 }
 .mobile-nav {
   position: sticky;
@@ -134,21 +144,23 @@ body {
 }
 .login-form .button {
   width: 100%;
+  margin-top: 0.5rem;
   text-align: center;
 }
 .password-field {
   display: flex;
   align-items: stretch;
+  gap: 0.5rem;
 }
 .password-field input {
   min-width: 0;
   flex: 1;
-  border-radius: 0.7rem 0 0 0.7rem;
+  border-radius: 0.7rem;
 }
 .password-toggle {
+  flex: 0 0 auto;
   border: 1px solid #b8d0c9;
-  border-left: 0;
-  border-radius: 0 0.7rem 0.7rem 0;
+  border-radius: 0.7rem;
   padding: 0 0.8rem;
   background: #edf8f4;
 }
@@ -241,11 +253,20 @@ button:disabled {
 }
 label {
   display: grid;
+  min-width: 0;
   gap: 0.45rem;
   margin: 1.25rem 0;
   font-weight: 700;
 }
+form,
+fieldset {
+  min-width: 0;
+  max-width: 100%;
+}
 input {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid #b8d0c9;
   border-radius: 0.7rem;
   padding: 0.85rem;
@@ -253,8 +274,16 @@ input {
   color: inherit;
   background: white;
 }
+input[type='checkbox'],
+input[type='radio'] {
+  width: auto;
+  max-width: none;
+}
 select,
 textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid #b8d0c9;
   border-radius: 0.7rem;
   padding: 0.85rem;
@@ -347,6 +376,8 @@ textarea:focus-visible {
   font-weight: 700;
 }
 .card {
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid #d5e5df;
   border-radius: 1.25rem;
   padding: 1.5rem;
@@ -563,6 +594,8 @@ textarea:focus-visible {
 }
 .map-panel,
 .map-fallback {
+  width: 100%;
+  max-width: 100%;
   min-height: 20rem;
   height: 20rem;
   border-radius: 1rem;
@@ -578,6 +611,8 @@ textarea:focus-visible {
 }
 .venue-form {
   display: grid;
+  min-width: 0;
+  max-width: 100%;
   gap: 0.25rem;
 }
 .venue-form label {
@@ -630,6 +665,9 @@ textarea:focus-visible {
 }
 .map-shell {
   position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 .map-pin {
   position: absolute;
@@ -697,11 +735,23 @@ textarea:focus-visible {
   gap: 0.5rem;
 }
 .google-place-search {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 2.75rem;
+  color-scheme: light;
+  scroll-margin-block: 1rem;
 }
 .google-place-search > gmp-place-autocomplete {
   display: block;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  color-scheme: light;
+}
+.google-place-search:focus-within {
+  position: relative;
+  z-index: 2;
 }
 .place-result {
   display: grid;
@@ -798,6 +848,7 @@ textarea:focus-visible {
 }
 .time-fields {
   display: grid;
+  min-width: 0;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
 }
@@ -1099,6 +1150,21 @@ textarea:focus-visible {
 .availability-row small {
   color: #5c706b;
   font-size: 0.9rem;
+}
+.logout-button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  margin-top: 1.25rem;
+  border: 2px solid #a52424;
+  border-radius: 0.7rem;
+  padding: 0.65rem 1rem;
+  color: #a52424;
+  background: #fff7f7;
+  font-weight: 800;
+}
+.logout-button:hover {
+  background: #ffeaea;
 }
 @media (max-width: 760px) {
   .location-grid {

@@ -363,6 +363,8 @@ describe('CreateGamePage', () => {
     );
 
     await screen.findByRole('heading', { name: /configure uma partida/i });
+    await waitFor(() => expect(screen.getByLabelText(/^quadra$/i)).toHaveValue('venue:venue-1'));
+    expect(screen.queryByText(/pesquisar local no google maps/i)).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/^data$/i), { target: { value: futureGameDate } });
     fireEvent.change(screen.getByLabelText(/horário de início/i), { target: { value: '09:00' } });
     fireEvent.change(screen.getByLabelText(/^quadra$/i), { target: { value: 'venue:venue-2' } });
@@ -1054,6 +1056,72 @@ describe('GameDetailsPage', () => {
     fireEvent.click(link);
     expect(localStorage.getItem('borajogar_onboarding_goal')).toBe('join_game');
     expect(localStorage.getItem('borajogar_return_to')).toBe('/games/game-1?access=secret');
+  });
+
+  it('shows the conflicting game and links to its details after a join conflict', async () => {
+    const game = {
+      id: 'game-1',
+      title: 'New game',
+      startsAt: '2099-08-01T12:00:00Z',
+      endsAt: '2099-08-01T13:30:00Z',
+      venueId: 'venue-1',
+      venueName: 'New court',
+      latitude: -23.5,
+      longitude: -46.6,
+      capacity: 4,
+      confirmedPlayers: 1,
+      openSlots: 3,
+      minimumSkillLevel: 'beginner',
+      maximumSkillLevel: 'advanced',
+      visibility: 'public',
+      status: 'scheduled',
+      currentUserStatus: '',
+    };
+    const conflictID = 'game-conflict';
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && url.endsWith('/join')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: {
+                code: 'conflicting_game',
+                message: 'You already have a conflicting confirmed game.',
+                fields: {
+                  gameId: conflictID,
+                  title: 'Existing match',
+                  startsAt: '2099-08-01T12:00:00Z',
+                  endsAt: '2099-08-01T13:30:00Z',
+                  venueName: 'Existing court',
+                  addressLabel: 'Beach entrance',
+                },
+              },
+            }),
+            { status: 409 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(game), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/games/game-1']}>
+        <Routes>
+          <Route path="/games/:id" element={<GameDetailsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /participar da partida/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Você já tem uma partida nesse horário.',
+    );
+    expect(screen.getByText('Existing match')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /ver partida conflitante/i })).toHaveAttribute(
+      'href',
+      `/games/${conflictID}`,
+    );
   });
 
   it('clearly marks cancelled games and hides active match actions', async () => {

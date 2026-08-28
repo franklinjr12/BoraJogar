@@ -246,7 +246,7 @@ paths:
       parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }, { in: query, name: access, schema: { type: string } }]
       responses: { '200': { description: Game preview, content: { application/json: { schema: { $ref: '#/components/schemas/GamePreview' } } } }, '404': { description: Game unavailable } }
   /api/v1/games/{gameId}/join:
-    post: { summary: Join game or waitlist, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Join result }, '409': { description: Join rejected } } }
+    post: { summary: Join game or waitlist, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Join result }, '409': { description: "Join rejected; conflicting_game errors include the conflicting game in error.fields.", content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }, '422': { $ref: '#/components/responses/ValidationError' } } }
   /api/v1/games/{gameId}/leave:
     post: { summary: Leave game, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Leave result } } }
   /api/v1/games/{gameId}/players/{userId}:
@@ -674,7 +674,7 @@ components:
           properties:
             code: { type: string }
             message: { type: string }
-            fields: { type: object, additionalProperties: { type: string } }
+            fields: { type: object, additionalProperties: { type: string }, description: For conflicting_game, includes gameId, title, startsAt, endsAt, venueName, and optional addressLabel. }
         requestId: { type: string }
   responses:
     Unauthorized: { description: Authentication required, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }

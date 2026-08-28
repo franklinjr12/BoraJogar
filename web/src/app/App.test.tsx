@@ -170,6 +170,9 @@ describe('login screen', () => {
       target: { value: 'local@example.com' },
     });
     fireEvent.change(screen.getByLabelText(/senha/i), { target: { value: 'pw' } });
+    expect(screen.getByRole('button', { name: /mostrar valor digitado/i })).toHaveClass(
+      'password-toggle',
+    );
     const loginForm = screen.getByLabelText(/e-mail/i).closest('form');
     if (!loginForm) throw new Error('Login form was not found.');
     fireEvent.click(within(loginForm).getByRole('button', { name: /^criar conta$/i }));

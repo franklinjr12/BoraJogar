@@ -53,7 +53,13 @@ export function AvailabilityPage() {
   );
 }
 
-export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
+export function AvailabilityEditor({
+  compact = false,
+  onFirstAvailabilityCreated,
+}: {
+  compact?: boolean;
+  onFirstAvailabilityCreated?: () => void | Promise<void>;
+}) {
   const [rules, setRules] = useState<AvailabilityRule[]>([]);
   const [exceptions, setExceptions] = useState<AvailabilityException[]>([]);
   const [areas, setAreas] = useState<PreferredArea[]>([]);
@@ -177,6 +183,7 @@ export function AvailabilityEditor({ compact = false }: { compact?: boolean }) {
       setMessage('Horário disponível salvo.');
       markGameAlertPromptReady();
       await load();
+      await onFirstAvailabilityCreated?.();
     } catch (err) {
       setError(
         err instanceof ApiError

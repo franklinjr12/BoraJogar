@@ -680,8 +680,17 @@ func (h Handler) join(w http.ResponseWriter, r *http.Request, id, userID uuid.UU
 		}
 	}
 	var skill string
-	if err = tx.QueryRow(r.Context(), `SELECT skill_level FROM player_profiles WHERE user_id=$1`, userID).Scan(&skill); err != nil {
-		writeError(w, 422, "profile_required", "Complete your profile before joining.")
+	err = tx.QueryRow(r.Context(), `SELECT skill_level FROM player_profiles WHERE user_id=$1`, userID).Scan(&skill)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Link joins need only a profile identity and a skill accepted by this game.
+		// Locations and availability remain optional until the player completes setup.
+		err = tx.QueryRow(r.Context(), `INSERT INTO player_profiles(user_id,skill_level) VALUES($1,$2) ON CONFLICT(user_id) DO NOTHING RETURNING skill_level`, userID, min).Scan(&skill)
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = tx.QueryRow(r.Context(), `SELECT skill_level FROM player_profiles WHERE user_id=$1`, userID).Scan(&skill)
+		}
+	}
+	if err != nil {
+		http.Error(w, "game unavailable", 500)
 		return
 	}
 	if !SkillAllowed(min, max, skill) {
@@ -707,13 +716,36 @@ func (h Handler) join(w http.ResponseWriter, r *http.Request, id, userID uuid.UU
 		http.Error(w, "game unavailable", 500)
 		return
 	}
-	var conflicting int
-	if err = tx.QueryRow(r.Context(), `SELECT count(*) FROM game_players gp JOIN games g ON g.id=gp.game_id WHERE gp.user_id=$1 AND gp.status='confirmed' AND g.status='scheduled' AND g.starts_at < $3 AND g.ends_at > $2`, userID, starts, ends).Scan(&conflicting); err != nil {
+	var conflict struct {
+		ID           uuid.UUID
+		Title        string
+		StartsAt     time.Time
+		EndsAt       time.Time
+		VenueName    string
+		AddressLabel string
+	}
+	err = tx.QueryRow(r.Context(), `SELECT g.id,COALESCE(g.title,''),g.starts_at,g.ends_at,v.name,COALESCE(v.address_label,'') FROM game_players gp JOIN games g ON g.id=gp.game_id JOIN venues v ON v.id=g.venue_id WHERE gp.user_id=$1 AND gp.status='confirmed' AND g.status='scheduled' AND g.starts_at < $3 AND g.ends_at > $2 ORDER BY g.starts_at,g.id LIMIT 1`, userID, starts, ends).Scan(&conflict.ID, &conflict.Title, &conflict.StartsAt, &conflict.EndsAt, &conflict.VenueName, &conflict.AddressLabel)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = nil
+	}
+	if err != nil {
 		http.Error(w, "game unavailable", 500)
 		return
 	}
-	if conflicting > 0 {
-		writeError(w, 409, "conflicting_game", "You already have a conflicting confirmed game.")
+	if conflict.ID != uuid.Nil {
+		fields := map[string]string{
+			"gameId":    conflict.ID.String(),
+			"startsAt":  conflict.StartsAt.Format(time.RFC3339),
+			"endsAt":    conflict.EndsAt.Format(time.RFC3339),
+			"venueName": conflict.VenueName,
+		}
+		if conflict.Title != "" {
+			fields["title"] = conflict.Title
+		}
+		if conflict.AddressLabel != "" {
+			fields["addressLabel"] = conflict.AddressLabel
+		}
+		writeErrorFields(w, 409, "conflicting_game", "You already have a conflicting confirmed game.", fields)
 		return
 	}
 	var count int
@@ -1091,4 +1123,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": message, "fields": map[string]string{}}})
+}
+
+func writeErrorFields(w http.ResponseWriter, status int, code, message string, fields map[string]string) {
+	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": message, "fields": fields}})
 }

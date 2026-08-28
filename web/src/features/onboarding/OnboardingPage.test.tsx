@@ -250,4 +250,84 @@ describe('OnboardingPage', () => {
     expect(localStorage.getItem('borajogar_onboarding_goal')).toBeNull();
     expect(localStorage.getItem('borajogar_return_to')).toBeNull();
   });
+
+  it('redirects the default onboarding flow to the dashboard after its first availability', async () => {
+    const venue = {
+      id: 'venue-1',
+      name: 'Central court',
+      city: 'Curitiba',
+      latitude: -25.43,
+      longitude: -49.27,
+      lightingStatus: 'unknown',
+      surfaceType: 'sand',
+      accessType: 'unknown',
+      active: true,
+    };
+    const rule = {
+      id: 'rule-1',
+      weekday: 6,
+      start: '09:00',
+      end: '13:00',
+      timezone: 'America/Sao_Paulo',
+      validFrom: '2026-08-28',
+      active: true,
+      venueIds: [venue.id],
+      preferredAreaIds: [],
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/v1/me')
+        return Promise.resolve(
+          response({
+            id: 'user-1',
+            displayName: 'Franklin',
+            email: 'franklin@example.com',
+            timeZone: 'America/Sao_Paulo',
+            onboardingComplete: false,
+            isAdmin: false,
+          }),
+        );
+      if (url === '/api/v1/me/onboarding/readiness')
+        return Promise.resolve(
+          response({
+            profile: true,
+            location: true,
+            availability: false,
+            profileCount: 1,
+            favoriteVenueCount: 1,
+            preferredAreaCount: 0,
+            availabilityCount: 0,
+            canComplete: false,
+            missing: ['availability'],
+          }),
+        );
+      if (url === '/api/v1/me/favorite-venues') return Promise.resolve(response([venue]));
+      if (url === '/api/v1/me/availability/rules') {
+        return Promise.resolve(response(init?.method === 'POST' ? rule : []));
+      }
+      if (url === '/api/v1/me/availability/exceptions') return Promise.resolve(response([]));
+      if (url === '/api/v1/me/onboarding/complete' && init?.method === 'POST') {
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      return Promise.resolve(response([]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/onboarding']}>
+        <Routes>
+          <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route path="/dashboard" element={<p>Dashboard</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /adicionar hor.rio dispon.vel/i }));
+
+    expect(await screen.findByText('Dashboard')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/me/onboarding/complete',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
 });

@@ -116,7 +116,7 @@ test.describe('Game details screen', () => {
     }
   });
 
-  test('creates an account from an anonymous game link and joins after quick profile setup', async ({
+  test('creates an account from an anonymous game link and joins with automatic profile defaults', async ({
     browser,
     page,
   }, testInfo) => {
@@ -136,13 +136,6 @@ test.describe('Game details screen', () => {
       await guest.getByLabel(/e-mail/i).fill(`${uniqueSuffix(testInfo)}@example.com`);
       await guest.getByLabel(/senha/i).fill('pw');
       await guest.getByRole('button', { name: /^criar conta$/i }).click();
-
-      await expect(guest).toHaveURL(new RegExp(`${game.path}$`));
-      await guest.getByRole('button', { name: /participar da partida/i }).click();
-      await guest.getByRole('link', { name: /configurar perfil/i }).click();
-      await expect(guest).toHaveURL(/\/onboarding\?goal=join_game$/);
-      await guest.getByLabel(/nome exibido/i).fill(displayName);
-      await guest.getByRole('button', { name: /^continuar$/i }).click();
 
       await expect(guest).toHaveURL(new RegExp(`${game.path}$`));
       await guest.getByRole('button', { name: /participar da partida/i }).click();

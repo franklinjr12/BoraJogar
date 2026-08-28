@@ -328,6 +328,60 @@ func TestLeaveIntegrationAllowsWaitlistedPlayerToClaimSlot(t *testing.T) {
 	}
 }
 
+func TestJoinIntegrationCreatesDefaultProfileForNewLinkPlayer(t *testing.T) {
+	fixture := integrationGameFixture(t)
+	if _, err := fixture.db.Exec(context.Background(), `DELETE FROM player_profiles WHERE user_id=$1`, fixture.outsider.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec(context.Background(), `UPDATE games SET capacity=3 WHERE id=$1`, fixture.gameID); err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	fixture.h.gameByID(w, gameIntegrationRequest(http.MethodPost, "/api/v1/games/"+fixture.gameID.String()+"/join", fixture.outsider))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"result":"confirmed"`) {
+		t.Fatalf("join status = %d, body=%s", w.Code, w.Body.String())
+	}
+	var skill string
+	if err := fixture.db.QueryRow(context.Background(), `SELECT skill_level FROM player_profiles WHERE user_id=$1`, fixture.outsider.ID).Scan(&skill); err != nil {
+		t.Fatal(err)
+	}
+	if skill != "learning" {
+		t.Fatalf("default skill = %q, want learning", skill)
+	}
+}
+
+func TestJoinIntegrationReturnsConflictingGameDetails(t *testing.T) {
+	fixture := integrationGameFixture(t)
+	conflictID := uuid.New()
+	var starts, ends time.Time
+	var venueID uuid.UUID
+	if err := fixture.db.QueryRow(context.Background(), `SELECT starts_at,ends_at,venue_id FROM games WHERE id=$1`, fixture.gameID).Scan(&starts, &ends, &venueID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec(context.Background(), `INSERT INTO games(id,source_type,created_by_user_id,title,starts_at,ends_at,venue_id,capacity,waitlist_enabled,waitlist_size,minimum_skill_level,maximum_skill_level,visibility) VALUES($1,'manual',$2,'Existing match',$3,$4,$5,4,false,0,'learning','advanced','public')`, conflictID, fixture.organizer.ID, starts, ends, venueID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = fixture.db.Exec(context.Background(), `DELETE FROM games WHERE id=$1`, conflictID)
+	})
+	if _, err := fixture.db.Exec(context.Background(), `INSERT INTO game_players(game_id,user_id,role,status,attendance_status) VALUES($1,$2,'player','confirmed','unknown')`, conflictID, fixture.outsider.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	fixture.h.gameByID(w, gameIntegrationRequest(http.MethodPost, "/api/v1/games/"+fixture.gameID.String()+"/join", fixture.outsider))
+	body := w.Body.String()
+	if w.Code != http.StatusConflict || !strings.Contains(body, `"code":"conflicting_game"`) {
+		t.Fatalf("conflict status = %d, body=%s", w.Code, body)
+	}
+	for _, value := range []string{conflictID.String(), "Existing match", "Game Test Court"} {
+		if !strings.Contains(body, value) {
+			t.Fatalf("conflict body missing %q: %s", value, body)
+		}
+	}
+}
+
 func TestJoinIntegrationHonorsWaitlistCapacityAndDisabledGames(t *testing.T) {
 	fixture := integrationGameFixture(t)
 	w := httptest.NewRecorder()

@@ -32,6 +32,14 @@ export function GooglePlaceSearch({
     if (!node.current) return;
     let disposed = false;
     let autocomplete: google.maps.places.PlaceAutocompleteElement | undefined;
+    let focusScrollTimer: number | undefined;
+    const onFocusIn = () => {
+      window.clearTimeout(focusScrollTimer);
+      focusScrollTimer = window.setTimeout(() => {
+        if (disposed || typeof node.current?.scrollIntoView !== 'function') return;
+        node.current.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' });
+      }, 150);
+    };
     void loadGoogleMaps()
       .then(({ places }) => {
         if (disposed || !node.current) return;
@@ -42,6 +50,9 @@ export function GooglePlaceSearch({
         });
         autocomplete.placeholder = placeholder;
         autocomplete.description = 'Pesquisar nome, bairro ou endereço';
+        autocomplete.style.display = 'block';
+        autocomplete.style.width = '100%';
+        autocomplete.style.maxWidth = '100%';
         autocomplete.locationBias = {
           center: { lat: point.latitude, lng: point.longitude },
           radius: 20000,
@@ -66,6 +77,7 @@ export function GooglePlaceSearch({
           }
         });
         node.current.appendChild(autocomplete);
+        node.current.addEventListener('focusin', onFocusIn);
       })
       .catch((error: unknown) => {
         captureClientError('uncaught_error', error);
@@ -76,6 +88,8 @@ export function GooglePlaceSearch({
 
     return () => {
       disposed = true;
+      window.clearTimeout(focusScrollTimer);
+      node.current?.removeEventListener('focusin', onFocusIn);
       autocomplete?.remove();
     };
   }, [placeholder, point.latitude, point.longitude]);

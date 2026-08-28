@@ -259,7 +259,9 @@ describe('profile editing', () => {
 
     renderApp('/profile');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Ana' })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /sair/i }));
+    const signOutButton = screen.getByRole('button', { name: /sair/i });
+    expect(signOutButton).toHaveClass('logout-button');
+    fireEvent.click(signOutButton);
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(

@@ -49,6 +49,29 @@ interface ConfirmationRequest {
 type ProfileRequiredGoal = 'create_game' | 'join_game';
 const joinProfileRequiredMessage = 'Informe seu nome e nível para entrar nesta partida.';
 
+interface ConflictingGame {
+  id: string;
+  title?: string;
+  startsAt: string;
+  endsAt: string;
+  venueName: string;
+  addressLabel?: string;
+}
+
+function conflictingGameFromError(cause: unknown): ConflictingGame | null {
+  if (!(cause instanceof ApiError) || cause.code !== 'conflicting_game') return null;
+  const fields = cause.fields;
+  if (!fields.gameId || !fields.startsAt || !fields.endsAt || !fields.venueName) return null;
+  return {
+    id: fields.gameId,
+    startsAt: fields.startsAt,
+    endsAt: fields.endsAt,
+    venueName: fields.venueName,
+    ...(fields.title ? { title: fields.title } : {}),
+    ...(fields.addressLabel ? { addressLabel: fields.addressLabel } : {}),
+  };
+}
+
 function isProfileRequiredError(cause: unknown): cause is ApiError {
   return cause instanceof ApiError && cause.code === 'profile_required';
 }
@@ -215,9 +238,14 @@ export function CreateGamePage() {
         const nextAreas = preferredAreas.filter((area) => area.active);
         setVenues(nextVenues);
         setAreas(nextAreas);
-        if (favoriteVenues.length > 0) setLocationChoice(`venue:${favoriteVenues[0]!.id}`);
-        else if (nextAreas.length > 0) setLocationChoice(`area:${nextAreas[0]!.id}`);
-        else if (nextVenues.length > 0) setLocationChoice(`venue:${nextVenues[0]!.id}`);
+        const defaultLocation = favoriteVenues.length
+          ? `venue:${favoriteVenues[0]!.id}`
+          : nextAreas.length
+            ? `area:${nextAreas[0]!.id}`
+            : nextVenues.length
+              ? `venue:${nextVenues[0]!.id}`
+              : '';
+        if (defaultLocation) setLocationChoice((current) => current || defaultLocation);
       })
       .catch(() => {
         setVenues([]);
@@ -293,7 +321,7 @@ export function CreateGamePage() {
         setError('Escolha entre 1 e 12 pessoas na lista de espera.');
         return;
       }
-      const submittedLocation = String(form.get('venueId') ?? locationChoice);
+      const submittedLocation = locationChoice;
       let gameVenueId = submittedLocation.startsWith('venue:')
         ? submittedLocation.replace('venue:', '')
         : '';
@@ -396,6 +424,7 @@ export function CreateGamePage() {
             <select
               name="venueId"
               value={locationChoice}
+              disabled={loadingLocations || saving}
               onChange={(event) => setLocationChoice(event.target.value)}
             >
               <option value="">Criar uma nova quadra</option>
@@ -423,6 +452,13 @@ export function CreateGamePage() {
             <p className="hint">
               Esta partida usará {selectedArea.label}. Você pode escolher uma quadra salva ou criar
               uma nova.
+            </p>
+          ) : locationChoice.startsWith('venue:') ? (
+            <p className="hint">
+              Esta partida usará{' '}
+              {venues.find((venue) => `venue:${venue.id}` === locationChoice)?.name ??
+                'a quadra selecionada'}
+              .
             </p>
           ) : (
             <VenueForm draft={venueDraft} onChange={setVenueDraft} disabled={!isOnline} />
@@ -509,12 +545,15 @@ export function GameDetailsPage() {
   const [preview, setPreview] = useState<GamePreview | null>(null);
   const [error, setError] = useState('');
   const [profileRequired, setProfileRequired] = useState(false);
+  const [conflictingGame, setConflictingGame] = useState<ConflictingGame | null>(null);
   const [busy, setBusy] = useState(false);
   const [shareMessage, setShareMessage] = useState('');
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const isOnline = useOnlineStatus();
   useEffect(() => {
+    setError('');
     setProfileRequired(false);
+    setConflictingGame(null);
     gameApi
       .get(id, params.get('access') ?? undefined)
       .then(setGame)
@@ -528,7 +567,7 @@ export function GameDetailsPage() {
           .catch(() => setError('Partida indisponível ou link de acesso expirado.')),
       );
   }, [id, params]);
-  if (error)
+  if (error && !game)
     return (
       <main className="shell">
         <Link className="text-link" to="/games">
@@ -597,14 +636,18 @@ export function GameDetailsPage() {
       return;
     }
     setBusy(true);
+    setError('');
     setProfileRequired(false);
+    setConflictingGame(null);
     try {
       await fn();
       markGameAlertPromptReady();
       const refreshed = await gameApi.get(id, params.get('access') ?? undefined);
       setGame(refreshed);
     } catch (cause: unknown) {
+      const nextConflictingGame = conflictingGameFromError(cause);
       setProfileRequired(isProfileRequiredError(cause));
+      setConflictingGame(nextConflictingGame);
       setError(
         cause instanceof ApiError ? cause.message : 'Não foi possível atualizar esta partida.',
       );
@@ -707,6 +750,33 @@ export function GameDetailsPage() {
             O organizador removeu você desta partida.
           </p>
         )}
+        {error &&
+          (profileRequired ? (
+            <ProfileRequiredRecovery
+              message={joinProfileRequiredMessage}
+              goal="join_game"
+              returnTo={`${currentLocation.pathname}${currentLocation.search}`}
+            />
+          ) : (
+            <div className="feedback-error" role="alert">
+              <p className="error">{error}</p>
+              {conflictingGame && (
+                <>
+                  <p>
+                    Partida conflitante:{' '}
+                    <strong>{conflictingGame.title || 'Partida de vôlei de praia'}</strong>
+                    {' · '}
+                    {localDate(conflictingGame.startsAt)}
+                    {' · '}
+                    {conflictingGame.venueName}
+                  </p>
+                  <Link className="button" to={`/games/${conflictingGame.id}`}>
+                    Ver partida conflitante
+                  </Link>
+                </>
+              )}
+            </div>
+          ))}
         {game.status !== 'cancelled' && shareURL && game.currentUserRole === 'organizer' && (
           <section className="inline-panel" aria-label="Link da partida">
             <h2>Link para convidar jogadores</h2>

@@ -194,6 +194,22 @@ export function OnboardingPage() {
     setSaving(false);
   };
 
+  const completeAfterFirstAvailability = async () => {
+    if (goal !== 'find_people') return;
+    setSaving(true);
+    try {
+      await profileApi.complete();
+      localStorage.setItem('borajogar_install_prompt_ready', 'true');
+      localStorage.removeItem('borajogar_onboarding');
+      localStorage.removeItem('borajogar_onboarding_goal');
+      navigate('/dashboard');
+    } catch {
+      setError('Não foi possível concluir a configuração. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const finish = async () => {
     if (saving) return;
     setError('');
@@ -316,7 +332,7 @@ export function OnboardingPage() {
       )}
       {step === 2 && !quickJoin && (
         <>
-          <AvailabilityEditor compact />
+          <AvailabilityEditor compact onFirstAvailabilityCreated={completeAfterFirstAvailability} />
           <p className="hint">Você pode adicionar mais horários depois.</p>
           <div className="actions">
             <button

@@ -776,7 +776,12 @@ function ProfilePage() {
           </p>
         </section>
       )}
-      <button className="text-button" type="button" onClick={signOut} disabled={signingOut}>
+      <button
+        className="text-button danger logout-button"
+        type="button"
+        onClick={signOut}
+        disabled={signingOut}
+      >
         {signingOut ? 'Saindo...' : 'Sair'}
       </button>
       <section className="account-danger-zone card">
