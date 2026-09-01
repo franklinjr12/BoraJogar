@@ -91,6 +91,11 @@ export interface AvailabilityOccurrence {
 export type GameSkillLevel = SkillLevel;
 export type GameVisibility = 'public' | 'link-only' | 'private';
 export type GameCurrentUserStatus = '' | 'confirmed' | 'waitlisted' | 'cancelled' | 'removed';
+export interface GameConfirmation {
+  enabled: boolean;
+  confirmedCount: number;
+  totalPlayers: number;
+}
 export interface Game {
   id: string;
   title?: string;
@@ -113,8 +118,16 @@ export interface Game {
   visibility: GameVisibility;
   status: 'scheduled' | 'cancelled' | 'completed';
   organizer?: { id: string; displayName: string };
-  players?: Array<{ id: string; displayName: string; role?: string; status?: string }>;
+  players?: Array<{
+    id: string;
+    displayName: string;
+    role?: string;
+    status?: string;
+    confirmationConfirmed?: boolean;
+    isCurrentUser?: boolean;
+  }>;
   waitlist?: Array<{ id: string; displayName: string }>;
+  confirmation?: GameConfirmation;
   isMember?: boolean;
   currentUserStatus?: GameCurrentUserStatus;
   currentUserRole?: string;
@@ -141,6 +154,7 @@ export interface GameInput {
   capacity: number;
   waitlistEnabled: boolean;
   waitlistSize: number;
+  confirmationEnabled: boolean;
   minimumSkillLevel: GameSkillLevel;
   maximumSkillLevel: GameSkillLevel;
   visibility: GameVisibility;
@@ -541,6 +555,11 @@ export const gameApi = {
     }),
   leaveWaitlist: (id: string) =>
     request<void>(`/api/v1/games/${id}/waitlist`, { method: 'DELETE' }),
+  setConfirmation: (id: string, confirmed: boolean) =>
+    request<void>(`/api/v1/games/${encodeURIComponent(id)}/confirmation`, {
+      method: 'PUT',
+      body: JSON.stringify({ confirmed }),
+    }),
   leave: (id: string) =>
     request<{ result: string }>(`/api/v1/games/${id}/leave`, { method: 'POST' }),
   cancel: (id: string) => request<void>(`/api/v1/games/${id}/cancel`, { method: 'POST' }),

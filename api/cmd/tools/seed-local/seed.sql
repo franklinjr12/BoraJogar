@@ -6,7 +6,7 @@ DELETE FROM audit_events WHERE id = 'b1000000-0000-0000-0000-000000000001';
 -- Fixture IDs are intentionally stable. Remove only rows owned by this seed.
 DELETE FROM reports WHERE id = 'a1000000-0000-0000-0000-000000000001';
 DELETE FROM user_blocks WHERE blocker_user_id IN ('10000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002') AND blocked_user_id = '10000000-0000-0000-0000-000000000004';
-DELETE FROM notification_events WHERE id IN ('91000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000002');
+DELETE FROM notification_events WHERE id IN ('91000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000002', '91000000-0000-0000-0000-000000000003');
 DELETE FROM notification_preferences WHERE user_id IN ('10000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000004');
 DELETE FROM proposal_participants WHERE proposal_id IN ('90000000-0000-0000-0000-000000000001');
 DELETE FROM match_proposals WHERE id IN ('90000000-0000-0000-0000-000000000001');
@@ -46,13 +46,16 @@ INSERT INTO notification_preferences (user_id) VALUES
  ('10000000-0000-0000-0000-000000000003'),
  ('10000000-0000-0000-0000-000000000004');
 
-INSERT INTO notification_events (id, user_id, type, title, body, action_url, payload, created_at) VALUES
- ('91000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'match_proposal', 'New match proposal', 'You have a new game proposal to review.', '/proposals/90000000-0000-0000-0000-000000000001', '{"proposalId":"90000000-0000-0000-0000-000000000001"}'::jsonb, '2026-07-30 13:00:00+00'),
- ('91000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', 'game_reminder', 'Game reminder', 'Your game starts tomorrow at Praia do Sol.', '/games/60000000-0000-0000-0000-000000000001', '{"gameId":"60000000-0000-0000-0000-000000000001"}'::jsonb, '2026-07-30 14:00:00+00');
+INSERT INTO notification_events (id, user_id, type, title, body, action_url, payload, dedupe_key, created_at) VALUES
+ ('91000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'match_proposal', 'New match proposal', 'You have a new game proposal to review.', '/proposals/90000000-0000-0000-0000-000000000001', '{"proposalId":"90000000-0000-0000-0000-000000000001"}'::jsonb, NULL, '2026-07-30 13:00:00+00'),
+ ('91000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', 'game_reminder', 'Game reminder', 'Your game starts tomorrow at Praia do Sol.', '/games/60000000-0000-0000-0000-000000000001', '{"gameId":"60000000-0000-0000-0000-000000000001"}'::jsonb, NULL, '2026-07-30 14:00:00+00'),
+ ('91000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000002', 'match_confirmation', 'Confirm your presence', 'Confirm your presence in the match.', '/games/60000000-0000-0000-0000-000000000002', '{"gameId":"60000000-0000-0000-0000-000000000002"}'::jsonb, 'game-confirmation:60000000-0000-0000-0000-000000000002:10000000-0000-0000-0000-000000000002', '2026-07-30 15:00:00+00');
 
 INSERT INTO notification_deliveries (id, notification_event_id, channel, status, attempt_count, delivered_at) VALUES
  ('92000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000001', 'in_app', 'delivered', 1, '2026-07-30 13:00:01+00'),
- ('92000000-0000-0000-0000-000000000002', '91000000-0000-0000-0000-000000000002', 'in_app', 'delivered', 1, '2026-07-30 14:00:01+00');
+ ('92000000-0000-0000-0000-000000000002', '91000000-0000-0000-0000-000000000002', 'in_app', 'delivered', 1, '2026-07-30 14:00:01+00'),
+ ('92000000-0000-0000-0000-000000000003', '91000000-0000-0000-0000-000000000003', 'in_app', 'delivered', 1, '2026-07-30 15:00:01+00'),
+ ('92000000-0000-0000-0000-000000000004', '91000000-0000-0000-0000-000000000003', 'email', 'delivered', 1, '2026-07-30 15:00:01+00');
 
 INSERT INTO invitations (id, code_hash, created_by_user_id, email, max_uses, current_uses, expires_at)
 VALUES ('20000000-0000-0000-0000-000000000201', 'seed-invitation-code-hash', '10000000-0000-0000-0000-000000000001', 'diego@borajogar.local', 3, 1, '2026-12-31 02:59:59+00');
@@ -125,6 +128,7 @@ VALUES
  ('60000000-0000-0000-0000-000000000003', 'manual', '10000000-0000-0000-0000-000000000003', 'Jogo encerrado', NULL, '2026-07-20 09:00:00-03', '2026-07-20 10:30:00-03', '20000000-0000-0000-0000-000000000101', 4, 'learning', 'advanced', 'public', 'completed', false, 0),
  ('60000000-0000-0000-0000-000000000101', 'manual', '10000000-0000-0000-0000-000000000001', 'E2E Open Game', 'Jogo público para cobertura end-to-end.', ((CURRENT_DATE + INTERVAL '1 day')::date + TIME '10:00') AT TIME ZONE 'America/Sao_Paulo', ((CURRENT_DATE + INTERVAL '1 day')::date + TIME '11:30') AT TIME ZONE 'America/Sao_Paulo', '20000000-0000-0000-0000-000000000104', 4, 'beginner', 'advanced', 'public', 'scheduled', false, 0),
  ('60000000-0000-0000-0000-000000000102', 'manual', '10000000-0000-0000-0000-000000000001', 'E2E Full Game', 'Jogo cheio para validar entrada em waitlist.', ((CURRENT_DATE + INTERVAL '2 days')::date + TIME '10:00') AT TIME ZONE 'America/Sao_Paulo', ((CURRENT_DATE + INTERVAL '2 days')::date + TIME '11:30') AT TIME ZONE 'America/Sao_Paulo', '20000000-0000-0000-0000-000000000104', 2, 'learning', 'competitive', 'public', 'scheduled', true, 2);
+UPDATE games SET confirmation_enabled = true WHERE id = '60000000-0000-0000-0000-000000000002';
 INSERT INTO game_players (game_id, user_id, role, status, attendance_status, invited_by_user_id) VALUES
  ('60000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'organizer', 'confirmed', 'attended', NULL),
  ('60000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 'player', 'confirmed', 'unknown', '10000000-0000-0000-0000-000000000001'),
@@ -136,6 +140,9 @@ INSERT INTO game_players (game_id, user_id, role, status, attendance_status, inv
  ('60000000-0000-0000-0000-000000000101', '10000000-0000-0000-0000-000000000001', 'organizer', 'confirmed', 'unknown', NULL),
  ('60000000-0000-0000-0000-000000000102', '10000000-0000-0000-0000-000000000001', 'organizer', 'confirmed', 'unknown', NULL),
  ('60000000-0000-0000-0000-000000000102', '10000000-0000-0000-0000-000000000002', 'player', 'confirmed', 'unknown', '10000000-0000-0000-0000-000000000001');
+UPDATE game_players SET confirmation_confirmed = true, confirmation_at = '2026-08-01 13:00:00+00'
+WHERE game_id = '60000000-0000-0000-0000-000000000002'
+  AND user_id = '10000000-0000-0000-0000-000000000002';
 UPDATE games SET completed_at = '2026-07-20 14:00:00+00', attendance_requested_at = '2026-07-20 14:00:00+00' WHERE id = '60000000-0000-0000-0000-000000000003';
 UPDATE game_players SET attendance_recorded_at = '2026-07-20 15:00:00+00', attendance_recorded_by_user_id = '10000000-0000-0000-0000-000000000003' WHERE game_id = '60000000-0000-0000-0000-000000000003';
 INSERT INTO game_invitations (id, game_id, invited_user_id, invited_email, invitation_token_hash, status, expires_at) VALUES

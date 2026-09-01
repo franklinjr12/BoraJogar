@@ -141,4 +141,20 @@ describe('typed API client', () => {
       expect.objectContaining({ method: 'DELETE', credentials: 'include' }),
     );
   });
+
+  it('sends confirmation changes through the typed game route', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await gameApi.setConfirmation('game/1', true);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/games/game%2F1/confirmation',
+      expect.objectContaining({
+        method: 'PUT',
+        credentials: 'include',
+        body: JSON.stringify({ confirmed: true }),
+      }),
+    );
+  });
 });

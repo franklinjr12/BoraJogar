@@ -95,21 +95,29 @@ type dashboardResponse struct {
 }
 type gameDetails struct {
 	gameSummary
-	Description       *string  `json:"description,omitempty"`
-	Organizer         player   `json:"organizer"`
-	Players           []player `json:"players"`
-	Waitlist          []player `json:"waitlist"`
-	IsMember          bool     `json:"isMember"`
-	CurrentUserStatus string   `json:"currentUserStatus,omitempty"`
-	CurrentUserRole   string   `json:"currentUserRole,omitempty"`
-	ShareURL          string   `json:"shareUrl,omitempty"`
+	Description       *string              `json:"description,omitempty"`
+	Organizer         player               `json:"organizer"`
+	Players           []player             `json:"players"`
+	Waitlist          []player             `json:"waitlist"`
+	Confirmation      *confirmationSummary `json:"confirmation,omitempty"`
+	IsMember          bool                 `json:"isMember"`
+	CurrentUserStatus string               `json:"currentUserStatus,omitempty"`
+	CurrentUserRole   string               `json:"currentUserRole,omitempty"`
+	ShareURL          string               `json:"shareUrl,omitempty"`
 	shareTokenHash    string
 }
+type confirmationSummary struct {
+	Enabled        bool `json:"enabled"`
+	ConfirmedCount int  `json:"confirmedCount"`
+	TotalPlayers   int  `json:"totalPlayers"`
+}
 type player struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"displayName"`
-	Role        string `json:"role,omitempty"`
-	Status      string `json:"status,omitempty"`
+	ID                    string `json:"id"`
+	DisplayName           string `json:"displayName"`
+	Role                  string `json:"role,omitempty"`
+	Status                string `json:"status,omitempty"`
+	ConfirmationConfirmed *bool  `json:"confirmationConfirmed,omitempty"`
+	IsCurrentUser         bool   `json:"isCurrentUser"`
 }
 type actionResponse struct {
 	Result string `json:"result"`
@@ -169,6 +177,14 @@ func (h Handler) gameByID(w http.ResponseWriter, r *http.Request) {
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
+		return
+	}
+	if len(parts) == 2 && parts[1] == "confirmation" {
+		if r.Method != http.MethodPut {
+			writeError(w, http.StatusMethodNotAllowed, "game_action_not_found", "Game action not found.")
+			return
+		}
+		h.confirm(w, r, id, u.ID)
 		return
 	}
 	if len(parts) > 1 && r.Method != http.MethodPost && r.Method != http.MethodDelete {
@@ -292,7 +308,7 @@ func (h Handler) create(w http.ResponseWriter, r *http.Request, userID uuid.UUID
 		http.Error(w, "game unavailable", 500)
 		return
 	}
-	if _, err = tx.Exec(r.Context(), `INSERT INTO games(id,source_type,created_by_user_id,title,description,starts_at,ends_at,venue_id,capacity,waitlist_enabled,waitlist_size,minimum_skill_level,maximum_skill_level,visibility,share_token_hash) VALUES($1,'manual',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, id, userID, nullableString(in.Title), nullableString(in.Description), starts, ends, venueID, in.Capacity, in.WaitlistEnabled, in.WaitlistSize, in.MinimumSkillLevel, in.MaximumSkillLevel, in.Visibility, hash); err != nil {
+	if _, err = tx.Exec(r.Context(), `INSERT INTO games(id,source_type,created_by_user_id,title,description,starts_at,ends_at,venue_id,capacity,waitlist_enabled,waitlist_size,confirmation_enabled,minimum_skill_level,maximum_skill_level,visibility,share_token_hash) VALUES($1,'manual',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`, id, userID, nullableString(in.Title), nullableString(in.Description), starts, ends, venueID, in.Capacity, in.WaitlistEnabled, in.WaitlistSize, in.ConfirmationEnabled, in.MinimumSkillLevel, in.MaximumSkillLevel, in.Visibility, hash); err != nil {
 		http.Error(w, "game unavailable", 500)
 		return
 	}
@@ -594,7 +610,8 @@ func (h Handler) preview(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) readDetails(r *http.Request, id, userID uuid.UUID) (gameDetails, error) {
 	var x gameDetails
-	err := h.DB.QueryRow(r.Context(), `SELECT g.id,g.title,g.description,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),(SELECT count(*) FROM game_waitlist gw WHERE gw.game_id=g.id),g.waitlist_enabled,g.waitlist_size,g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,COALESCE(g.share_token_hash,'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.id=$1`, id).Scan(&x.ID, &x.Title, &x.Description, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.WaitlistCount, &x.WaitlistEnabled, &x.WaitlistSize, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &x.shareTokenHash)
+	var confirmationEnabled bool
+	err := h.DB.QueryRow(r.Context(), `SELECT g.id,g.title,g.description,g.starts_at,g.ends_at,g.venue_id,v.name,v.address_label,ST_Y(v.location::geometry),ST_X(v.location::geometry),g.capacity,(SELECT count(*) FROM game_players gp WHERE gp.game_id=g.id AND gp.status='confirmed'),(SELECT count(*) FROM game_waitlist gw WHERE gw.game_id=g.id),g.waitlist_enabled,g.waitlist_size,g.minimum_skill_level,g.maximum_skill_level,g.visibility,g.status,g.confirmation_enabled,COALESCE(g.share_token_hash,'') FROM games g JOIN venues v ON v.id=g.venue_id WHERE g.id=$1`, id).Scan(&x.ID, &x.Title, &x.Description, &x.StartsAt, &x.EndsAt, &x.VenueID, &x.VenueName, &x.AddressLabel, &x.Latitude, &x.Longitude, &x.Capacity, &x.ConfirmedPlayers, &x.WaitlistCount, &x.WaitlistEnabled, &x.WaitlistSize, &x.MinimumSkillLevel, &x.MaximumSkillLevel, &x.Visibility, &x.Status, &confirmationEnabled, &x.shareTokenHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return x, ErrNotFound
 	}
@@ -602,13 +619,21 @@ func (h Handler) readDetails(r *http.Request, id, userID uuid.UUID) (gameDetails
 		return x, err
 	}
 	x.OpenSlots = x.Capacity - x.ConfirmedPlayers
+	var status, role string
+	err = h.DB.QueryRow(r.Context(), `SELECT COALESCE((SELECT status FROM game_players WHERE game_id=$1 AND user_id=$2),CASE WHEN EXISTS (SELECT 1 FROM game_waitlist WHERE game_id=$1 AND user_id=$2) THEN 'waitlisted' ELSE '' END),COALESCE((SELECT role FROM game_players WHERE game_id=$1 AND user_id=$2),'')`, id, userID).Scan(&status, &role)
+	if err != nil {
+		return x, err
+	}
+	x.IsMember = status == "confirmed"
+	x.CurrentUserStatus = status
+	x.CurrentUserRole = role
 	var organizer player
 	err = h.DB.QueryRow(r.Context(), `SELECT u.id,u.display_name,gp.role,gp.status FROM game_players gp JOIN users u ON u.id=gp.user_id WHERE gp.game_id=$1 AND gp.role='organizer'`, id).Scan(&organizer.ID, &organizer.DisplayName, &organizer.Role, &organizer.Status)
 	if err != nil {
 		return x, err
 	}
 	x.Organizer = organizer
-	rows, err := h.DB.Query(r.Context(), `SELECT u.id,u.display_name,gp.role,gp.status FROM game_players gp JOIN users u ON u.id=gp.user_id WHERE gp.game_id=$1 AND gp.status='confirmed' ORDER BY gp.joined_at`, id)
+	rows, err := h.DB.Query(r.Context(), `SELECT u.id,u.display_name,gp.role,gp.status,gp.confirmation_confirmed FROM game_players gp JOIN users u ON u.id=gp.user_id WHERE gp.game_id=$1 AND gp.status='confirmed' ORDER BY gp.joined_at`, id)
 	if err != nil {
 		return x, err
 	}
@@ -616,8 +641,13 @@ func (h Handler) readDetails(r *http.Request, id, userID uuid.UUID) (gameDetails
 	x.Players = []player{}
 	for rows.Next() {
 		var p player
-		if err = rows.Scan(&p.ID, &p.DisplayName, &p.Role, &p.Status); err != nil {
+		var confirmed bool
+		if err = rows.Scan(&p.ID, &p.DisplayName, &p.Role, &p.Status, &confirmed); err != nil {
 			return x, err
+		}
+		p.IsCurrentUser = p.ID == userID.String()
+		if x.IsMember && confirmationEnabled {
+			p.ConfirmationConfirmed = &confirmed
 		}
 		x.Players = append(x.Players, p)
 	}
@@ -634,15 +664,72 @@ func (h Handler) readDetails(r *http.Request, id, userID uuid.UUID) (gameDetails
 		}
 		x.Waitlist = append(x.Waitlist, p)
 	}
-	var status, role string
-	err = h.DB.QueryRow(r.Context(), `SELECT COALESCE((SELECT status FROM game_players WHERE game_id=$1 AND user_id=$2),CASE WHEN EXISTS (SELECT 1 FROM game_waitlist WHERE game_id=$1 AND user_id=$2) THEN 'waitlisted' ELSE '' END),COALESCE((SELECT role FROM game_players WHERE game_id=$1 AND user_id=$2),'')`, id, userID).Scan(&status, &role)
-	if err != nil {
-		return x, err
+	if x.IsMember {
+		var confirmedCount int
+		if err = h.DB.QueryRow(r.Context(), `SELECT count(*) FILTER (WHERE confirmation_confirmed),count(*) FROM game_players WHERE game_id=$1 AND status='confirmed'`, id).Scan(&confirmedCount, &x.ConfirmedPlayers); err != nil {
+			return x, err
+		}
+		x.OpenSlots = x.Capacity - x.ConfirmedPlayers
+		x.Confirmation = &confirmationSummary{Enabled: confirmationEnabled, ConfirmedCount: confirmedCount, TotalPlayers: x.ConfirmedPlayers}
 	}
-	x.IsMember = status == "confirmed"
-	x.CurrentUserStatus = status
-	x.CurrentUserRole = role
 	return x, nil
+}
+
+func (h Handler) confirm(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
+	var in struct {
+		Confirmed *bool `json:"confirmed"`
+	}
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in) != nil || in.Confirmed == nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_confirmation", "Confirmation input is invalid.")
+		return
+	}
+	tx, err := h.DB.Begin(r.Context())
+	if err != nil {
+		http.Error(w, "game unavailable", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var startsAt, endsAt time.Time
+	var status string
+	var enabled bool
+	if err = tx.QueryRow(r.Context(), `SELECT starts_at,ends_at,status,confirmation_enabled FROM games WHERE id=$1 FOR UPDATE`, id).Scan(&startsAt, &endsAt, &status, &enabled); errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "game_not_found", "Game not found.")
+		return
+	} else if err != nil {
+		http.Error(w, "game unavailable", http.StatusInternalServerError)
+		return
+	}
+	var participant bool
+	if err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM game_players WHERE game_id=$1 AND user_id=$2 AND status='confirmed')`, id, userID).Scan(&participant); err != nil {
+		http.Error(w, "game unavailable", http.StatusInternalServerError)
+		return
+	}
+	if !participant {
+		writeError(w, http.StatusForbidden, "confirmation_forbidden", "Only confirmed participants can update confirmation.")
+		return
+	}
+	if !enabled {
+		writeError(w, http.StatusConflict, "confirmation_disabled", "Confirmation is disabled for this game.")
+		return
+	}
+	now := h.now()
+	if !ConfirmationWindowOpen(enabled, status, startsAt, endsAt, now) {
+		writeError(w, http.StatusConflict, "confirmation_window_closed", "Confirmation is only available from 24 hours before the game until it ends.")
+		return
+	}
+	var confirmedAt *time.Time
+	if *in.Confirmed {
+		confirmedAt = &now
+	}
+	if _, err = tx.Exec(r.Context(), `UPDATE game_players SET confirmation_confirmed=$1,confirmation_at=$2 WHERE game_id=$3 AND user_id=$4 AND status='confirmed'`, *in.Confirmed, confirmedAt, id, userID); err != nil {
+		http.Error(w, "game unavailable", http.StatusInternalServerError)
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		http.Error(w, "game unavailable", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h Handler) join(w http.ResponseWriter, r *http.Request, id, userID uuid.UUID) {
@@ -754,7 +841,7 @@ func (h Handler) join(w http.ResponseWriter, r *http.Request, id, userID uuid.UU
 		return
 	}
 	if count < cap {
-		_, err = tx.Exec(r.Context(), `INSERT INTO game_players(game_id,user_id,role,status,attendance_status) VALUES($1,$2,'player','confirmed','unknown') ON CONFLICT(game_id,user_id) DO UPDATE SET status='confirmed',cancelled_at=NULL,joined_at=now()`, id, userID)
+		_, err = tx.Exec(r.Context(), `INSERT INTO game_players(game_id,user_id,role,status,attendance_status) VALUES($1,$2,'player','confirmed','unknown') ON CONFLICT(game_id,user_id) DO UPDATE SET status='confirmed',cancelled_at=NULL,joined_at=now(),confirmation_confirmed=false,confirmation_at=NULL`, id, userID)
 		if err != nil {
 			http.Error(w, "game unavailable", 500)
 			return
@@ -1040,6 +1127,10 @@ func (h Handler) cancel(w http.ResponseWriter, r *http.Request, id, userID uuid.
 		return
 	}
 	if _, err = tx.Exec(r.Context(), `DELETE FROM game_waitlist WHERE game_id=$1`, id); err != nil {
+		http.Error(w, "game unavailable", 500)
+		return
+	}
+	if _, err = tx.Exec(r.Context(), `UPDATE notification_deliveries AS d SET status='disabled',last_attempt_at=now(),error_message='game notification disabled because game was cancelled' FROM notification_events AS e WHERE d.notification_event_id=e.id AND d.status='pending' AND e.type IN ('match_confirmation','game_reminder') AND e.payload->>'gameId'=$1`, id.String()); err != nil {
 		http.Error(w, "game unavailable", 500)
 		return
 	}

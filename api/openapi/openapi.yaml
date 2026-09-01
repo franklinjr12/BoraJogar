@@ -247,6 +247,19 @@ paths:
       responses: { '200': { description: Game preview, content: { application/json: { schema: { $ref: '#/components/schemas/GamePreview' } } } }, '404': { description: Game unavailable } }
   /api/v1/games/{gameId}/join:
     post: { summary: Join game or waitlist, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Join result }, '409': { description: "Join rejected; conflicting_game errors include the conflicting game in error.fields.", content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }, '422': { $ref: '#/components/responses/ValidationError' } } }
+  /api/v1/games/{gameId}/confirmation:
+    put:
+      summary: Toggle current player match confirmation
+      security: [{ cookieAuth: [] }]
+      parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/GameConfirmationInput' } } } }
+      responses:
+        '204': { description: Confirmation updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /api/v1/games/{gameId}/leave:
     post: { summary: Leave game, security: [{ cookieAuth: [] }], parameters: [{ in: path, name: gameId, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Leave result } } }
   /api/v1/games/{gameId}/players/{userId}:
@@ -484,18 +497,21 @@ components:
         organizer: { $ref: '#/components/schemas/GamePlayer' }
         players: { type: array, items: { $ref: '#/components/schemas/GamePlayer' } }
         waitlist: { type: array, items: { $ref: '#/components/schemas/GamePlayer' } }
+        confirmation: { $ref: '#/components/schemas/GameConfirmation' }
         isMember: { type: boolean }
         currentUserStatus: { type: string, enum: ['', confirmed, waitlisted, cancelled, removed] }
         currentUserRole: { type: string }
         shareUrl: { type: string }
     GamePlayer:
       type: object
-      required: [id, displayName]
+      required: [id, displayName, isCurrentUser]
       properties:
         id: { type: string, format: uuid }
         displayName: { type: string }
         role: { type: string, enum: [organizer, player] }
         status: { type: string, enum: [confirmed, cancelled, removed] }
+        confirmationConfirmed: { type: boolean }
+        isCurrentUser: { type: boolean }
     GamePreview:
       type: object
       required: [id, startsAt, endsAt, venueName, capacity, confirmedPlayers, openSlots, waitlistEnabled, waitlistSize, waitlistCount, minimumSkillLevel, maximumSkillLevel, visibility, status]
@@ -570,11 +586,24 @@ components:
         capacity: { type: integer, minimum: 2, maximum: 12 }
         waitlistEnabled: { type: boolean, default: false }
         waitlistSize: { type: integer, minimum: 0, maximum: 12, default: 0 }
+        confirmationEnabled: { type: boolean, default: false }
         minimumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
         maximumSkillLevel: { type: string, enum: [learning, beginner, intermediate, advanced, competitive] }
         visibility: { type: string, enum: [public, link-only, private] }
         title: { type: string, maxLength: 120, nullable: true }
         description: { type: string, maxLength: 2000, nullable: true }
+    GameConfirmation:
+      type: object
+      required: [enabled, confirmedCount, totalPlayers]
+      properties:
+        enabled: { type: boolean }
+        confirmedCount: { type: integer, minimum: 0 }
+        totalPlayers: { type: integer, minimum: 0 }
+    GameConfirmationInput:
+      type: object
+      required: [confirmed]
+      properties:
+        confirmed: { type: boolean }
     GameUpdate:
       type: object
       properties: { title: { type: string, maxLength: 120, nullable: true }, description: { type: string, maxLength: 2000, nullable: true } }

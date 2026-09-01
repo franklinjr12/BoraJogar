@@ -17,8 +17,8 @@ The API does not serve the React build. Do not expose the API directly as the pu
 
 Resolve or consciously accept these before treating the deployment as production-ready:
 
-- Email and Web Push delivery are not implemented end-to-end. `SMTP_*` and `VAPID_*` are present in `.env.example`, but the server does not load them and `EmailChannel`/`WebPushChannel` remain stubs. In-app notifications work; email/push should be considered unavailable.
-- The worker currently runs session cleanup, finished-game completion, and availability expansion hourly. It does not run matchmaking generation or notification delivery.
+- Web Push delivery is not implemented end-to-end and remains unavailable. SMTP email delivery is implemented by the worker; verify the provider, sender domain, and credentials before enabling user-facing email alerts.
+- The worker runs session cleanup, finished-game completion, and availability expansion hourly; email delivery every minute; and match confirmation/reminder scheduling at startup and every five minutes. It does not run matchmaking generation.
 - `DEFAULT_CITY_NAME` is not wired into the frontend. The frontend currently defaults venue queries/forms to `Curitiba`; verify this matches the test city before deploying.
 - No production Dockerfile, reverse-proxy config, systemd unit, backup job, or migration binary exists in the repository. This guide supplies manual deployment examples.
 - `make build` on Windows creates Windows Go binaries. Cross-compile for the remote Linux architecture before copying binaries.
@@ -63,7 +63,9 @@ Resolve or consciously accept these before treating the deployment as production
 ### Email, maps, and notifications
 
 - [ ] Choose transactional email provider. Configure verified sender/domain, SPF, DKIM, DMARC.
-- [ ] Do not assume SMTP configuration enables application email; current notification delivery code is incomplete. Track this as feature blocker if email alerts are required.
+- [ ] Configure and verify `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_ADDRESS`, and `SMTP_FROM_NAME`. The worker retries temporary email failures with the existing bounded delivery process; `reminder_notifications=false` disables reminder email while preserving in-app notifications.
+- [ ] Keep the worker running continuously. Confirmation prompts are scheduled once per confirmed roster participant at the 24-hour boundary, and game reminders once at the 1-hour boundary. Notification dedupe is database-backed and safe across concurrent/retried worker runs.
+- [ ] Cancelled games disable pending confirmation/reminder deliveries in the cancellation transaction. Already delivered notifications are retained for history.
 - [ ] Venue and preferred-location search load the restricted browser Maps key from authenticated `GET /api/v1/me/maps-config`; verify this endpoint returns `503` when the key is absent and never expose server-only secrets.
 - [ ] VAPID values are currently unused by running server. Do not promise Web Push until provider wiring/retries exist.
 - [ ] Confirm outbound HTTPS access to map provider and Google OAuth endpoints.

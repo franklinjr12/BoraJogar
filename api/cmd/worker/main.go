@@ -11,6 +11,7 @@ import (
 	"github.com/borajogar/borajogar/api/internal/attendance"
 	"github.com/borajogar/borajogar/api/internal/auth"
 	"github.com/borajogar/borajogar/api/internal/availability"
+	"github.com/borajogar/borajogar/api/internal/game"
 	"github.com/borajogar/borajogar/api/internal/notification"
 	"github.com/borajogar/borajogar/api/internal/platform/config"
 	"github.com/borajogar/borajogar/api/internal/platform/database"
@@ -76,8 +77,19 @@ func main() {
 			logger.Info("email delivery run completed", "claimed", result.Claimed, "delivered", result.Delivered, "retried", result.Retried, "failed", result.Failed)
 		}
 	}
+	sendConfirmationNotifications := func() {
+		created, confirmationErr := game.SendDueConfirmationNotifications(ctx, db, notifications, time.Now().UTC())
+		if confirmationErr != nil {
+			logger.Error("game confirmation notification run failed", "error", confirmationErr)
+			return
+		}
+		if created > 0 {
+			logger.Info("game confirmation notification run completed", "created", created)
+		}
+	}
 	completeGames()
 	deliverEmails()
+	sendConfirmationNotifications()
 	if err := availability.ExpandFuture(ctx, db, time.Now().UTC()); err != nil {
 		logger.Error("availability expansion failed", "error", err)
 	}
@@ -85,6 +97,8 @@ func main() {
 	defer maintenanceTicker.Stop()
 	deliveryTicker := time.NewTicker(time.Minute)
 	defer deliveryTicker.Stop()
+	confirmationTicker := time.NewTicker(5 * time.Minute)
+	defer confirmationTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -97,6 +111,8 @@ func main() {
 			}
 		case <-deliveryTicker.C:
 			deliverEmails()
+		case <-confirmationTicker.C:
+			sendConfirmationNotifications()
 		}
 	}
 }

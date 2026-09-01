@@ -23,7 +23,7 @@ const emailPreferencePredicate = `
 	COALESCE(p.email_enabled, TRUE)
 	AND CASE
 		WHEN e.type IN ('match_proposal', 'proposal_confirmed', 'proposal_expired') THEN COALESCE(p.proposal_notifications, TRUE)
-		WHEN e.type = 'game_reminder' THEN COALESCE(p.reminder_notifications, TRUE)
+		WHEN e.type IN ('game_reminder', 'match_confirmation') THEN COALESCE(p.reminder_notifications, TRUE)
 		WHEN e.type IN ('waitlist_promotion', 'waitlist_open') THEN COALESCE(p.open_slot_notifications, TRUE)
 		ELSE COALESCE(p.game_update_notifications, TRUE)
 	END`

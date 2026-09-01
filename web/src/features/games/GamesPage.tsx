@@ -27,6 +27,7 @@ import { DatePickerField, TimePickerField } from '../../components/DateTimePicke
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useOnlineStatus } from '../../platform/useOnlineStatus';
 import { GameChat } from './GameChat';
+import { isConfirmationWindowOpen } from './confirmation';
 
 const levels: GameSkillLevel[] = [
   'learning',
@@ -215,6 +216,7 @@ export function CreateGamePage() {
   const [venueDraft, setVenueDraft] = useState<VenueDraft>(blankVenueDraft());
   const [saving, setSaving] = useState(false);
   const [waitlistEnabled, setWaitlistEnabled] = useState(false);
+  const [confirmationEnabled, setConfirmationEnabled] = useState(false);
   const [loadingLocations, setLoadingLocations] = useState(true);
   const [locationError, setLocationError] = useState('');
   const isOnline = useOnlineStatus();
@@ -355,6 +357,7 @@ export function CreateGamePage() {
         capacity,
         waitlistEnabled,
         waitlistSize,
+        confirmationEnabled,
         minimumSkillLevel,
         maximumSkillLevel,
         visibility: String(form.get('visibility')) as GameVisibility,
@@ -483,6 +486,15 @@ export function CreateGamePage() {
             <input name="waitlistSize" type="number" min="1" max="12" defaultValue="1" required />
           </label>
         )}
+        <label>
+          <span>{'Ativar confirma\u00e7\u00e3o de presen\u00e7a'}</span>
+          <input
+            name="confirmationEnabled"
+            type="checkbox"
+            checked={confirmationEnabled}
+            onChange={(event) => setConfirmationEnabled(event.target.checked)}
+          />
+        </label>
         <div className="time-fields skill-fields">
           <label>
             Habilidade mínima
@@ -549,7 +561,12 @@ export function GameDetailsPage() {
   const [busy, setBusy] = useState(false);
   const [shareMessage, setShareMessage] = useState('');
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
+  const [confirmationNow, setConfirmationNow] = useState(() => Date.now());
   const isOnline = useOnlineStatus();
+  useEffect(() => {
+    const timer = window.setInterval(() => setConfirmationNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   useEffect(() => {
     setError('');
     setProfileRequired(false);
@@ -702,6 +719,7 @@ export function GameDetailsPage() {
       },
     });
   };
+  const confirmationWindowOpen = isConfirmationWindowOpen(game, confirmationNow);
   return (
     <main className="shell">
       <Link className="text-link" to="/games">
@@ -797,6 +815,22 @@ export function GameDetailsPage() {
           </section>
         )}
         <h2>Jogadores</h2>
+        {game.confirmation?.enabled && game.currentUserStatus === 'confirmed' && (
+          <section
+            className="inline-panel confirmation-panel"
+            aria-label={'Confirma\u00e7\u00e3o de presen\u00e7a'}
+          >
+            <p>
+              {'Confirma\u00e7\u00f5es: '}
+              {game.confirmation.confirmedCount}/{game.confirmation.totalPlayers}
+            </p>
+            {!confirmationWindowOpen && game.status === 'scheduled' && (
+              <p className="hint">
+                {'A confirma\u00e7\u00e3o estar\u00e1 dispon\u00edvel 24 horas antes da partida.'}
+              </p>
+            )}
+          </section>
+        )}
         {game.players?.map((player) => (
           <p key={player.id}>
             <Link
@@ -806,6 +840,27 @@ export function GameDetailsPage() {
               {player.displayName}
             </Link>
             {player.role === 'organizer' ? ' · organizador' : ''}
+            {game.confirmation?.enabled && (
+              <label className="confirmation-player">
+                <span className="sr-only">
+                  {'Confirmar presen\u00e7a de '}
+                  {player.displayName}
+                </span>
+                <input
+                  className="confirmation-checkbox"
+                  type="checkbox"
+                  checked={player.confirmationConfirmed === true}
+                  disabled={!player.isCurrentUser || busy || !isOnline || !confirmationWindowOpen}
+                  aria-label={`Confirmar presen\u00e7a de ${player.displayName}`}
+                  onChange={(event) =>
+                    void action(() => gameApi.setConfirmation(id, event.currentTarget.checked))
+                  }
+                />
+                <span className="confirmation-status">
+                  {player.confirmationConfirmed ? 'Confirmado' : 'Ainda n\u00e3o confirmado'}
+                </span>
+              </label>
+            )}
           </p>
         ))}
         {game.status !== 'cancelled' &&

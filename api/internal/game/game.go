@@ -17,18 +17,27 @@ var (
 var skillRank = map[string]int{"learning": 0, "beginner": 1, "intermediate": 2, "advanced": 3, "competitive": 4}
 
 type CreateInput struct {
-	StartsAt          string  `json:"startsAt"`
-	EndsAt            string  `json:"endsAt"`
-	DurationMinutes   int     `json:"durationMinutes"`
-	VenueID           string  `json:"venueId"`
-	Capacity          int     `json:"capacity"`
-	WaitlistEnabled   bool    `json:"waitlistEnabled"`
-	WaitlistSize      int     `json:"waitlistSize"`
-	MinimumSkillLevel string  `json:"minimumSkillLevel"`
-	MaximumSkillLevel string  `json:"maximumSkillLevel"`
-	Visibility        string  `json:"visibility"`
-	Title             *string `json:"title"`
-	Description       *string `json:"description"`
+	StartsAt            string  `json:"startsAt"`
+	EndsAt              string  `json:"endsAt"`
+	DurationMinutes     int     `json:"durationMinutes"`
+	VenueID             string  `json:"venueId"`
+	Capacity            int     `json:"capacity"`
+	WaitlistEnabled     bool    `json:"waitlistEnabled"`
+	WaitlistSize        int     `json:"waitlistSize"`
+	ConfirmationEnabled bool    `json:"confirmationEnabled"`
+	MinimumSkillLevel   string  `json:"minimumSkillLevel"`
+	MaximumSkillLevel   string  `json:"maximumSkillLevel"`
+	Visibility          string  `json:"visibility"`
+	Title               *string `json:"title"`
+	Description         *string `json:"description"`
+}
+
+func ConfirmationWindowOpen(enabled bool, status string, startsAt, endsAt, now time.Time) bool {
+	if !enabled || status != "scheduled" {
+		return false
+	}
+	now = now.UTC()
+	return !now.Before(startsAt.UTC().Add(-24*time.Hour)) && !now.After(endsAt.UTC())
 }
 
 func ValidateCreate(in CreateInput, now time.Time) (time.Time, time.Time, error) {

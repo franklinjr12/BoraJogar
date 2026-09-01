@@ -140,6 +140,38 @@ func TestDeliverPendingEmailDisablesOptedOutDeliveryIntegration(t *testing.T) {
 	}
 }
 
+func TestDeliverPendingEmailRespectsReminderPreferenceForConfirmationIntegration(t *testing.T) {
+	db := integrationNotificationDB(t)
+	defer db.Close()
+	ctx := context.Background()
+	userID := uuid.New()
+	t.Cleanup(func() { _, _ = db.Exec(ctx, `DELETE FROM users WHERE id=$1`, userID) })
+	if _, err := db.Exec(ctx, `INSERT INTO users (id, google_subject, email, display_name) VALUES ($1,$2,$3,$4)`, userID, "notification-confirmation-optout-"+userID.String(), "confirmation-optout-"+userID.String()+"@example.com", "Confirmation Opt Out"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO notification_preferences (user_id, reminder_notifications) VALUES ($1,false)`, userID); err != nil {
+		t.Fatal(err)
+	}
+	service := Service{DB: db, Channels: map[string]NotificationChannel{"email": EmailChannel{Sender: &recordingEmailSender{}}}}
+	if err := service.Publish(ctx, EventInput{UserID: userID, Type: MatchConfirmation, Title: "Confirm", Body: "Confirm your game."}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.DeliverPendingEmail(ctx, "https://borajogar.example", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Claimed != 0 {
+		t.Fatalf("result = %+v", result)
+	}
+	var status string
+	if err := db.QueryRow(ctx, `SELECT d.status FROM notification_deliveries d JOIN notification_events e ON e.id=d.notification_event_id WHERE e.user_id=$1 AND d.channel='email'`, userID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "disabled" {
+		t.Fatalf("status = %q", status)
+	}
+}
+
 func TestDeliverPendingEmailRespectsWaitlistOpenPreferenceIntegration(t *testing.T) {
 	db := integrationNotificationDB(t)
 	defer db.Close()

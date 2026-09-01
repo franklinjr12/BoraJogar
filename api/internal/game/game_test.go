@@ -82,6 +82,63 @@ func TestValidateCreateWaitlistConfiguration(t *testing.T) {
 	}
 }
 
+func TestValidateCreateConfirmationDefaultsOffAndAcceptsOptIn(t *testing.T) {
+	now := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	base := CreateInput{
+		StartsAt:          now.Add(48 * time.Hour).Format(time.RFC3339),
+		DurationMinutes:   90,
+		VenueID:           "venue",
+		Capacity:          4,
+		MinimumSkillLevel: "beginner",
+		MaximumSkillLevel: "advanced",
+		Visibility:        "public",
+	}
+	if base.ConfirmationEnabled {
+		t.Fatal("confirmation must default to disabled")
+	}
+	if _, _, err := ValidateCreate(base, now); err != nil {
+		t.Fatalf("default-disabled confirmation rejected: %v", err)
+	}
+	base.ConfirmationEnabled = true
+	if _, _, err := ValidateCreate(base, now); err != nil {
+		t.Fatalf("confirmation opt-in rejected: %v", err)
+	}
+}
+
+func TestConfirmationWindowBoundaries(t *testing.T) {
+	starts := time.Date(2026, 8, 1, 15, 0, 0, 0, time.UTC)
+	ends := starts.Add(90 * time.Minute)
+	for _, test := range []struct {
+		name string
+		now  time.Time
+		open bool
+	}{
+		{"disabled", starts.Add(-24 * time.Hour), false},
+		{"cancelled", starts.Add(-24 * time.Hour), false},
+		{"completed", starts.Add(-24 * time.Hour), false},
+		{"25 hours before", starts.Add(-25 * time.Hour), false},
+		{"exactly 24 hours before", starts.Add(-24 * time.Hour), true},
+		{"at start", starts, true},
+		{"at end", ends, true},
+		{"after end", ends.Add(time.Nanosecond), false},
+	} {
+		status := "scheduled"
+		enabled := true
+		if test.name == "disabled" {
+			enabled = false
+		}
+		if test.name == "cancelled" {
+			status = "cancelled"
+		}
+		if test.name == "completed" {
+			status = "completed"
+		}
+		if got := ConfirmationWindowOpen(enabled, status, starts, ends, test.now); got != test.open {
+			t.Errorf("%s: got %v, want %v", test.name, got, test.open)
+		}
+	}
+}
+
 func TestValidateCreateSeparatesMalformedStartFromPastStart(t *testing.T) {
 	now := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
 	_, _, err := ValidateCreate(CreateInput{StartsAt: "tomorrow", DurationMinutes: 90, VenueID: "venue", Capacity: 4, MinimumSkillLevel: "beginner", MaximumSkillLevel: "advanced", Visibility: "public"}, now)

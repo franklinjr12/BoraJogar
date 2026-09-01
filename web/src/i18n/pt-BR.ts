@@ -153,6 +153,10 @@ const notificationMessages: Record<string, { title: string; body: string }> = {
     title: 'Partida cancelada',
     body: 'Uma partida da sua agenda foi cancelada.',
   },
+  match_confirmation: {
+    title: 'Confirme sua presença',
+    body: 'Confirme sua presença na partida antes do horário do jogo.',
+  },
   game_reminder: {
     title: 'Lembrete de partida',
     body: 'Sua partida está chegando. Confira os detalhes antes de sair.',

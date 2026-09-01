@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CreateGamePage, GameDetailsPage, GamesPage } from './GamesPage';
+import { isConfirmationWindowOpen } from './confirmation';
 
 const googleMapsMock = vi.hoisted(() => ({ loadGoogleMaps: vi.fn() }));
 vi.mock('../locations/googleMaps', () => googleMapsMock);
@@ -545,7 +546,44 @@ describe('CreateGamePage', () => {
     expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
       waitlistEnabled: false,
       waitlistSize: 0,
+      confirmationEnabled: false,
     });
+  });
+
+  it('submits enabled match confirmations', async () => {
+    const savedVenue = { id: 'venue-1', name: 'Praia Central' };
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/v1/me/favorite-venues')) {
+        return Promise.resolve(new Response(JSON.stringify([savedVenue]), { status: 200 }));
+      }
+      if (url.includes('/api/v1/games') && init?.method === 'POST') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ id: 'game-1', shareUrl: '/games/game-1' }), {
+            status: 201,
+          }),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <MemoryRouter initialEntries={['/games/new']}>
+        <CreateGamePage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: /configure uma partida/i });
+    await waitFor(() => expect(screen.getByLabelText(/^quadra$/i)).toHaveValue('venue:venue-1'));
+    fireEvent.click(screen.getByLabelText(/ativar confirma.+presen.a/i));
+    fireEvent.change(screen.getByLabelText(/^data$/i), { target: { value: futureGameDate } });
+    fireEvent.change(screen.getByLabelText(/horário de início/i), { target: { value: '09:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /^criar partida$/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/games', expect.anything()));
+    const request = fetchMock.mock.calls.find(
+      ([url, init]) => url === '/api/v1/games' && init?.method === 'POST',
+    );
+    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({ confirmationEnabled: true });
   });
 
   it('submits enabled waitlist size', async () => {
@@ -809,6 +847,87 @@ describe('GameDetailsPage', () => {
 
     await screen.findByRole('heading', { name: 'Saturday game' });
     expect(screen.queryByLabelText('Link da partida')).not.toBeInTheDocument();
+  });
+
+  it('shows confirmation state to the roster and only allows the current player to toggle', async () => {
+    const startsAt = new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString();
+    const endsAt = new Date(Date.now() + 24.5 * 60 * 60 * 1000).toISOString();
+    let currentGame = {
+      id: 'game-1',
+      title: 'Saturday game',
+      startsAt,
+      endsAt,
+      venueId: 'venue-1',
+      venueName: 'Central court',
+      latitude: -23.5,
+      longitude: -46.6,
+      capacity: 4,
+      confirmedPlayers: 2,
+      openSlots: 2,
+      minimumSkillLevel: 'beginner' as const,
+      maximumSkillLevel: 'advanced' as const,
+      visibility: 'public' as const,
+      status: 'scheduled' as const,
+      currentUserStatus: 'confirmed' as const,
+      currentUserRole: 'player',
+      confirmation: { enabled: true, confirmedCount: 1, totalPlayers: 2 },
+      players: [
+        { id: 'host-1', displayName: 'Host', role: 'organizer', confirmationConfirmed: true },
+        {
+          id: 'player-1',
+          displayName: 'Bruno',
+          role: 'player',
+          confirmationConfirmed: false,
+          isCurrentUser: true,
+        },
+      ],
+    };
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT' && url.endsWith('/confirmation')) {
+        const body = JSON.parse(String(init.body)) as { confirmed: boolean };
+        currentGame = {
+          ...currentGame,
+          confirmation: { ...currentGame.confirmation, confirmedCount: body.confirmed ? 2 : 1 },
+          players: currentGame.players.map((player) =>
+            player.id === 'player-1'
+              ? { ...player, confirmationConfirmed: body.confirmed }
+              : player,
+          ),
+        };
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(currentGame), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/games/game-1']}>
+        <Routes>
+          <Route path="/games/:id" element={<GameDetailsPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const currentCheckbox = await screen.findByRole('checkbox', {
+      name: 'Confirmar presença de Bruno',
+    });
+    expect(currentCheckbox).toBeEnabled();
+    expect(screen.getByRole('checkbox', { name: 'Confirmar presença de Host' })).toBeDisabled();
+    expect(screen.getByText('Confirmações: 1/2')).toBeInTheDocument();
+    fireEvent.click(currentCheckbox);
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/games/game-1/confirmation',
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({ confirmed: true }),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: 'Confirmar presença de Bruno' })).toBeChecked(),
+    );
+    expect(screen.getByText('Confirmações: 2/2')).toBeInTheDocument();
   });
 
   it('shows unavailable state when a full game has no waitlist', async () => {
@@ -1170,5 +1289,22 @@ describe('GameDetailsPage', () => {
     expect(
       screen.queryByRole('link', { name: /adicionar ao calendário/i }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('isConfirmationWindowOpen', () => {
+  it('is inclusive at 24 hours before and at the match end', () => {
+    const startsAt = '2026-08-01T15:00:00.000Z';
+    const endsAt = '2026-08-01T16:30:00.000Z';
+    const game = {
+      startsAt,
+      endsAt,
+      status: 'scheduled' as const,
+      confirmation: { enabled: true, confirmedCount: 0, totalPlayers: 2 },
+    } as Parameters<typeof isConfirmationWindowOpen>[0];
+    expect(isConfirmationWindowOpen(game, Date.parse('2026-07-31T14:59:59.999Z'))).toBe(false);
+    expect(isConfirmationWindowOpen(game, Date.parse('2026-07-31T15:00:00.000Z'))).toBe(true);
+    expect(isConfirmationWindowOpen(game, Date.parse(endsAt))).toBe(true);
+    expect(isConfirmationWindowOpen(game, Date.parse('2026-08-01T16:30:00.001Z'))).toBe(false);
   });
 });

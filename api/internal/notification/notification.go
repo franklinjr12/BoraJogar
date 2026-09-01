@@ -16,6 +16,7 @@ import (
 	"github.com/borajogar/borajogar/api/internal/auth"
 	"github.com/borajogar/borajogar/api/internal/platform/email"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -34,6 +35,7 @@ const (
 	GameChanged          Type = "game_changed"
 	GameCancelled        Type = "game_cancelled"
 	GameReminder         Type = "game_reminder"
+	MatchConfirmation    Type = "match_confirmation"
 	ReportReceived       Type = "report_received"
 	AttendanceRequested  Type = "attendance_requested"
 	GameChatMessage      Type = "game_chat_message"
@@ -65,12 +67,16 @@ type NotificationChannel interface {
 type Publisher interface {
 	Publish(context.Context, EventInput) error
 }
+type TransactionalPublisher interface {
+	PublishInTransaction(context.Context, pgx.Tx, EventInput) error
+}
 type EventInput struct {
 	UserID                 uuid.UUID
 	Type                   Type
 	Title, Body, ActionURL string
 	Payload                any
 	Channels               []string
+	DedupeKey              string
 }
 
 type GameCancellationPayload struct {
@@ -89,17 +95,28 @@ type Service struct {
 }
 
 func (s Service) Publish(ctx context.Context, input EventInput) error {
-	payload, err := json.Marshal(input.Payload)
-	if err != nil {
-		return err
-	}
-	eventID := uuid.New()
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	_, err = tx.Exec(ctx, `INSERT INTO notification_events (id,user_id,type,title,body,action_url,payload) VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),$7)`, eventID, input.UserID, input.Type, input.Title, input.Body, input.ActionURL, payload)
+	if err := s.PublishInTransaction(ctx, tx, input); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s Service) PublishInTransaction(ctx context.Context, tx pgx.Tx, input EventInput) error {
+	payload, err := json.Marshal(input.Payload)
+	if err != nil {
+		return err
+	}
+	eventID := uuid.New()
+	var insertedEventID uuid.UUID
+	err = tx.QueryRow(ctx, `INSERT INTO notification_events (id,user_id,type,title,body,action_url,payload,dedupe_key) VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),$7,NULLIF($8,'')) ON CONFLICT (dedupe_key) DO NOTHING RETURNING id`, eventID, input.UserID, input.Type, input.Title, input.Body, input.ActionURL, payload, input.DedupeKey).Scan(&insertedEventID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -108,11 +125,11 @@ func (s Service) Publish(ctx context.Context, input EventInput) error {
 		channels = []string{"in_app", "email", "web_push"}
 	}
 	for _, channel := range channels {
-		if _, err = tx.Exec(ctx, `INSERT INTO notification_deliveries (id,notification_event_id,channel) VALUES ($1,$2,$3)`, uuid.New(), eventID, channel); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO notification_deliveries (id,notification_event_id,channel) VALUES ($1,$2,$3)`, uuid.New(), insertedEventID, channel); err != nil {
 			return err
 		}
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (s Service) Register(mux *http.ServeMux, requireAuth func(http.Handler) http.Handler) {
@@ -298,7 +315,7 @@ func EndpointHash(endpoint string) string {
 }
 func ReminderTimes(gameStart, now time.Time) []time.Time {
 	result := []time.Time{}
-	for _, d := range []time.Duration{24 * time.Hour, 2 * time.Hour} {
+	for _, d := range []time.Duration{24 * time.Hour, time.Hour} {
 		at := gameStart.Add(-d)
 		if at.After(now) {
 			result = append(result, at)

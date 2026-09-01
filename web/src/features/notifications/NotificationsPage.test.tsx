@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { NotificationsPage } from './NotificationsPage';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('NotificationsPage', () => {
   it('traduz notificações geradas pelo sistema', async () => {
@@ -144,5 +147,51 @@ describe('NotificationsPage', () => {
     expect(
       screen.getByText('Uma nova mensagem foi enviada no chat da sua partida Sábado na Praia.'),
     ).toBeInTheDocument();
+  });
+
+  it('localizes match confirmations and links to the match', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              items: [
+                {
+                  id: 'confirmation-notification',
+                  userId: 'user-1',
+                  type: 'match_confirmation',
+                  title: 'Confirm attendance',
+                  body: 'Please confirm attendance.',
+                  actionUrl: '/games/game-1',
+                  payload: {},
+                  readAt: null,
+                  createdAt: '2026-08-05T12:00:00Z',
+                },
+              ],
+              unreadCount: 1,
+              hasMore: false,
+              page: 1,
+              pageSize: 20,
+            }),
+            { status: 200 },
+          ),
+        ),
+      ),
+    );
+
+    render(
+      <MemoryRouter>
+        <NotificationsPage />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Confirme sua presença' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Confirme sua presença na partida antes do horário do jogo.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Abrir' })).toHaveAttribute('href', '/games/game-1');
   });
 });

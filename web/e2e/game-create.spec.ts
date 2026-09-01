@@ -18,6 +18,7 @@ test.describe('Game creation screen', () => {
       capacity: '2',
       waitlist: true,
       waitlistSize: '2',
+      confirmation: true,
       visibility: 'public',
     });
 
@@ -25,6 +26,8 @@ test.describe('Game creation screen', () => {
     await expect(page.getByText('E2E Praia Paulista')).toBeVisible();
     await expect(page.getByText('Lista de espera: 0/2')).toBeVisible();
     await expect(page.getByText(/2 jogadores/)).toBeVisible();
+    await expect(page.getByText('Confirmações: 0/1')).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: /confirmar presen.a/i })).toBeDisabled();
   });
 
   test('uses a saved preferred area as a new game location', async ({ page }, testInfo) => {

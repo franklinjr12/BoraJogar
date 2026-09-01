@@ -199,6 +199,7 @@ export async function createGame(
     capacity?: string;
     waitlist?: boolean;
     waitlistSize?: string;
+    confirmation?: boolean;
     visibility?: 'public' | 'link-only' | 'private';
     venueLabel?: string;
   },
@@ -215,6 +216,9 @@ export async function createGame(
   if (options.waitlist) {
     await page.getByRole('checkbox', { name: /ativar lista de espera/i }).check();
     await page.getByLabel(/tamanho da lista de espera/i).fill(options.waitlistSize ?? '1');
+  }
+  if (options.confirmation) {
+    await page.getByRole('checkbox', { name: /ativar confirma.+presen.a/i }).check();
   }
   await page
     .getByRole('combobox', { name: /visibilidade/i })
